@@ -57,6 +57,9 @@ core group and invokes the `lvgl-aic` submodule's port group. It must:
   C++ sources;
 - define the absolute quoted compiler macro
   `LV_CONF_PATH=".../packages/custom/lvgl-aic/lv_conf.h"`;
+- point `LV_CONF_KCONFIG_EXTERNAL_INCLUDE` at the component's empty
+  `compat/lv_conf_kconfig_external.h` bridge, so upstream RT-Thread/Kconfig
+  defaults cannot become a second configuration source;
 - add the LVGL public include roots and RT-Thread configuration include root;
 - leave `packages/artinchip/lvgl-ui` out of the link when the new choice is
   active.
@@ -77,7 +80,6 @@ Never link both paths.
 ## Configuration
 
 The target SCons group passes `LV_CONF_PATH` as a compiler definition, not as a
-CMake cache variable. A build-time marker in the integration layer must verify
-that the path exists and that the resulting `rtconfig.h`/preprocessor output
-contains the expected LVGL 9.6 configuration. Do not use the old LVGL 9.1
-CMake variables as if they were v9.6 options.
+CMake cache variable. It also checks the `LV_AIC_LV_CONF_MARKER` in the
+selected file before defining the group. Do not use the old LVGL 9.1 CMake
+variables as if they were v9.6 options.

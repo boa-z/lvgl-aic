@@ -10,6 +10,9 @@
 #ifndef LV_CONF_H
 #define LV_CONF_H
 
+/* Build glue checks this marker before starting a target compilation. */
+#define LV_AIC_LV_CONF_MARKER 0x4C56414Du
+
 /* Luban-Lite targets provide rtconfig.h. Host-side LVGL builds do not. */
 #if defined(LPKG_USING_LVGL) || defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
 #include <rtconfig.h>
