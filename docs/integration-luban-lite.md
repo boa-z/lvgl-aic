@@ -25,30 +25,44 @@ packages/
 
 ## Kconfig
 
-Source the component Kconfig from the superproject Kconfig, for example:
-
-```text
-source "packages/custom/lvgl-aic/Kconfig"
-```
+Source the component Kconfig from the superproject's custom integration layer,
+and source it only when the explicit new-LVGL implementation choice is active.
+Do not source it unconditionally: the legacy ArtInChip LVGL package and the
+new upstream path must remain mutually exclusive.
 
 Enable the new path only when the legacy ArtInChip LVGL path is disabled:
 
 ```text
 CONFIG_LPKG_USING_LVGL=y
-CONFIG_AIC_LVGL_PORT=y
+CONFIG_LVGL_V_9=y
+CONFIG_LPKG_LVGL_IMPL_AIC=y
 CONFIG_LPKG_MPP=y
+CONFIG_AIC_LVGL_PORT=y
+CONFIG_AIC_LVGL_USE_DISPLAY=y
 CONFIG_AIC_LVGL_USE_TOUCH=y
+CONFIG_AIC_LVGL_TOUCH_DEVICE="gt911"
 ```
 
-The exact superproject symbols may be adapted to the target's existing naming,
-but the selection must remain an explicit legacy/new XOR.
+Luban-Lite's generated `rtconfig.h` uses the Kconfig symbol name without a
+`CONFIG_` prefix (for example, `AIC_LVGL_TOUCH_DEVICE`). The touch port
+therefore reads `AIC_LVGL_TOUCH_DEVICE`, not a guessed `CONFIG_...` macro.
 
 ## SCons
 
-The component's `SConscript` compiles only `lvgl-aic` sources and declares
-include paths. The LVGL upstream repository remains responsible for compiling
-LVGL itself. The superproject must provide the LVGL include directory through
-its LVGL build integration.
+The superproject's `packages/custom/SConscript` owns the single upstream LVGL
+core group and invokes the `lvgl-aic` submodule's port group. It must:
+
+- glob `packages/third-party/lvgl/src/**/*.c` exactly once;
+- exclude upstream RT-Thread entry points, examples, demos, and optional
+  C++ sources;
+- define the absolute quoted compiler macro
+  `LV_CONF_PATH=".../packages/custom/lvgl-aic/lv_conf.h"`;
+- add the LVGL public include roots and RT-Thread configuration include root;
+- leave `packages/artinchip/lvgl-ui` out of the link when the new choice is
+  active.
+
+The component's own `SConscript` compiles only its port sources. Neither
+SConscript may compile LVGL upstream a second time.
 
 ## Link verification
 
@@ -62,6 +76,8 @@ Never link both paths.
 
 ## Configuration
 
-The upstream LVGL 9.6 build should receive the reviewed `lv_conf.h` through
-its normal configuration mechanism. Do not use the old LVGL 9.1 CMake variables
-as if they were v9.6 options.
+The target SCons group passes `LV_CONF_PATH` as a compiler definition, not as a
+CMake cache variable. A build-time marker in the integration layer must verify
+that the path exists and that the resulting `rtconfig.h`/preprocessor output
+contains the expected LVGL 9.6 configuration. Do not use the old LVGL 9.1
+CMake variables as if they were v9.6 options.

@@ -4,16 +4,19 @@ config AIC_LVGL_PORT
     bool "ArtInChip LVGL 9.6 platform port"
     default y
     depends on LPKG_USING_LVGL
+    depends on LPKG_MPP
 
 config AIC_LVGL_USE_DISPLAY
     bool "Enable ArtInChip display integration"
     default y
     depends on AIC_LVGL_PORT
+    depends on LPKG_MPP
 
 config AIC_LVGL_USE_TOUCH
     bool "Enable ArtInChip touch integration"
     default y
     depends on AIC_LVGL_PORT
+    depends on AIC_LVGL_USE_DISPLAY
     depends on KERNEL_RTTHREAD
 
 config AIC_LVGL_TOUCH_DEVICE
@@ -22,6 +25,8 @@ config AIC_LVGL_TOUCH_DEVICE
     depends on AIC_LVGL_USE_TOUCH
     help
       Leave empty to use the board-provided AIC_TOUCH_PANEL_NAME macro.
+      Luban-Lite generates AIC_LVGL_TOUCH_DEVICE in rtconfig.h without a
+      CONFIG_ prefix.
 
 config AIC_LVGL_USE_ENCODER
     bool "Enable optional encoder integration"
