@@ -37,7 +37,9 @@ broader upstream page with `--demo`:
 
 These modes use the unmodified upstream `demos/` sources. They are intended
 for 800x480 layout, animation, input, rendering, and lifecycle stress; they do
-not prove ArtInChip display hardware behavior. Vector/GLTF and legacy
+not prove ArtInChip display hardware behavior. The existing D50T SDL2 product
+simulator is not used because it links the legacy
+`packages/artinchip/lvgl-ui/lvgl_v9/lvgl` tree. Vector/GLTF and legacy
 ArtInChip LVGL 9.1 demos remain excluded from this target.
 
 ```sh
