@@ -135,3 +135,21 @@ Extended diagnostics: DEFERRED
 ```
 
 Do not convert the deferred items into independent hardware claims.
+
+## Gate 1 closeout revisions (Phase 2 entry)
+
+- `lvgl-aic` Gate 1 code: `d1492bf7377b056c66656e166847f4d81b2ec7b4`
+- `lvgl-aic` Gate 1 closeout docs: `f90f5e067e8606ce82c7a542eb566827d510a8b9`
+- `lvgl-aic` tag: `v0.1.0` (local; `origin` push blocked on 2026-09-24 by
+  `403 Permission to boa-z/lvgl-aic.git denied to boa-w`)
+- parent/superproject: `f7572509111d1c70962e6347e5ad7bc87b77fbba`
+  (`codex/d50t-meter-adaptation`, pushed to `boa-w/luban-lite-jc-d50t-rev`
+  on 2026-09-24)
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (`v9.6.0`)
+- Luban-Lite SDK baseline: `c5807f9e7d18292f920dafaa018b8174635085c4`
+- verified image SHA256:
+  `05DDBA327C6026E50C23445B48EDE29EBAE3BD0EF55D4DCDB29F8670A3690EE1`
+
+Phase 2 work starts from `phase2-mpp` branched at `v0.1.0`. Gate 1 SW
+baseline (`GE2D=OFF`, `MPP_DEC=OFF`, `FT_CACHE=OFF`) must remain intact
+until Phase 2 gates replace it.
