@@ -78,6 +78,18 @@ The only compiler diagnostics observed in the LVGL OSAL are pre-existing
 not warning-clean because the pinned upstream source is intentionally not
 modified.
 
+Hardware probes on 2026-09-24 were non-destructive:
+
+```text
+upgcmd -l       -> No usbupg device is found.
+adb devices -l  -> no devices attached.
+Win32_SerialPort -> COM5, JLink CDC UART only.
+```
+
+No D133/D133ECS board was available, so no image was flashed and no
+framebuffer, touch, VSync/PAN, rotation, cache, lifecycle, or long-run
+measurements were claimed.
+
 ## Hardware policy
 
 If no physical D133ECS board is available, report:
