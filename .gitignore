@@ -1,0 +1,10 @@
+# Build and editor artifacts
+build/
+out/
+.vscode/
+*.o
+*.obj
+*.a
+*.elf
+*.map
+*.log

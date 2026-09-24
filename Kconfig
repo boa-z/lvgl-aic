@@ -1,0 +1,66 @@
+menu "ArtInChip LVGL 9.6 port"
+
+config AIC_LVGL_PORT
+    bool "ArtInChip LVGL 9.6 platform port"
+    default y
+    depends on LPKG_USING_LVGL
+
+config AIC_LVGL_USE_DISPLAY
+    bool "Enable ArtInChip display integration"
+    default y
+    depends on AIC_LVGL_PORT
+
+config AIC_LVGL_USE_TOUCH
+    bool "Enable ArtInChip touch integration"
+    default y
+    depends on AIC_LVGL_PORT
+    depends on KERNEL_RTTHREAD
+
+config AIC_LVGL_TOUCH_DEVICE
+    string "Touch device name override"
+    default ""
+    depends on AIC_LVGL_USE_TOUCH
+    help
+      Leave empty to use the board-provided AIC_TOUCH_PANEL_NAME macro.
+
+config AIC_LVGL_USE_ENCODER
+    bool "Enable optional encoder integration"
+    default n
+    depends on AIC_LVGL_PORT
+    depends on KERNEL_RTTHREAD
+
+config AIC_LVGL_USE_MOUSE
+    bool "Enable optional mouse integration"
+    default n
+    depends on AIC_LVGL_PORT
+    depends on KERNEL_RTTHREAD
+
+config AIC_LVGL_USE_GE2D
+    bool "Enable ArtInChip GE2D draw unit"
+    default n
+    depends on AIC_LVGL_PORT
+    depends on LPKG_MPP
+
+config AIC_LVGL_USE_MPP_DEC
+    bool "Enable ArtInChip MPP image decoder"
+    default n
+    depends on AIC_LVGL_PORT
+    depends on LPKG_MPP
+
+config AIC_LVGL_USE_FT_CACHE
+    bool "Enable optional ArtInChip FreeType cache"
+    default n
+    depends on AIC_LVGL_PORT
+    depends on LPKG_USING_FREETYPE
+
+config AIC_LVGL_DEBUG_STATS
+    bool "Enable lvgl-aic platform statistics"
+    default n
+    depends on AIC_LVGL_PORT
+
+config AIC_LVGL_MANUAL_TEST
+    bool "Build the platform-only manual LVGL test page"
+    default n
+    depends on AIC_LVGL_PORT
+
+endmenu
