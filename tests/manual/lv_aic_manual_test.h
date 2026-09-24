@@ -14,6 +14,7 @@ extern "C" {
 
 int lv_aic_manual_test_create(void);
 void lv_aic_manual_test_deinit(void);
+const char *lv_aic_manual_test_status_text(void);
 
 #ifdef __cplusplus
 }

@@ -63,6 +63,7 @@ int lv_aic_manual_test_create(void)
     lv_obj_set_style_bg_color(lv_aic_manual_root, lv_color_hex(0x202020), 0);
     lv_obj_set_style_bg_opa(lv_aic_manual_root, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(lv_aic_manual_root, 0, 0);
+    lv_obj_set_style_pad_all(lv_aic_manual_root, 0, 0);
     lv_obj_set_style_radius(lv_aic_manual_root, 0, 0);
 
     lv_aic_manual_status = lv_label_create(lv_aic_manual_root);
@@ -70,6 +71,7 @@ int lv_aic_manual_test_create(void)
         goto fail;
     }
     lv_label_set_text(lv_aic_manual_status, "lvgl-aic LVGL 9.6 software baseline");
+    lv_obj_set_style_text_color(lv_aic_manual_status, lv_color_hex(0xffffff), 0);
     lv_obj_set_pos(lv_aic_manual_status, 24, 24);
 
     button = lv_button_create(lv_aic_manual_root);
@@ -108,6 +110,14 @@ int lv_aic_manual_test_create(void)
 fail:
     lv_aic_manual_test_deinit();
     return LV_AIC_ERR_NO_MEMORY;
+}
+
+const char *lv_aic_manual_test_status_text(void)
+{
+    if (lv_aic_manual_status == NULL) {
+        return NULL;
+    }
+    return lv_label_get_text(lv_aic_manual_status);
 }
 
 void lv_aic_manual_test_deinit(void)
