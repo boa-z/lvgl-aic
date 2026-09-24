@@ -76,13 +76,21 @@ SConscript may compile LVGL upstream a second time.
 ### RT-Thread semaphore compatibility
 
 The pinned Luban-Lite RT-Thread baseline provides `rt_sem_control()` but not
-LVGL 9.6's `RT_IPC_CMD_SET_VLIMIT`. When
-`CONFIG_AIC_LVGL_RT_SEM_COMPAT=y`, the custom integration layer adds linker
-wrappers for the existing RT-Thread semaphore functions. The wrappers use the
-semaphore's existing `reserved` field to represent a one-token limit, delegate
-all unrelated commands to RT-Thread, and leave LVGL's built-in
-`lv_rtthread.c` as the sole LVGL OSAL implementation. No RT-Thread kernel or
-LVGL upstream source is patched.
+LVGL 9.6's `RT_IPC_CMD_SET_VLIMIT`. The integration superproject backports the
+narrow RT-Thread 5.1 semaphore value-limit behavior into the target kernel:
+
+- `RT_IPC_CMD_SET_VLIMIT` is command `0x03`;
+- the existing semaphore storage is used for `max_value` (the structure size
+  is unchanged);
+- all semaphores default to `RT_SEM_VALUE_MAX`;
+- `rt_sem_control()` validates the requested limit and resumes waiters when
+  a lower limit is applied;
+- `rt_sem_release()` returns `-RT_EFULL` at the per-semaphore limit.
+
+LVGL's upstream `lv_rtthread.c` remains the sole OSAL implementation. Neither
+LVGL upstream nor the original ArtInChip LVGL package is patched. The kernel
+backport is kept in the superproject and is covered by the target semaphore
+checks in `docs/phase1.5-gate1.md`.
 
 ## Link verification
 
