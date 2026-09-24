@@ -16,7 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#if AIC_LVGL_USE_DISPLAY && AIC_LVGL_BSP_MPP
+#if defined(AIC_LVGL_USE_DISPLAY) && AIC_LVGL_BSP_MPP
 
 #include <rtconfig.h>
 #include <aic_core.h>

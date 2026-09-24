@@ -43,7 +43,7 @@ int lv_aic_init(void)
         return result;
     }
 
-#if AIC_LVGL_USE_TOUCH
+#ifdef AIC_LVGL_USE_TOUCH
     result = lv_aic_indev_init(lv_aic_display, &lv_aic_pointer_indev);
     if (result != LV_AIC_OK) {
         lv_aic_display_deinit(lv_aic_display);

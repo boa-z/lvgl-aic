@@ -11,7 +11,7 @@
 
 #include "lvgl_aic_compat.h"
 
-#if AIC_LVGL_USE_PRIVATE_API
+#if defined(AIC_LVGL_USE_PRIVATE_API)
 #include <lvgl_private.h>
 #endif
 
