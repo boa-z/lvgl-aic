@@ -23,21 +23,13 @@ if GetDepend('AIC_LVGL_PORT'):
         os.path.join(lvgl_root, 'include', 'lvgl'),
     ]
 
+    # Feature symbols are generated in rtconfig.h by the Luban-Lite Kconfig
+    # bridge. Redefining them with -D creates preprocessor redefinition
+    # warnings, so only the internal BSP feature flags are added here.
     cppdefines = [
         'AIC_LVGL_BSP_RTTHREAD=%d' % (1 if GetDepend('KERNEL_RTTHREAD') else 0),
         'AIC_LVGL_BSP_MPP=%d' % (1 if GetDepend('LPKG_MPP') else 0),
-        'AIC_LVGL_DEBUG_STATS=%d' % (1 if GetDepend('AIC_LVGL_DEBUG_STATS') else 0),
     ]
-    for symbol in (
-            'AIC_LVGL_USE_DISPLAY',
-            'AIC_LVGL_USE_TOUCH',
-            'AIC_LVGL_USE_ENCODER',
-            'AIC_LVGL_USE_MOUSE',
-            'AIC_LVGL_USE_GE2D',
-            'AIC_LVGL_USE_MPP_DEC',
-            'AIC_LVGL_USE_FT_CACHE',
-            'AIC_LVGL_MANUAL_TEST'):
-        cppdefines.append('%s=%d' % (symbol, 1 if GetDepend(symbol) else 0))
 
     group = DefineGroup(
         'AIC-LVGL',
