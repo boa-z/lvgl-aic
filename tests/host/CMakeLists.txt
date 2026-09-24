@@ -34,6 +34,9 @@ target_compile_definitions(lvgl_aic PRIVATE
     AIC_LVGL_USE_DISPLAY=1
     AIC_LVGL_USE_TOUCH=0)
 target_link_libraries(lvgl_aic PUBLIC lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic PRIVATE -Wall -Wextra -Werror)
+endif()
 
 add_executable(lvgl_aic_smoke
     smoke.c
@@ -47,6 +50,9 @@ target_compile_definitions(lvgl_aic_smoke PRIVATE
     AIC_LVGL_USE_DISPLAY=1
     AIC_LVGL_USE_TOUCH=0)
 target_link_libraries(lvgl_aic_smoke PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_smoke PRIVATE -Wall -Wextra -Werror)
+endif()
 
 enable_testing()
 add_test(NAME lvgl_aic_platform_smoke COMMAND lvgl_aic_smoke)
