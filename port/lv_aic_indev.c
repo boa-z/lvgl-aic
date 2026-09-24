@@ -178,7 +178,7 @@ static void lv_aic_touch_read_once(lv_aic_touch_ctx_t *ctx)
         /* A negative driver error is represented as a large unsigned value
          * by the legacy rt_device_read API. Never interpret that as a full
          * buffer; release a possibly stuck pointer instead. */
-        LV_LOG_ERROR("touch read returned an invalid count: %u", count);
+        LV_LOG_ERROR("touch read returned an invalid count: %u", (unsigned int)count);
         lv_aic_touch_set_state(ctx, ctx->x, ctx->y, LV_INDEV_STATE_RELEASED);
         return;
     }
