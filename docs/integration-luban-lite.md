@@ -73,6 +73,17 @@ core group and invokes the `lvgl-aic` submodule's port group. It must:
 The component's own `SConscript` compiles only its port sources. Neither
 SConscript may compile LVGL upstream a second time.
 
+### RT-Thread semaphore compatibility
+
+The pinned Luban-Lite RT-Thread baseline provides `rt_sem_control()` but not
+LVGL 9.6's `RT_IPC_CMD_SET_VLIMIT`. When
+`CONFIG_AIC_LVGL_RT_SEM_COMPAT=y`, the custom integration layer adds linker
+wrappers for the existing RT-Thread semaphore functions. The wrappers use the
+semaphore's existing `reserved` field to represent a one-token limit, delegate
+all unrelated commands to RT-Thread, and leave LVGL's built-in
+`lv_rtthread.c` as the sole LVGL OSAL implementation. No RT-Thread kernel or
+LVGL upstream source is patched.
+
 ## Link verification
 
 Before building, verify that the link input contains exactly one LVGL source
