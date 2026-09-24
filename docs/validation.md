@@ -153,3 +153,48 @@ Do not convert the deferred items into independent hardware claims.
 Phase 2 work starts from `phase2-mpp` branched at `v0.1.0`. Gate 1 SW
 baseline (`GE2D=OFF`, `MPP_DEC=OFF`, `FT_CACHE=OFF`) must remain intact
 until Phase 2 gates replace it.
+
+## Phase 2A status (code complete, board validation pending)
+
+Implemented on `phase2-mpp` after `v0.1.0`:
+
+- `feat(image): establish AIC MPP decoder boundary`
+- `feat(image): add MPP JPEG decoding for LVGL 9.6`
+- `feat(image): add MPP PNG and alpha decoding`
+- `fix(image): harden MPP buffer ownership and failure cleanup`
+- `test(image): add MPP decoder lifecycle and board tests`
+
+Design (enforced by construction, not just review):
+
+- `GE2D` remains `OFF`; `image/mpp` includes no GE2D header and the MPP
+  link map contains no `ge2d` object.
+- Format mapping lives in `lv_aic_mpp_format.*` (`RGB565/RGB888/ARGB8888`
+  only; YUV/BGR variants rejected instead of mislabeled).
+- Decoder owns one `lv_image_decoder_t` via `lv_image_decoder_create`;
+  `lv_aic_init` order is display -> input -> decoder with reverse teardown.
+- `FILE` (`.jpg/.jpeg/.png`) only; `VARIABLE/AICP/BMP/fake` return
+  `LV_RESULT_INVALID`.
+- Buffers use `lv_draw_buf_init()` (valid `data/unaligned_data/handlers/
+  stride/data_size`); CMA `allocation_base` is freed from the base pointer,
+  and PNG post-process heap replacements are tracked as `heap_buf`.
+- No custom image cache (`lv_drop_one_cached_image()` returns false).
+- Decoder private structs come only via `compat/lvgl_aic_private.h`.
+
+Verification so far:
+
+- Host `lvgl_aic_platform_smoke`: PASS (MPP stubs, SW baseline unregressed).
+- Target `d13x_d50t-2-lite_rt-thread_lvgl-aic-smoke` with `MPP_DEC=0`: PASS.
+- Target same config with temporary `MPP_DEC=1`: PASS (link map shows
+  `lv_aic_mpp_{decoder,format,stream}` objects, zero `ge2d` hits).
+- Phase 2 validation config keeps `AIC_LVGL_USE_GE2D=n`.
+
+Still required on hardware before any Gate 2 claim:
+
+- Flash an `MPP_DEC=1` image and load `/data/mpp_test/{a.jpg,b.png,c.png}`.
+- Confirm JPEG RGB, PNG RGB, and PNG RGBA render correctly under the SW
+  renderer (color, alpha, stride, repeated refresh).
+- Run corrupt/missing/zero-byte/unsupported-format cases (safe `INVALID`).
+- Run A/B/C multi-image plus >= 1000 decode/release cycles and
+  `lv_aic_init/deinit` repeats with heap/CMA sampled.
+- Record `decode_time_ms`/buffer sizes from `lv_aic_mpp_decoder_last_stats()`.
+- Re-confirm the Gate 1 display/touch baseline did not regress.
