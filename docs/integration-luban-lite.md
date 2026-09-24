@@ -55,11 +55,14 @@ core group and invokes the `lvgl-aic` submodule's port group. It must:
 - glob `packages/third-party/lvgl/src/**/*.c` exactly once;
 - exclude upstream RT-Thread entry points, examples, demos, and optional
   C++ sources;
-- define the absolute quoted compiler macro
-  `LV_CONF_PATH=".../packages/custom/lvgl-aic/lv_conf.h"`;
-- point `LV_CONF_KCONFIG_EXTERNAL_INCLUDE` at the component's empty
-  `compat/lv_conf_kconfig_external.h` bridge, so upstream RT-Thread/Kconfig
-  defaults cannot become a second configuration source;
+- define the explicit compiler macro
+  `LV_CONF_PATH=lvgl_aic_target_config.h`;
+- add `packages/custom/lvgl-aic/compat` to the include path. The unique wrapper
+  header includes `../lv_conf.h`, so the selected file is explicit without
+  relying on `lv_conf.h` include order;
+- point `LV_CONF_KCONFIG_EXTERNAL_INCLUDE` at the component's unique
+  `lv_conf_kconfig_external.h` bridge, so upstream RT-Thread/Kconfig defaults
+  cannot become a second configuration source;
 - add the LVGL public include roots and RT-Thread configuration include root;
 - leave `packages/artinchip/lvgl-ui` out of the link when the new choice is
   active.
@@ -81,5 +84,7 @@ Never link both paths.
 
 The target SCons group passes `LV_CONF_PATH` as a compiler definition, not as a
 CMake cache variable. It also checks the `LV_AIC_LV_CONF_MARKER` in the
-selected file before defining the group. Do not use the old LVGL 9.1 CMake
-variables as if they were v9.6 options.
+selected file before defining the group. The wrapper is needed for the
+Windows command-line toolchain, whose shell strips quotes from an absolute
+`-D` value. Do not use the old LVGL 9.1 CMake variables as if they were v9.6
+options.
