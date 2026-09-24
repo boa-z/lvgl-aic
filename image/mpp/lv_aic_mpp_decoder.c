@@ -1,14 +1,15 @@
 /**
  * @file lv_aic_mpp_decoder.c
- * @brief ArtInChip MPP JPEG decoder for LVGL 9.6 (Phase 2A).
+ * @brief ArtInChip MPP JPEG/PNG decoder for LVGL 9.6 (Phase 2A).
  *
- * FILE (.jpg/.jpeg) only. PNG arrives in the next commit. No cache, no GE2D,
- * no YUV hack: MPP is asked for native RGB888 so the SW renderer consumes
- * pixels directly.
+ * FILE (.jpg/.jpeg/.png) only. No cache, no GE2D, no YUV hack: MPP is asked
+ * for native RGB888 (JPEG, PNG RGB) or ARGB8888 (PNG RGBA) so the SW renderer
+ * consumes pixels directly.
  *
  * Buffer ownership: session owns CMA allocation_base; draw_buf.data points at
- * the aligned base; close frees the base pointer. All failures return
- * LV_RESULT_INVALID with no dangling buffer.
+ * the aligned base; PNG alpha/stride post-process may replace it with a heap
+ * buffer (tracked as heap_buf). Close releases both without leaks. All
+ * failures return LV_RESULT_INVALID.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -35,7 +36,7 @@
 #define CACHE_LINE_SIZE 32U
 #endif
 
-#define LV_AIC_MPP_MAX_JPEG_BYTES (8U * 1024U * 1024U)
+#define LV_AIC_MPP_MAX_FILE_BYTES (8U * 1024U * 1024U)
 #define LV_AIC_MPP_MAX_DIMENSION 4096U
 #define LV_AIC_MPP_MAX_PIXELS (8U * 1024U * 1024U)
 
@@ -44,6 +45,7 @@ typedef struct {
     void *allocation_base;
     void *aligned_data;
     uint32_t cma_size;
+    lv_draw_buf_t *heap_buf;
     struct mpp_buf mpp_buf_copy;
     uint32_t width;
     uint32_t height;
@@ -67,32 +69,39 @@ static uint32_t lv_aic_mpp_align_up(uint32_t value, uint32_t align)
     return (value + align - 1U) & ~(align - 1U);
 }
 
-static bool lv_aic_mpp_is_jpeg_path(const char *src)
+static bool lv_aic_mpp_has_ext(const char *src, const char *ext_lower)
 {
     const char *dot;
-    size_t len;
+    size_t i;
 
-    if (src == NULL) {
+    if (src == NULL || ext_lower == NULL) {
         return false;
     }
-    /* LVGL FILE sources carry a drive prefix like "A:/..."; accept it. */
     dot = strrchr(src, '.');
     if (dot == NULL || dot[1] == '\0') {
         return false;
     }
-    len = strlen(dot);
-    if (len == 4U) {
-        return ((dot[1] == 'j' || dot[1] == 'J') &&
-                (dot[2] == 'p' || dot[2] == 'P') &&
-                (dot[3] == 'g' || dot[3] == 'G'));
+    for (i = 0U; ext_lower[i] != '\0'; i++) {
+        char a = dot[i + 1U];
+        char b = ext_lower[i];
+        if (a >= 'A' && a <= 'Z') {
+            a = (char)(a - 'A' + 'a');
+        }
+        if (a != b) {
+            return false;
+        }
     }
-    if (len == 5U) {
-        return ((dot[1] == 'j' || dot[1] == 'J') &&
-                (dot[2] == 'p' || dot[2] == 'P') &&
-                (dot[3] == 'e' || dot[3] == 'E') &&
-                (dot[4] == 'g' || dot[4] == 'G'));
-    }
-    return false;
+    return dot[strlen(ext_lower) + 1U] == '\0';
+}
+
+static bool lv_aic_mpp_is_jpeg_path(const char *src)
+{
+    return lv_aic_mpp_has_ext(src, "jpg") || lv_aic_mpp_has_ext(src, "jpeg");
+}
+
+static bool lv_aic_mpp_is_png_path(const char *src)
+{
+    return lv_aic_mpp_has_ext(src, "png");
 }
 
 static int lv_aic_mpp_alloc_ext_frame(struct frame_allocator *p, struct mpp_frame *frame,
@@ -124,8 +133,6 @@ static int lv_aic_mpp_close_ext_allocator(struct frame_allocator *p)
     return 0;
 }
 
-/* Parse SOF0/SOF1 to get dimensions + component count. Reuses the sampling
- * rules from the legacy port without copying its GE2D-coupled wrapper. */
 static lv_result_t lv_aic_mpp_parse_jpeg_header(lv_aic_mpp_stream_t *stream, int *width,
                                                 int *height, int *components)
 {
@@ -169,12 +176,10 @@ static lv_result_t lv_aic_mpp_parse_jpeg_header(lv_aic_mpp_stream_t *stream, int
                 return LV_RESULT_INVALID;
             }
             if (*components != 1 && *components != 3) {
-                /* Phase 2A: gray + truecolor only; 4-component paths deferred. */
                 return LV_RESULT_INVALID;
             }
             return LV_RESULT_OK;
         }
-        /* Skip chunk payload (size includes its own 2 length bytes). */
         {
             uint32_t cur = stream->cursor;
             uint32_t next = cur + (uint32_t)size - 2U;
@@ -182,49 +187,85 @@ static lv_result_t lv_aic_mpp_parse_jpeg_header(lv_aic_mpp_stream_t *stream, int
                 return LV_RESULT_INVALID;
             }
         }
-        /* Guard against pathological marker loops. */
-        if (stream->cursor > LV_AIC_MPP_MAX_JPEG_BYTES) {
+        if (stream->cursor > LV_AIC_MPP_MAX_FILE_BYTES) {
             return LV_RESULT_INVALID;
         }
     }
 }
 
-static lv_result_t lv_aic_mpp_jpeg_info(const char *src, lv_image_header_t *header)
+static lv_result_t lv_aic_mpp_parse_png_header(lv_aic_mpp_stream_t *stream, int *width,
+                                               int *height, lv_color_format_t *cf)
 {
-    lv_aic_mpp_stream_t stream;
-    int width = 0;
-    int height = 0;
-    int components = 0;
+    static const uint8_t kPngSig[8] = {137U, 80U, 78U, 71U, 13U, 10U, 26U, 10U};
+    uint8_t buf[33];
+    uint32_t got = 0U;
+    uint8_t bit_depth;
+    uint8_t color_type;
 
-    memset(&stream, 0, sizeof(stream));
-    if (lv_aic_mpp_stream_open_file(&stream, src) != LV_FS_RES_OK) {
+    if (lv_aic_mpp_stream_read(stream, buf, sizeof(buf), &got) != LV_FS_RES_OK ||
+        got != sizeof(buf)) {
         return LV_RESULT_INVALID;
     }
-    if (lv_aic_mpp_parse_jpeg_header(&stream, &width, &height, &components) != LV_RESULT_OK) {
-        lv_aic_mpp_stream_close(&stream);
+    if (memcmp(buf, kPngSig, sizeof(kPngSig)) != 0) {
         return LV_RESULT_INVALID;
     }
-    lv_aic_mpp_stream_close(&stream);
+    /* IHDR length must be 13 and type "IHDR". */
+    if (lv_aic_mpp_stream_u32_be(buf + 8U) != 13U ||
+        memcmp(buf + 12U, "IHDR", 4U) != 0) {
+        return LV_RESULT_INVALID;
+    }
+    *width = (int)lv_aic_mpp_stream_u32_be(buf + 16U);
+    *height = (int)lv_aic_mpp_stream_u32_be(buf + 20U);
+    bit_depth = buf[24];
+    color_type = buf[25];
+    if (*width <= 0 || *height <= 0) {
+        return LV_RESULT_INVALID;
+    }
 
-    if (width > (int)LV_AIC_MPP_MAX_DIMENSION || height > (int)LV_AIC_MPP_MAX_DIMENSION) {
+    switch (color_type) {
+    case 2U: /* RGB */
+        if (bit_depth != 8U) {
+            return LV_RESULT_INVALID;
+        }
+        *cf = LV_COLOR_FORMAT_RGB888;
+        return LV_RESULT_OK;
+    case 6U: /* RGBA */
+        if (bit_depth != 8U) {
+            return LV_RESULT_INVALID;
+        }
+        *cf = LV_COLOR_FORMAT_ARGB8888;
+        return LV_RESULT_OK;
+    case 3U: /* palette: MPP expands to 32-bit */
+        if (bit_depth != 1U && bit_depth != 2U && bit_depth != 4U && bit_depth != 8U) {
+            return LV_RESULT_INVALID;
+        }
+        *cf = LV_COLOR_FORMAT_ARGB8888;
+        return LV_RESULT_OK;
+    default:
+        /* Gray / gray-alpha have no SW RGB path in Phase 2A. */
         return LV_RESULT_INVALID;
     }
-    if ((uint64_t)width * (uint64_t)height > LV_AIC_MPP_MAX_PIXELS) {
-        /* Large-image downscale is Phase 2B; refuse loudly for now. */
-        return LV_RESULT_INVALID;
-    }
+}
 
-    header->w = (uint32_t)width;
-    header->h = (uint32_t)height;
-    header->cf = LV_COLOR_FORMAT_RGB888;
-    header->stride = 0U; /* let core derive LVGL stride; open uses MPP stride */
-    return LV_RESULT_OK;
+static uint32_t lv_aic_mpp_stride_for(lv_color_format_t cf, int width)
+{
+    uint32_t bpp = lv_aic_mpp_format_lvgl_bpp(cf);
+    if (bpp == 0U || width <= 0) {
+        return 0U;
+    }
+    /* PNG HW uses 8B stride; JPEG RGB uses 16B. Use 16B for both: it satisfies
+     * both engines and LVGL's minimum stride. */
+    return lv_aic_mpp_align_up((uint32_t)width * bpp, 16U);
 }
 
 static void lv_aic_mpp_session_release(lv_aic_mpp_session_t *session)
 {
     if (session == NULL) {
         return;
+    }
+    if (session->heap_buf != NULL) {
+        lv_draw_buf_destroy(session->heap_buf);
+        session->heap_buf = NULL;
     }
     if (session->allocation_base != NULL) {
         aicos_free_align(MEM_CMA, session->allocation_base);
@@ -234,8 +275,11 @@ static void lv_aic_mpp_session_release(lv_aic_mpp_session_t *session)
     lv_free(session);
 }
 
-static lv_result_t lv_aic_mpp_decode_jpeg_file(const char *src, int width, int height,
-                                               lv_aic_mpp_session_t **out_session)
+static lv_result_t lv_aic_mpp_decode_file(const char *src, enum mpp_codec_type codec,
+                                          enum mpp_pixel_format mpp_fmt,
+                                          lv_color_format_t lv_fmt, int width, int height,
+                                          bool use_post_process, lv_image_decoder_dsc_t *dsc,
+                                          lv_aic_mpp_session_t **out_session)
 {
     lv_aic_mpp_stream_t stream;
     lv_aic_mpp_session_t *session = NULL;
@@ -253,6 +297,9 @@ static lv_result_t lv_aic_mpp_decode_jpeg_file(const char *src, int width, int h
     lv_result_t result = LV_RESULT_INVALID;
 #if AIC_LVGL_BSP_RTTHREAD
     tick_start = (uint32_t)rt_tick_get_millisecond();
+#else
+    (void)dsc;
+    (void)use_post_process;
 #endif
 
     memset(&stream, 0, sizeof(stream));
@@ -265,13 +312,16 @@ static lv_result_t lv_aic_mpp_decode_jpeg_file(const char *src, int width, int h
         return LV_RESULT_INVALID;
     }
     file_len = lv_aic_mpp_stream_size(&stream);
-    if (file_len == 0U || file_len > LV_AIC_MPP_MAX_JPEG_BYTES) {
-        /* Size probing needs SEEK_END+TELL; drivers without it fail safe. */
+    if (file_len == 0U || file_len > LV_AIC_MPP_MAX_FILE_BYTES) {
         lv_aic_mpp_stream_close(&stream);
         return LV_RESULT_INVALID;
     }
 
-    stride = lv_aic_mpp_align_up((uint32_t)width * 3U, 16U);
+    stride = lv_aic_mpp_stride_for(lv_fmt, width);
+    if (stride == 0U) {
+        lv_aic_mpp_stream_close(&stream);
+        return LV_RESULT_INVALID;
+    }
     cma_size = lv_aic_mpp_align_up(stride * (uint32_t)height, CACHE_LINE_SIZE);
     if (cma_size == 0U) {
         lv_aic_mpp_stream_close(&stream);
@@ -296,23 +346,24 @@ static lv_result_t lv_aic_mpp_decode_jpeg_file(const char *src, int width, int h
     session->allocation_base = cma_base;
     session->aligned_data = cma_base;
     session->cma_size = cma_size;
+    session->heap_buf = NULL;
     session->width = (uint32_t)width;
     session->height = (uint32_t)height;
-    session->color_format = LV_COLOR_FORMAT_RGB888;
+    session->color_format = lv_fmt;
 
-    dec = mpp_decoder_create(MPP_CODEC_VIDEO_DECODER_MJPEG);
+    dec = mpp_decoder_create(codec);
     if (dec == NULL) {
         goto fail;
     }
 
-    config.pix_fmt = MPP_FMT_RGB_888;
+    config.pix_fmt = mpp_fmt;
     config.bitstream_buffer_size = (int)lv_aic_mpp_align_up(file_len, 256U);
     config.packet_count = 1;
     config.extra_frame_num = 0;
 
     ext_alloc.frame_template.buf.size.width = width;
     ext_alloc.frame_template.buf.size.height = height;
-    ext_alloc.frame_template.buf.format = MPP_FMT_RGB_888;
+    ext_alloc.frame_template.buf.format = mpp_fmt;
     ext_alloc.frame_template.buf.buf_type = MPP_PHY_ADDR;
     ext_alloc.frame_template.buf.phy_addr[0] = (unsigned int)(uintptr_t)cma_base;
     ext_alloc.frame_template.buf.stride[0] = stride;
@@ -348,22 +399,41 @@ static lv_result_t lv_aic_mpp_decode_jpeg_file(const char *src, int width, int h
     if (mpp_decoder_get_frame(dec, &frame) != 0) {
         goto fail;
     }
-    /* Keep a copy for diagnostics; the pixels stay in our CMA buffer. */
     memcpy(&session->mpp_buf_copy, &frame.buf, sizeof(session->mpp_buf_copy));
     mpp_decoder_put_frame(dec, &frame);
     mpp_decoder_destory(dec);
     dec = NULL;
     lv_aic_mpp_stream_close(&stream);
 
-    /* VE wrote via DMA; invalidate before the SW renderer reads. */
     aicos_dcache_invalid_range((unsigned long *)cma_base, (unsigned long)cma_size);
 
     if (lv_draw_buf_init(&session->draw_buf, (uint32_t)width, (uint32_t)height,
-                         LV_COLOR_FORMAT_RGB888, stride, cma_base,
-                         cma_size) != LV_RESULT_OK) {
+                         lv_fmt, stride, cma_base, cma_size) != LV_RESULT_OK) {
         goto fail_session;
     }
 
+    if (use_post_process && dsc != NULL) {
+        lv_draw_buf_t *adjusted = lv_image_decoder_post_process(dsc, &session->draw_buf);
+        if (adjusted == NULL) {
+            goto fail_session;
+        }
+        if (adjusted != &session->draw_buf) {
+            /* Post-process copied to a heap buffer; CMA is no longer needed. */
+            aicos_free_align(MEM_CMA, session->allocation_base);
+            session->allocation_base = NULL;
+            session->aligned_data = NULL;
+            session->cma_size = 0U;
+            session->heap_buf = adjusted;
+            dsc->decoded = adjusted;
+            dsc->user_data = session;
+            goto stats;
+        }
+    }
+
+    dsc->decoded = &session->draw_buf;
+    dsc->user_data = session;
+
+stats:
     {
         uint32_t tick_end = tick_start;
 #if AIC_LVGL_BSP_RTTHREAD
@@ -374,7 +444,7 @@ static lv_result_t lv_aic_mpp_decode_jpeg_file(const char *src, int width, int h
         g_aic_mpp_last_stats.cma_bytes = cma_size;
         g_aic_mpp_last_stats.width = (uint32_t)width;
         g_aic_mpp_last_stats.height = (uint32_t)height;
-        g_aic_mpp_last_stats.color_format = LV_COLOR_FORMAT_RGB888;
+        g_aic_mpp_last_stats.color_format = lv_fmt;
     }
 
     *out_session = session;
@@ -395,6 +465,9 @@ static lv_result_t lv_aic_mpp_info_cb(lv_image_decoder_t *decoder,
                                       lv_image_header_t *header)
 {
     const char *src;
+    lv_aic_mpp_stream_t stream;
+    int width = 0;
+    int height = 0;
 
     (void)decoder;
     if (dsc == NULL || header == NULL) {
@@ -404,10 +477,60 @@ static lv_result_t lv_aic_mpp_info_cb(lv_image_decoder_t *decoder,
         return LV_RESULT_INVALID;
     }
     src = (const char *)dsc->src;
-    if (!lv_aic_mpp_is_jpeg_path(src)) {
+    if (src == NULL) {
         return LV_RESULT_INVALID;
     }
-    return lv_aic_mpp_jpeg_info(src, header);
+
+    if (lv_aic_mpp_is_jpeg_path(src)) {
+        int components = 0;
+        memset(&stream, 0, sizeof(stream));
+        if (lv_aic_mpp_stream_open_file(&stream, src) != LV_FS_RES_OK) {
+            return LV_RESULT_INVALID;
+        }
+        if (lv_aic_mpp_parse_jpeg_header(&stream, &width, &height,
+                                         &components) != LV_RESULT_OK) {
+            lv_aic_mpp_stream_close(&stream);
+            return LV_RESULT_INVALID;
+        }
+        lv_aic_mpp_stream_close(&stream);
+        if (width <= 0 || height <= 0 ||
+            width > (int)LV_AIC_MPP_MAX_DIMENSION ||
+            height > (int)LV_AIC_MPP_MAX_DIMENSION ||
+            (uint64_t)width * (uint64_t)height > LV_AIC_MPP_MAX_PIXELS) {
+            return LV_RESULT_INVALID;
+        }
+        header->w = (uint32_t)width;
+        header->h = (uint32_t)height;
+        header->cf = LV_COLOR_FORMAT_RGB888;
+        header->stride = 0U;
+        return LV_RESULT_OK;
+    }
+
+    if (lv_aic_mpp_is_png_path(src)) {
+        lv_color_format_t cf = LV_COLOR_FORMAT_RGB888;
+        memset(&stream, 0, sizeof(stream));
+        if (lv_aic_mpp_stream_open_file(&stream, src) != LV_FS_RES_OK) {
+            return LV_RESULT_INVALID;
+        }
+        if (lv_aic_mpp_parse_png_header(&stream, &width, &height, &cf) != LV_RESULT_OK) {
+            lv_aic_mpp_stream_close(&stream);
+            return LV_RESULT_INVALID;
+        }
+        lv_aic_mpp_stream_close(&stream);
+        if (width <= 0 || height <= 0 ||
+            width > (int)LV_AIC_MPP_MAX_DIMENSION ||
+            height > (int)LV_AIC_MPP_MAX_DIMENSION ||
+            (uint64_t)width * (uint64_t)height > LV_AIC_MPP_MAX_PIXELS) {
+            return LV_RESULT_INVALID;
+        }
+        header->w = (uint32_t)width;
+        header->h = (uint32_t)height;
+        header->cf = cf;
+        header->stride = 0U;
+        return LV_RESULT_OK;
+    }
+
+    return LV_RESULT_INVALID;
 }
 
 static lv_result_t lv_aic_mpp_open_cb(lv_image_decoder_t *decoder,
@@ -424,24 +547,41 @@ static lv_result_t lv_aic_mpp_open_cb(lv_image_decoder_t *decoder,
         return LV_RESULT_INVALID;
     }
     src = (const char *)dsc->src;
-    if (!lv_aic_mpp_is_jpeg_path(src)) {
-        return LV_RESULT_INVALID;
-    }
-    if (dsc->header.w == 0U || dsc->header.h == 0U) {
-        return LV_RESULT_INVALID;
-    }
-    if (dsc->header.cf != LV_COLOR_FORMAT_RGB888) {
+    if (src == NULL || dsc->header.w == 0U || dsc->header.h == 0U) {
         return LV_RESULT_INVALID;
     }
 
-    if (lv_aic_mpp_decode_jpeg_file(src, (int)dsc->header.w, (int)dsc->header.h,
-                                    &session) != LV_RESULT_OK) {
-        return LV_RESULT_INVALID;
+    if (lv_aic_mpp_is_jpeg_path(src)) {
+        if (dsc->header.cf != LV_COLOR_FORMAT_RGB888) {
+            return LV_RESULT_INVALID;
+        }
+        if (lv_aic_mpp_decode_file(src, MPP_CODEC_VIDEO_DECODER_MJPEG, MPP_FMT_RGB_888,
+                                   LV_COLOR_FORMAT_RGB888, (int)dsc->header.w,
+                                   (int)dsc->header.h, false, dsc,
+                                   &session) != LV_RESULT_OK) {
+            return LV_RESULT_INVALID;
+        }
+        return LV_RESULT_OK;
     }
 
-    dsc->decoded = &session->draw_buf;
-    dsc->user_data = session;
-    return LV_RESULT_OK;
+    if (lv_aic_mpp_is_png_path(src)) {
+        enum mpp_pixel_format mpp_fmt;
+        if (dsc->header.cf != LV_COLOR_FORMAT_RGB888 &&
+            dsc->header.cf != LV_COLOR_FORMAT_ARGB8888) {
+            return LV_RESULT_INVALID;
+        }
+        if (!lv_aic_mpp_format_from_lvgl(dsc->header.cf, &mpp_fmt)) {
+            return LV_RESULT_INVALID;
+        }
+        if (lv_aic_mpp_decode_file(src, MPP_CODEC_VIDEO_DECODER_PNG, mpp_fmt, dsc->header.cf,
+                                   (int)dsc->header.w, (int)dsc->header.h, true, dsc,
+                                   &session) != LV_RESULT_OK) {
+            return LV_RESULT_INVALID;
+        }
+        return LV_RESULT_OK;
+    }
+
+    return LV_RESULT_INVALID;
 }
 
 static void lv_aic_mpp_close_cb(lv_image_decoder_t *decoder,
@@ -506,7 +646,7 @@ bool lv_drop_one_cached_image(void)
     return false;
 }
 
-#else /* AIC_LVGL_USE_MPP_DEC && AIC_LVGL_BSP_MPP */
+#else /* defined(AIC_LVGL_USE_MPP_DEC) && AIC_LVGL_BSP_MPP */
 
 int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
 {
@@ -521,4 +661,4 @@ void lv_aic_mpp_decoder_deinit(lv_image_decoder_t *decoder)
     (void)decoder;
 }
 
-#endif /* AIC_LVGL_USE_MPP_DEC && AIC_LVGL_BSP_MPP */
+#endif /* defined(AIC_LVGL_USE_MPP_DEC) && AIC_LVGL_BSP_MPP */
