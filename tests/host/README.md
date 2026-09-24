@@ -24,8 +24,8 @@ mouse to an LVGL pointer device. It is a host UI check only; it does not
 emulate the ArtInChip framebuffer, PAN/VSync, cache, or GT911 hardware.
 
 ```sh
-cmake -S tests/host -B build/host-sdl -G Ninja \\
-  -DLVGL_ROOT=/path/to/lvgl-9.6.0 \\
+cmake -S tests/host -B build/host-sdl -G Ninja \
+  -DLVGL_ROOT=/path/to/lvgl-9.6.0 \
   -DAIC_BUILD_SDL_SMOKE=ON
 cmake --build build/host-sdl
 ./build/host-sdl/lvgl-aic-sdl-smoke
