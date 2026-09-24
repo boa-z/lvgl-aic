@@ -36,6 +36,12 @@ reusable command is documented in [`tests/host/README.md`](../tests/host/README.
 - optional `lvgl-aic-sdl-smoke` SDL2 build: PASS (MSYS2 UCRT64, SDL2 2.32.10);
 - SDL2 CTest `lvgl_aic_sdl_smoke_self`: PASS (2/2 total with the headless smoke);
 - SDL2 screenshot and injected mouse click verified the shared 800x480 manual page;
+- official LVGL 9.6 demo modes `widgets`, `benchmark`, `stress`, `music`, and
+  `keypad_encoder`: PASS; bounded CTest coverage is 7/7 with
+  `AIC_BUILD_SDL_DEMOS=ON`;
+- 800x480 screenshots captured the upstream widgets, benchmark, stress, music,
+  and keypad/encoder layouts; vector/GLTF and legacy ArtInChip demos remain
+  intentionally excluded;
 - host component targets use `-Wall -Wextra -Werror` on GCC/Clang;
 - `.github/workflows/host.yml` checks out the pinned LVGL commit and runs the
   same host smoke test;

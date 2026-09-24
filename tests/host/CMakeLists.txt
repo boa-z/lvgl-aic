@@ -8,9 +8,20 @@ if (LVGL_ROOT STREQUAL "")
     message(FATAL_ERROR "Set -DLVGL_ROOT to an external LVGL v9.6.0 checkout")
 endif()
 
-set(LV_BUILD_CONF_PATH "${AIC_ROOT}/lv_conf.h" CACHE FILEPATH "" FORCE)
+option(AIC_BUILD_SDL_SMOKE "Build the interactive SDL2 smoke window" OFF)
+option(AIC_BUILD_SDL_DEMOS "Build the official LVGL 9.6 demos for the SDL target" OFF)
+if(AIC_BUILD_SDL_DEMOS AND NOT AIC_BUILD_SDL_SMOKE)
+    message(FATAL_ERROR "AIC_BUILD_SDL_DEMOS requires AIC_BUILD_SDL_SMOKE=ON")
+endif()
+
+if(AIC_BUILD_SDL_DEMOS)
+    set(LV_BUILD_CONF_PATH "${AIC_ROOT}/tests/host/lv_conf_sdl_demos.h" CACHE FILEPATH "" FORCE)
+    set(CONFIG_LV_BUILD_DEMOS ON CACHE BOOL "" FORCE)
+else()
+    set(LV_BUILD_CONF_PATH "${AIC_ROOT}/lv_conf.h" CACHE FILEPATH "" FORCE)
+    set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
+endif()
 set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 set(CONFIG_LV_USE_THORVG OFF CACHE BOOL "" FORCE)
 set(CONFIG_LV_USE_THORVG_INTERNAL OFF CACHE BOOL "" FORCE)
 set(LV_BUILD_SET_CONFIG_OPTS OFF CACHE BOOL "" FORCE)
@@ -57,7 +68,6 @@ endif()
 enable_testing()
 add_test(NAME lvgl_aic_platform_smoke COMMAND lvgl_aic_smoke)
 
-option(AIC_BUILD_SDL_SMOKE "Build the interactive SDL2 smoke window" OFF)
 if(AIC_BUILD_SDL_SMOKE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
@@ -95,7 +105,14 @@ if(AIC_BUILD_SDL_SMOKE)
         AIC_LVGL_BSP_RTTHREAD=0
         AIC_LVGL_USE_DISPLAY=1
         AIC_LVGL_USE_TOUCH=0)
-    target_link_libraries(lvgl-aic-sdl-smoke PRIVATE lvgl PkgConfig::SDL2)
+    if(AIC_BUILD_SDL_DEMOS)
+        target_compile_definitions(lvgl-aic-sdl-smoke PRIVATE
+            AIC_LVGL_AIC_SDL_DEMOS=1)
+        target_link_libraries(lvgl-aic-sdl-smoke PRIVATE
+            lvgl PkgConfig::SDL2 lvgl_demos)
+    else()
+        target_link_libraries(lvgl-aic-sdl-smoke PRIVATE lvgl PkgConfig::SDL2)
+    endif()
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(lvgl-aic-sdl-smoke PRIVATE -Wall -Wextra -Werror)
     endif()
@@ -104,4 +121,19 @@ if(AIC_BUILD_SDL_SMOKE)
     set_tests_properties(lvgl_aic_sdl_smoke_self PROPERTIES
         ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_RENDER_DRIVER=software"
         TIMEOUT 15)
+    if(AIC_BUILD_SDL_DEMOS)
+        foreach(_aic_demo widgets benchmark stress music keypad_encoder)
+            if(_aic_demo STREQUAL "benchmark" OR _aic_demo STREQUAL "music")
+                set(_aic_demo_frames 500)
+            else()
+                set(_aic_demo_frames 120)
+            endif()
+            add_test(NAME "lvgl_aic_sdl_${_aic_demo}"
+                     COMMAND lvgl-aic-sdl-smoke --demo "${_aic_demo}"
+                             --frames ${_aic_demo_frames})
+            set_tests_properties("lvgl_aic_sdl_${_aic_demo}" PROPERTIES
+                ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_RENDER_DRIVER=software"
+                TIMEOUT 30)
+        endforeach()
+    endif()
 endif()

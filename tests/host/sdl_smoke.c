@@ -22,6 +22,9 @@
 #endif
 
 #include "lv_aic_manual_test.h"
+#if defined(AIC_LVGL_AIC_SDL_DEMOS) && AIC_LVGL_AIC_SDL_DEMOS
+#include "lv_demos.h"
+#endif
 
 #define LVGL_AIC_SDL_WIDTH 800
 #define LVGL_AIC_SDL_HEIGHT 480
@@ -39,6 +42,7 @@ typedef struct {
     int16_t mouse_y;
     bool mouse_pressed;
     bool running;
+    bool manual_page_created;
 } lvgl_aic_sdl_ctx_t;
 
 static LV_ATTRIBUTE_MEM_ALIGN uint8_t lvgl_aic_sdl_draw_buffer[LVGL_AIC_SDL_BUFFER_SIZE];
@@ -132,7 +136,7 @@ static int lvgl_aic_sdl_save_screenshot(const char *path)
     return result;
 }
 
-static int lvgl_aic_sdl_init(void)
+static int lvgl_aic_sdl_init(const char *demo_name)
 {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -184,9 +188,28 @@ static int lvgl_aic_sdl_init(void)
                            sizeof(lvgl_aic_sdl_draw_buffer),
                            LV_DISPLAY_RENDER_MODE_FULL);
 
-    if (lv_aic_manual_test_create() != LV_AIC_OK) {
-        fprintf(stderr, "lv_aic_manual_test_create failed\n");
+    if (demo_name == NULL) {
+        fprintf(stderr, "demo name is NULL\n");
         return -1;
+    }
+
+    if (strcmp(demo_name, "manual") == 0) {
+        if (lv_aic_manual_test_create() != LV_AIC_OK) {
+            fprintf(stderr, "lv_aic_manual_test_create failed\n");
+            return -1;
+        }
+        lvgl_aic_sdl_ctx.manual_page_created = true;
+    } else {
+#if defined(AIC_LVGL_AIC_SDL_DEMOS) && AIC_LVGL_AIC_SDL_DEMOS
+        char *demo_info[2] = { (char *)demo_name, NULL };
+        if (!lv_demos_create(demo_info, 1)) {
+            fprintf(stderr, "LVGL demo '%s' could not be created\n", demo_name);
+            return -1;
+        }
+#else
+        fprintf(stderr, "official LVGL demos are not enabled in this build\n");
+        return -1;
+#endif
     }
 
     lvgl_aic_sdl_ctx.indev = lv_indev_create();
@@ -212,7 +235,10 @@ static void lvgl_aic_sdl_deinit(void)
         lvgl_aic_sdl_ctx.indev = NULL;
     }
 
-    lv_aic_manual_test_deinit();
+    if (lvgl_aic_sdl_ctx.manual_page_created) {
+        lv_aic_manual_test_deinit();
+        lvgl_aic_sdl_ctx.manual_page_created = false;
+    }
     if (lvgl_aic_sdl_ctx.display != NULL) {
         lv_display_delete(lvgl_aic_sdl_ctx.display);
         lvgl_aic_sdl_ctx.display = NULL;
@@ -239,17 +265,37 @@ static void lvgl_aic_sdl_deinit(void)
 
 static void lvgl_aic_sdl_usage(const char *program)
 {
-    printf("Usage: %s [--frames N] [--screenshot PATH] [--self-test]\n", program);
+    printf("Usage: %s [--demo NAME] [--frames N] [--screenshot PATH] [--self-test]\n",
+           program);
+    printf("  --demo NAME         manual (default), widgets, benchmark, stress, music, keypad_encoder\n");
     printf("  --frames N          exit after N event-loop iterations\n");
-    printf("  --screenshot PATH   save a BMP after the first rendered frame\n");
-    printf("  --self-test         inject a mouse click on the smoke button\n");
+    printf("  --screenshot PATH   save a BMP after the screenshot frame\n");
+    printf("  --screenshot-frame N  frame at which to save the BMP (default: 30)\n");
+    printf("  --self-test         inject a mouse click on the manual smoke button\n");
+}
+
+static bool lvgl_aic_sdl_demo_valid(const char *name)
+{
+    static const char *const demos[] = {
+        "manual", "widgets", "benchmark", "stress", "music", "keypad_encoder"
+    };
+
+    for (size_t i = 0; i < (sizeof(demos) / sizeof(demos[0])); ++i) {
+        if (strcmp(name, demos[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int main(int argc, char **argv)
 {
+    const char *demo_name = "manual";
     const char *screenshot_path = NULL;
     bool self_test = false;
+    bool screenshot_saved = false;
     unsigned long frame_limit = 0;
+    unsigned long screenshot_frame = 30;
     unsigned long frame_count = 0;
     uint32_t last_tick = 0;
     int result = 0;
@@ -260,12 +306,20 @@ int main(int argc, char **argv)
             lvgl_aic_sdl_usage(argv[0]);
             return 0;
         }
+        if ((strcmp(argv[i], "--demo") == 0) && ((i + 1) < argc)) {
+            demo_name = argv[++i];
+            continue;
+        }
         if ((strcmp(argv[i], "--frames") == 0) && ((i + 1) < argc)) {
             frame_limit = strtoul(argv[++i], NULL, 10);
             continue;
         }
         if ((strcmp(argv[i], "--screenshot") == 0) && ((i + 1) < argc)) {
             screenshot_path = argv[++i];
+            continue;
+        }
+        if ((strcmp(argv[i], "--screenshot-frame") == 0) && ((i + 1) < argc)) {
+            screenshot_frame = strtoul(argv[++i], NULL, 10);
             continue;
         }
         if (strcmp(argv[i], "--self-test") == 0) {
@@ -277,20 +331,23 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    if (lvgl_aic_sdl_init() != 0) {
+    if (!lvgl_aic_sdl_demo_valid(demo_name)) {
+        fprintf(stderr, "Unknown demo: %s\n", demo_name);
+        lvgl_aic_sdl_usage(argv[0]);
+        return 2;
+    }
+    if (self_test && (strcmp(demo_name, "manual") != 0)) {
+        fprintf(stderr, "--self-test is only valid with --demo manual\n");
+        return 2;
+    }
+
+    if (lvgl_aic_sdl_init(demo_name) != 0) {
         lvgl_aic_sdl_deinit();
         return 1;
     }
 
     last_tick = SDL_GetTicks();
     lv_refr_now(lvgl_aic_sdl_ctx.display);
-    if (screenshot_path != NULL) {
-        result = lvgl_aic_sdl_save_screenshot(screenshot_path);
-        if (result != 0) {
-            lvgl_aic_sdl_deinit();
-            return 1;
-        }
-    }
 
     while (lvgl_aic_sdl_ctx.running) {
         SDL_Event event;
@@ -355,6 +412,14 @@ int main(int argc, char **argv)
         SDL_Delay(delay_ms);
 
         frame_count++;
+        if ((screenshot_path != NULL) && !screenshot_saved &&
+            (frame_count >= screenshot_frame)) {
+            result = lvgl_aic_sdl_save_screenshot(screenshot_path);
+            screenshot_saved = true;
+            if (result != 0) {
+                lvgl_aic_sdl_ctx.running = false;
+            }
+        }
         if (self_test && (frame_count >= 8)) {
             const char *status = lv_aic_manual_test_status_text();
             if ((status == NULL) ||
@@ -368,6 +433,11 @@ int main(int argc, char **argv)
         if ((frame_limit != 0) && (frame_count >= frame_limit)) {
             lvgl_aic_sdl_ctx.running = false;
         }
+    }
+
+    if ((screenshot_path != NULL) && !screenshot_saved) {
+        result = lvgl_aic_sdl_save_screenshot(screenshot_path);
+        screenshot_saved = true;
     }
 
     if (self_test && (result == 0)) {
