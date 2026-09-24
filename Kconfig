@@ -63,6 +63,18 @@ config AIC_LVGL_DEBUG_STATS
     default n
     depends on AIC_LVGL_PORT
 
+config AIC_LVGL_RT_SEM_COMPAT
+    bool "Enable the target RT-Thread semaphore vlimit compatibility glue"
+    default n
+    depends on AIC_LVGL_PORT
+    depends on KERNEL_RTTHREAD
+    help
+      LVGL 9.6's built-in RT-Thread OSAL uses
+      RT_IPC_CMD_SET_VLIMIT, which is absent from the pinned Luban-Lite
+      RT-Thread baseline. Enable the custom linker-wrapper glue when that
+      API is unavailable; the glue uses the existing semaphore reserved
+      field and does not replace LVGL's OSAL.
+
 config AIC_LVGL_MANUAL_TEST
     bool "Build the platform-only manual LVGL test page"
     default n
