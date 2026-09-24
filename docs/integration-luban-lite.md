@@ -52,9 +52,10 @@ therefore reads `AIC_LVGL_TOUCH_DEVICE`, not a guessed `CONFIG_...` macro.
 The superproject's `packages/custom/SConscript` owns the single upstream LVGL
 core group and invokes the `lvgl-aic` submodule's port group. It must:
 
-- glob `packages/third-party/lvgl/src/**/*.c` exactly once;
+- recursively collect `packages/third-party/lvgl/src/**/*.c` exactly once,
+  matching LVGL's CMake `GLOB_RECURSE` coverage;
 - exclude upstream RT-Thread entry points, examples, demos, and optional
-  C++ sources;
+  C++/assembly sources;
 - force-include the custom build bridge
   `packages/custom/lvgl_aic_build_config.h` for the target group;
 - the bridge defines the explicit compiler macros
