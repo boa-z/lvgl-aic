@@ -36,11 +36,11 @@ copies state. It does not call LVGL from an ISR.
 
 | Area | Status |
 |---|---|
-| Repository skeleton | in progress |
-| LVGL 9.6 host compile | pending |
-| D13x software display | pending |
-| GT911 touch | pending |
-| VSync/PAN/rotation board test | pending |
+| Repository skeleton | complete |
+| LVGL 9.6 host compile | PASS |
+| D13x software display | hardware validation pending |
+| GT911 touch | hardware validation pending |
+| VSync/PAN/rotation board test | hardware validation pending |
 | MPP decoder | not started |
 | GE2D | not started |
 
