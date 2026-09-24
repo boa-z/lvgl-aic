@@ -17,6 +17,10 @@
 
 #include <lvgl/lvgl.h>
 
+#if (LVGL_VERSION_MAJOR != 9) || (LVGL_VERSION_MINOR != 6) || (LVGL_VERSION_PATCH != 0)
+#error "lvgl-aic-sdl-smoke requires LVGL 9.6.0"
+#endif
+
 #include "lv_aic_manual_test.h"
 
 #define LVGL_AIC_SDL_WIDTH 800
