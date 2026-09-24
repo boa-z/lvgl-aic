@@ -1,0 +1,34 @@
+name: host
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  host-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out lvgl-aic
+        uses: actions/checkout@v4
+
+      - name: Check out pinned LVGL 9.6.0
+        uses: actions/checkout@v4
+        with:
+          repository: lvgl/lvgl
+          ref: 80ca777e37a2b176770726a02e07a6fb79ef0b39
+          path: .ci-lvgl
+
+      - name: Configure host smoke build
+        run: >-
+          cmake -S tests/host -B build/host -G Ninja
+          -DLVGL_ROOT="$GITHUB_WORKSPACE/.ci-lvgl"
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build host smoke target
+        run: cmake --build build/host --parallel 2
+
+      - name: Run host smoke test
+        run: ctest --test-dir build/host --output-on-failure
