@@ -58,3 +58,12 @@ decoder in the old SDK port.
 Image decoder work must document buffer ownership, cache maintenance, decoder
 lifecycle, and fallback behavior. No MPP decoder source is part of the Phase 1
 baseline.
+
+Phase 2 boundary (`image/mpp/`): `lv_aic_mpp_decoder_init/deinit` own a single
+`lv_image_decoder_t`; `lv_aic_init/deinit` wire it as display -> input ->
+decoder with reverse teardown. Format mapping lives in `lv_aic_mpp_format.*`
+and never includes GE2D. Stream helpers use `lv_fs` FILE sources only.
+Decoded buffers must be built with `lv_draw_buf_init()` (valid `data`,
+`unaligned_data`, `handlers`, `stride`, `data_size`); YUV/metadata hacks are
+forbidden. CMA ownership is `allocation_base` -> `aligned_data` ->
+`draw_buf.data`, freed from the base pointer on close.

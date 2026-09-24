@@ -11,6 +11,11 @@ if GetDepend('AIC_LVGL_PORT'):
     # them in one group makes the legacy/new LVGL selection auditable.
     src = Glob('port/*.c')
 
+    if GetDepend('AIC_LVGL_USE_MPP_DEC'):
+        # Phase 2 decoder boundary. GE2D stays in draw/ge2d and is never
+        # pulled in by the image decoder.
+        src += Glob('image/mpp/*.c')
+
     if GetDepend('AIC_LVGL_MANUAL_TEST'):
         src += Glob('tests/manual/*.c')
 
@@ -19,6 +24,7 @@ if GetDepend('AIC_LVGL_PORT'):
         cwd,
         os.path.join(cwd, 'include'),
         os.path.join(cwd, 'compat'),
+        os.path.join(cwd, 'image', 'mpp'),
         os.path.join(lvgl_root, 'include'),
         os.path.join(lvgl_root, 'include', 'lvgl'),
     ]

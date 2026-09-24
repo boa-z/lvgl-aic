@@ -34,16 +34,21 @@ add_subdirectory("${LVGL_ROOT}" lvgl EXCLUDE_FROM_ALL)
 set(AIC_SOURCES
     "${AIC_ROOT}/port/lv_aic.c"
     "${AIC_ROOT}/port/lv_aic_display.c"
-    "${AIC_ROOT}/port/lv_aic_indev.c")
+    "${AIC_ROOT}/port/lv_aic_indev.c"
+    "${AIC_ROOT}/image/mpp/lv_aic_mpp_format.c"
+    "${AIC_ROOT}/image/mpp/lv_aic_mpp_stream.c"
+    "${AIC_ROOT}/image/mpp/lv_aic_mpp_decoder.c")
 add_library(lvgl_aic STATIC ${AIC_SOURCES})
 target_include_directories(lvgl_aic
     PUBLIC "${AIC_ROOT}/include"
-    PRIVATE "${AIC_ROOT}/compat")
+    PRIVATE "${AIC_ROOT}/compat"
+    PRIVATE "${AIC_ROOT}/image/mpp")
 target_compile_definitions(lvgl_aic PRIVATE
     AIC_LVGL_BSP_MPP=0
     AIC_LVGL_BSP_RTTHREAD=0
     AIC_LVGL_USE_DISPLAY=1
-    AIC_LVGL_USE_TOUCH=0)
+    AIC_LVGL_USE_TOUCH=0
+    AIC_LVGL_USE_MPP_DEC=0)
 target_link_libraries(lvgl_aic PUBLIC lvgl)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(lvgl_aic PRIVATE -Wall -Wextra -Werror)

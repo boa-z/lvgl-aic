@@ -20,6 +20,12 @@ Display and touch code use public LVGL APIs. Any future GE2D implementation
 must isolate required private headers behind `compat/lvgl_aic_private.h` and
 record the dependency in this document and `porting-notes.md`.
 
+MPP decoder depends on LVGL 9.6 image decoder private API.
+`image/mpp/lv_aic_mpp_decoder.c` is the only file allowed to include
+`compat/lvgl_aic_private.h` for `lv_image_decoder_dsc_t`; format and stream
+helpers stay public-only. `AIC_LVGL_USE_PRIVATE_API` is enabled for that
+translation unit only.
+
 ## OS integration decision
 
 The configuration selects LVGL 9.6's `LV_OS_RTTHREAD` backend and sets the
