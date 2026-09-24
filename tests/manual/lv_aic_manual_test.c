@@ -14,6 +14,10 @@ static lv_obj_t *lv_aic_manual_status;
 static lv_obj_t *lv_aic_manual_marker;
 static lv_timer_t *lv_aic_manual_timer;
 static int32_t lv_aic_manual_marker_x;
+#if defined(AIC_LVGL_USE_MPP_DEC)
+static lv_obj_t *lv_aic_mpp_label;
+static lv_obj_t *lv_aic_mpp_images[3];
+#endif
 
 static void lv_aic_manual_button_event(lv_event_t *event)
 {
@@ -105,6 +109,35 @@ int lv_aic_manual_test_create(void)
         goto fail;
     }
 
+#if defined(AIC_LVGL_USE_MPP_DEC)
+    /* Phase 2A MPP section: three FILE images, non-product test assets.
+     * Missing files render as LVGL placeholders; no crash, no product UI. */
+    lv_aic_mpp_label = lv_label_create(lv_aic_manual_root);
+    if (lv_aic_mpp_label == NULL) {
+        goto fail;
+    }
+    lv_label_set_text(lv_aic_mpp_label, "mpp: L:/data/mpp_test/{a.jpg,b.png,c.png}");
+    lv_obj_set_style_text_color(lv_aic_mpp_label, lv_color_hex(0xffffff), 0);
+    lv_obj_set_pos(lv_aic_mpp_label, 24, 210);
+
+    {
+        static const char *const paths[3] = {
+            "L:/data/mpp_test/a.jpg",
+            "L:/data/mpp_test/b.png",
+            "L:/data/mpp_test/c.png",
+        };
+        for (int i = 0; i < 3; i++) {
+            lv_aic_mpp_images[i] = lv_image_create(lv_aic_manual_root);
+            if (lv_aic_mpp_images[i] == NULL) {
+                goto fail;
+            }
+            lv_image_set_src(lv_aic_mpp_images[i], paths[i]);
+            lv_obj_set_pos(lv_aic_mpp_images[i], 24 + i * 220, 240);
+            lv_obj_set_size(lv_aic_mpp_images[i], 200, 150);
+        }
+    }
+#endif
+
     return LV_AIC_OK;
 
 fail:
@@ -131,6 +164,12 @@ void lv_aic_manual_test_deinit(void)
         lv_aic_manual_root = NULL;
         lv_aic_manual_status = NULL;
         lv_aic_manual_marker = NULL;
+#if defined(AIC_LVGL_USE_MPP_DEC)
+        lv_aic_mpp_label = NULL;
+        lv_aic_mpp_images[0] = NULL;
+        lv_aic_mpp_images[1] = NULL;
+        lv_aic_mpp_images[2] = NULL;
+#endif
     }
     lv_aic_manual_marker_x = 0;
 }

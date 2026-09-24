@@ -126,6 +126,38 @@
 #define LV_USE_ASSERT 1
 #endif
 
+/* Phase 2 FILE decoder needs one host filesystem. POSIX letter 'L' maps
+ * "L:/path" to "/path" on RT-Thread DFS and POSIX hosts. Windows host builds
+ * use the STDIO driver instead (LVGL's POSIX driver has no Win32 port); the
+ * letter stays 'L' so test paths are identical. */
+#if defined(_WIN32)
+#ifndef LV_USE_FS_STDIO
+#define LV_USE_FS_STDIO 1
+#endif
+#ifndef LV_FS_STDIO_LETTER
+#define LV_FS_STDIO_LETTER 'L'
+#endif
+#ifndef LV_FS_STDIO_PATH
+#define LV_FS_STDIO_PATH ""
+#endif
+#ifndef LV_FS_STDIO_CACHE_SIZE
+#define LV_FS_STDIO_CACHE_SIZE 0
+#endif
+#else
+#ifndef LV_USE_FS_POSIX
+#define LV_USE_FS_POSIX 1
+#endif
+#ifndef LV_FS_POSIX_LETTER
+#define LV_FS_POSIX_LETTER 'L'
+#endif
+#ifndef LV_FS_POSIX_PATH
+#define LV_FS_POSIX_PATH ""
+#endif
+#ifndef LV_FS_POSIX_CACHE_SIZE
+#define LV_FS_POSIX_CACHE_SIZE 0
+#endif
+#endif
+
 /* Do not enable demos or optional media/font components implicitly. */
 #ifndef LV_USE_DEMO_WIDGETS
 #define LV_USE_DEMO_WIDGETS 0
