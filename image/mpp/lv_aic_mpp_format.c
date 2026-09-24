@@ -11,7 +11,7 @@
 
 #include "lv_aic_mpp_format.h"
 
-#if AIC_LVGL_USE_MPP_DEC && AIC_LVGL_BSP_MPP
+#if defined(AIC_LVGL_USE_MPP_DEC) && AIC_LVGL_BSP_MPP
 
 bool lv_aic_mpp_format_to_lvgl(enum mpp_pixel_format mpp_fmt,
                                lv_color_format_t *lv_fmt)

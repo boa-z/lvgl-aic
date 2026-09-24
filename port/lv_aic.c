@@ -6,7 +6,7 @@
 #include "lvgl_aic.h"
 #include "lv_aic_display.h"
 #include "lv_aic_indev.h"
-#if AIC_LVGL_USE_MPP_DEC
+#ifdef AIC_LVGL_USE_MPP_DEC
 #include "lv_aic_mpp_decoder.h"
 #endif
 
@@ -24,7 +24,7 @@ static uint32_t lv_aic_tick_get_ms(void)
 
 static lv_display_t *lv_aic_display;
 static lv_indev_t *lv_aic_pointer_indev;
-#if AIC_LVGL_USE_MPP_DEC
+#ifdef AIC_LVGL_USE_MPP_DEC
 static lv_image_decoder_t *lv_aic_mpp_decoder;
 #endif
 static bool lv_aic_initialized;
@@ -39,7 +39,7 @@ int lv_aic_init(void)
 
     lv_aic_display = NULL;
     lv_aic_pointer_indev = NULL;
-#if AIC_LVGL_USE_MPP_DEC
+#ifdef AIC_LVGL_USE_MPP_DEC
     lv_aic_mpp_decoder = NULL;
 #endif
 
@@ -63,7 +63,7 @@ int lv_aic_init(void)
     (void)result;
 #endif
 
-#if AIC_LVGL_USE_MPP_DEC
+#ifdef AIC_LVGL_USE_MPP_DEC
     result = lv_aic_mpp_decoder_init(&lv_aic_mpp_decoder);
     if (result != LV_AIC_OK) {
         if (lv_aic_pointer_indev != NULL) {
@@ -90,7 +90,7 @@ void lv_aic_deinit(void)
         lv_aic_indev_deinit(lv_aic_pointer_indev);
         lv_aic_pointer_indev = NULL;
     }
-#if AIC_LVGL_USE_MPP_DEC
+#ifdef AIC_LVGL_USE_MPP_DEC
     if (lv_aic_mpp_decoder != NULL) {
         lv_aic_mpp_decoder_deinit(lv_aic_mpp_decoder);
         lv_aic_mpp_decoder = NULL;
@@ -113,7 +113,7 @@ lv_indev_t *lv_aic_get_pointer_indev(void)
     return lv_aic_pointer_indev;
 }
 
-#if AIC_LVGL_USE_MPP_DEC
+#ifdef AIC_LVGL_USE_MPP_DEC
 lv_image_decoder_t *lv_aic_get_mpp_decoder(void)
 {
     return lv_aic_mpp_decoder;

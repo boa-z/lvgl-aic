@@ -15,7 +15,7 @@
 #include "lvgl_aic.h"
 #include "lvgl_aic_compat.h"
 
-#if AIC_LVGL_USE_MPP_DEC && AIC_LVGL_BSP_MPP
+#if defined(AIC_LVGL_USE_MPP_DEC) && AIC_LVGL_BSP_MPP
 #include <mpp_types.h>
 #endif
 
@@ -23,7 +23,7 @@
 extern "C" {
 #endif
 
-#if AIC_LVGL_USE_MPP_DEC && AIC_LVGL_BSP_MPP
+#if defined(AIC_LVGL_USE_MPP_DEC) && AIC_LVGL_BSP_MPP
 
 /**
  * @brief Map an MPP output format to an LVGL SW-consumable color format.

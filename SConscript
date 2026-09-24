@@ -28,6 +28,13 @@ if GetDepend('AIC_LVGL_PORT'):
         os.path.join(lvgl_root, 'include'),
         os.path.join(lvgl_root, 'include', 'lvgl'),
     ]
+    if GetDepend('AIC_LVGL_USE_MPP_DEC'):
+        # MPP decoder API (mpp_decoder.h/frame_allocator.h) and UAPI pixel
+        # formats. No GE2D paths are added here by design.
+        cpppath += [
+            os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'include'),
+            os.path.join(AIC_ROOT, 'bsp', 'artinchip', 'include', 'uapi'),
+        ]
 
     # Feature symbols are generated in rtconfig.h by the Luban-Lite Kconfig
     # bridge. Redefining them with -D creates preprocessor redefinition
