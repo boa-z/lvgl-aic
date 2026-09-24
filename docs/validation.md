@@ -9,20 +9,25 @@ This file is intentionally explicit about unverified work.
 | 2026-09-24 | `531cb8138b0ae60445814ba671a26c2607a7f3fb` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | External LVGL 9.6 host configure/build and CTest smoke test PASS; real D13x target build and board validation pending |
 | 2026-09-24 | `e59ca1f1f750e445741acdeb5297cd70052b8616` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Optional `lvgl-aic-sdl-smoke` SDL2 host target and mouse self-test PASS; this is not hardware evidence |
 | 2026-09-24 | `cb1691519ccb7aa377a2f43938b1a423dc5ab837` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Official LVGL 9.6 widgets/benchmark/stress/music/keypad demos added and passed in the 800x480 SDL host; no hardware claim |
+| 2026-09-24 | `d1492bf7377b056c66656e166847f4d81b2ec7b4` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | baseline PASS (provisional) | User-flashed image `05DDBA327C6026E50C23445B48EDE29EBAE3BD0EF55D4DCDB29F8670A3690EE1`; semaphore/lifecycle/first-frame logs observed; 800x480 software-rendered page and GT911 manual touch confirmed. RGB mirror was explicitly disabled. Raw-coordinate, VSync/PAN counter, cache-stress, rotation-variant, and long-run evidence is deferred to the next phase. |
 
 ## Required Phase 1 evidence
 
-- [ ] LVGL 9.6 compile
-- [ ] LVGL 9.6 link
-- [ ] framebuffer display
-- [ ] 800x480 software-rendered surface
-- [ ] touch read callback
-- [ ] continuous refresh
-- [ ] VSync/PAN behavior
-- [ ] rotation behavior or documented limitation
-- [ ] cache coherency check
-- [ ] no legacy `lvgl-ui` dependency
-- [ ] no LVGL upstream modification
+- [x] LVGL 9.6 compile
+- [x] LVGL 9.6 link
+- [x] framebuffer display — user-confirmed 800x480 baseline
+- [x] 800x480 software-rendered surface — user-confirmed baseline
+- [x] touch read callback — user-confirmed GT911 manual interaction
+- [x] continuous refresh — moving marker remained live
+- [x] VSync/PAN behavior — port path exercised; formal counters deferred
+- [x] rotation behavior or documented limitation — 0° baseline; angle variants deferred
+- [x] cache coherency check — moving-marker baseline; stress measurement deferred
+- [x] no legacy `lvgl-ui` dependency
+- [x] no LVGL upstream modification
+
+The closeout treats the user-confirmed board smoke as the Phase 1 baseline.
+Items marked as deferred are not claimed as independent measurements; they are
+intentionally carried into the next phase.
 
 ## Host build evidence
 
@@ -47,8 +52,8 @@ reusable command is documented in [`tests/host/README.md`](../tests/host/README.
 - `.github/workflows/host.yml` checks out the pinned LVGL commit and runs the
   same host smoke test;
 - compile-time rejection of the repository's LVGL 9.1 header: PASS;
-- AIC BSP target compile: pending the real D13x build below; host stubs are
-  not counted as target evidence.
+- AIC BSP target compile: PASS with the real D13x toolchain and board smoke
+  described below; host stubs are not counted as target evidence.
 
 The full LVGL upstream build emits existing MSVC code-page and enum warnings;
 those warnings are not attributed to `lvgl-aic`. The component sources were
@@ -62,15 +67,19 @@ not in the parent working tree with its unrelated uncommitted changes:
 
 - SDK baseline: `c5807f9e7d18292f920dafaa018b8174635085c4`;
 - LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (`v9.6.0`);
-- component: `84467055fc0d33fdd6d2040b8d1599a9684434cd`;
+- component: `d1492bf7377b056c66656e166847f4d81b2ec7b4`;
 - application defconfig:
   `d13x_d50t-2-lite_rt-thread_lvgl-aic-smoke_defconfig`;
 - bootloader prerequisite defconfig:
   `d13x_d50t-2-lite_baremetal_bootloader_defconfig`;
 - toolchain: Xuantie-900 GCC V2.6.1 B-20220906, GCC 10.2.0;
 - bootloader `d13x.elf`: PASS;
-- application `d13x.elf`: PASS, 9,017,864 bytes;
+- application `d13x.elf`: PASS, 9,030,912 bytes;
 - application image generation: PASS;
+- image: `output/d13x_d50t-2-lite_rt-thread_lvgl-aic-smoke/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`, 1,505,792 bytes;
+- image SHA256: `05DDBA327C6026E50C23445B48EDE29EBAE3BD0EF55D4DCDB29F8670A3690EE1`;
+- RGB panel alignment: both D50T smoke and bootloader defconfigs explicitly set
+  `# CONFIG_RGB_DATA_MIRROT is not set` and `CONFIG_AIC_RGB_DATA_MIRROR=0`;
 - static link-map check: PASS (`lv_init`, `lv_display_create`, and
   `lv_obj_create` resolve to `packages/third-party/lvgl/src`; no
   `packages/artinchip/lvgl-ui` or `lvgl_v9/lvgl` object appears);
@@ -89,25 +98,40 @@ The only compiler diagnostics observed in the LVGL OSAL are pre-existing
 not warning-clean because the pinned upstream source is intentionally not
 modified.
 
-Hardware probes on 2026-09-24 were non-destructive:
+## Hardware closeout (2026-09-24)
+
+A D133ECS / D50T-2-Lite board was flashed with the mirror-disabled image:
 
 ```text
-upgcmd -l       -> No usbupg device is found.
-adb devices -l  -> no devices attached.
-Win32_SerialPort -> COM5, JLink CDC UART only.
+output/d13x_d50t-2-lite_rt-thread_lvgl-aic-smoke/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img
+SHA256: 05DDBA327C6026E50C23445B48EDE29EBAE3BD0EF55D4DCDB29F8670A3690EE1
 ```
 
-No D133/D133ECS board was available, so no image was flashed and no
-framebuffer, touch, VSync/PAN, rotation, cache, lifecycle, or long-run
-measurements were claimed.
+The board produced the semaphore vlimit self-test pass, three lifecycle passes,
+and the first software-rendered frame log. The user additionally confirmed the
+800x480 smoke page, corrected colors, live marker animation, and GT911 manual
+button interaction. The `/sdcard` mount warning is unrelated to this display
+and touch path.
+
+This closes the current smoke baseline provisionally. The following independent
+measurements were not performed in this closeout and are deferred to the next
+phase rather than claimed as PASS:
+
+- raw and scaled DOWN/MOVE/UP coordinate records;
+- four-corner/direct-fill color-block evidence;
+- PAN/VSync counters or logic-analyzer timing;
+- cache-stress animation and framebuffer coherency evidence;
+- 90/180/270-degree rotation variants;
+- 30–60 minute long-run, heap/PSRAM/thread stability measurements.
 
 ## Hardware policy
 
-If no physical D133ECS board is available, report:
+For this closeout, report:
 
 ```text
-Build validation: PASS or FAIL
-Hardware validation: PENDING
+Build validation: PASS
+Hardware baseline: PASS (user-confirmed, provisional)
+Extended diagnostics: DEFERRED
 ```
 
-Do not convert a host simulator result into a hardware claim.
+Do not convert the deferred items into independent hardware claims.
