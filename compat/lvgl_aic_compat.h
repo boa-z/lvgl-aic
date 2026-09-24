@@ -32,7 +32,7 @@
 #define AIC_LVGL_USE_PRIVATE_API 0
 #endif
 #ifndef AIC_LVGL_USE_DISPLAY
-#define AIC_LVGL_USE_DISPLAY 1
+#define AIC_LVGL_USE_DISPLAY 0
 #endif
 #ifndef AIC_LVGL_USE_TOUCH
 #define AIC_LVGL_USE_TOUCH 0
