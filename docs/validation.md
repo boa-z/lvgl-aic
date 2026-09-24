@@ -7,6 +7,7 @@ This file is intentionally explicit about unverified work.
 | Date | Commit | SDK commit | LVGL commit | Board | Result | Notes |
 |---|---|---|---|---|---|---|
 | 2026-09-24 | `531cb8138b0ae60445814ba671a26c2607a7f3fb` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | External LVGL 9.6 host configure/build and CTest smoke test PASS; real D13x target build and board validation pending |
+| 2026-09-24 | `44f9576837a748c83d32455e5c2d2883c3776f6b` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Optional `lvgl-aic-sdl-smoke` SDL2 host target and mouse self-test PASS; this is not hardware evidence |
 
 ## Required Phase 1 evidence
 
@@ -32,6 +33,9 @@ reusable command is documented in [`tests/host/README.md`](../tests/host/README.
 - `lvgl_aic` public API and Phase 1 port sources: PASS;
 - platform-only manual smoke page: PASS;
 - CTest `lvgl_aic_platform_smoke`: PASS (1/1);
+- optional `lvgl-aic-sdl-smoke` SDL2 build: PASS (MSYS2 UCRT64, SDL2 2.32.10);
+- SDL2 CTest `lvgl_aic_sdl_smoke_self`: PASS (2/2 total with the headless smoke);
+- SDL2 screenshot and injected mouse click verified the shared 800x480 manual page;
 - host component targets use `-Wall -Wextra -Werror` on GCC/Clang;
 - `.github/workflows/host.yml` checks out the pinned LVGL commit and runs the
   same host smoke test;
