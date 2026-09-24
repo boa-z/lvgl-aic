@@ -322,6 +322,10 @@ static lv_result_t lv_aic_mpp_decode_file(const char *src, enum mpp_codec_type c
         lv_aic_mpp_stream_close(&stream);
         return LV_RESULT_INVALID;
     }
+    if ((uint64_t)stride * (uint64_t)(uint32_t)height > LV_AIC_MPP_MAX_PIXELS * 4U) {
+        lv_aic_mpp_stream_close(&stream);
+        return LV_RESULT_INVALID;
+    }
     cma_size = lv_aic_mpp_align_up(stride * (uint32_t)height, CACHE_LINE_SIZE);
     if (cma_size == 0U) {
         lv_aic_mpp_stream_close(&stream);
@@ -357,6 +361,7 @@ static lv_result_t lv_aic_mpp_decode_file(const char *src, enum mpp_codec_type c
     }
 
     config.pix_fmt = mpp_fmt;
+    /* file_len is bounded by MAX_FILE_BYTES above, so the int casts are safe. */
     config.bitstream_buffer_size = (int)lv_aic_mpp_align_up(file_len, 256U);
     config.packet_count = 1;
     config.extra_frame_num = 0;
