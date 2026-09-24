@@ -15,6 +15,8 @@ extern "C" {
 
 int lv_aic_display_init(lv_display_t **display);
 void lv_aic_display_deinit(lv_display_t *display);
+void lv_aic_display_flush_count_reset(void);
+uint32_t lv_aic_display_flush_count_get(void);
 
 #ifdef __cplusplus
 }

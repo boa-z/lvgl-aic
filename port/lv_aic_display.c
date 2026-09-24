@@ -27,6 +27,8 @@
 #define CACHE_LINE_SIZE 32U
 #endif
 
+static volatile uint32_t lv_aic_display_flush_count;
+
 typedef struct {
     struct mpp_fb *fb;
     struct aicfb_screeninfo info;
@@ -122,6 +124,16 @@ static void lv_aic_present(lv_aic_display_ctx_t *ctx, unsigned int buffer_index)
     }
 }
 
+void lv_aic_display_flush_count_reset(void)
+{
+    lv_aic_display_flush_count = 0U;
+}
+
+uint32_t lv_aic_display_flush_count_get(void)
+{
+    return lv_aic_display_flush_count;
+}
+
 static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_t *px_map)
 {
     lv_aic_display_ctx_t *ctx = (lv_aic_display_ctx_t *)lv_display_get_driver_data(display);
@@ -173,6 +185,7 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
     }
 
     lv_aic_present(ctx, buffer_index);
+    lv_aic_display_flush_count++;
     if (ctx->use_rotation && ctx->use_pan_display) {
         ctx->present_index = (ctx->present_index == 0U) ? 1U : 0U;
     }
@@ -257,9 +270,9 @@ int lv_aic_display_init(lv_display_t **display)
 #endif
 
 #if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
-    ctx->use_rotation = true;
     rotation = (lv_display_rotation_t)(LV_ROTATE_DEGREE / 90);
-    {
+    ctx->use_rotation = (rotation != LV_DISPLAY_ROTATION_0);
+    if (ctx->use_rotation) {
         int32_t logical_width = (int32_t)ctx->info.width;
         int32_t logical_height = (int32_t)ctx->info.height;
         if ((rotation == LV_DISPLAY_ROTATION_90) || (rotation == LV_DISPLAY_ROTATION_270)) {
@@ -282,17 +295,25 @@ int lv_aic_display_init(lv_display_t **display)
             }
             rotation_buffer_size = ctx->lv_buffer_stride * buffer_height;
         }
+        ctx->rotation_buffer = (uint8_t *)lv_aic_alloc_cma(rotation_buffer_size);
+        if (ctx->rotation_buffer == NULL) {
+            LV_LOG_ERROR("failed to allocate LVGL software rotation buffer");
+            mpp_fb_close(ctx->fb);
+            lv_free(ctx);
+            return LV_AIC_ERR_NO_MEMORY;
+        }
+        ctx->rotation_buffer_size = rotation_buffer_size;
+        buffer1 = ctx->rotation_buffer;
+        buffer2 = NULL;
+    } else {
+        /* LVGL's software rotate helper intentionally does not copy for 0°.
+         * Keep the normal direct framebuffer path in that case. */
+        ctx->lv_buffer_stride = ctx->info.stride;
+        buffer1 = lv_aic_framebuffer_at(ctx, 0U);
+#if defined(AIC_PAN_DISPLAY)
+        buffer2 = lv_aic_framebuffer_at(ctx, 1U);
+#endif
     }
-    ctx->rotation_buffer = (uint8_t *)lv_aic_alloc_cma(rotation_buffer_size);
-    if (ctx->rotation_buffer == NULL) {
-        LV_LOG_ERROR("failed to allocate LVGL software rotation buffer");
-        mpp_fb_close(ctx->fb);
-        lv_free(ctx);
-        return LV_AIC_ERR_NO_MEMORY;
-    }
-    ctx->rotation_buffer_size = rotation_buffer_size;
-    buffer1 = ctx->rotation_buffer;
-    buffer2 = NULL;
 #else
     ctx->lv_buffer_stride = ctx->info.stride;
 #endif
@@ -362,6 +383,15 @@ int lv_aic_display_init(lv_display_t **display)
         *display = NULL;
     }
     return LV_AIC_ERR_NO_BSP;
+}
+
+void lv_aic_display_flush_count_reset(void)
+{
+}
+
+uint32_t lv_aic_display_flush_count_get(void)
+{
+    return 0U;
 }
 
 void lv_aic_display_deinit(lv_display_t *display)
