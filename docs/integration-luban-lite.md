@@ -55,8 +55,11 @@ core group and invokes the `lvgl-aic` submodule's port group. It must:
 - glob `packages/third-party/lvgl/src/**/*.c` exactly once;
 - exclude upstream RT-Thread entry points, examples, demos, and optional
   C++ sources;
-- define the explicit compiler macro
-  `LV_CONF_PATH=lvgl_aic_target_config.h`;
+- force-include the custom build bridge
+  `packages/custom/lvgl_aic_build_config.h` for the target group;
+- the bridge defines the explicit compiler macros
+  `LV_CONF_PATH=lvgl_aic_target_config.h` and
+  `LV_CONF_KCONFIG_EXTERNAL_INCLUDE=lv_conf_kconfig_external.h`;
 - add `packages/custom/lvgl-aic/compat` to the include path. The unique wrapper
   header includes `../lv_conf.h`, so the selected file is explicit without
   relying on `lv_conf.h` include order;
