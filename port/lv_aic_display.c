@@ -159,8 +159,8 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
          * introduced only after this baseline is validated. */
         lv_aic_cache_clean(active->data, ctx->rotation_buffer_size);
         lv_draw_rotate(active->data, destination,
-                       lv_display_get_original_horizontal_resolution(display),
-                       lv_display_get_original_vertical_resolution(display),
+                       lv_display_get_horizontal_resolution(display),
+                       lv_display_get_vertical_resolution(display),
                        source_stride, destination_stride,
                        lv_display_get_rotation(display),
                        ctx->lv_color_format);
@@ -186,6 +186,7 @@ int lv_aic_display_init(lv_display_t **display)
     void *buffer1;
     void *buffer2 = NULL;
 #if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
+    lv_display_rotation_t rotation = LV_DISPLAY_ROTATION_0;
     uint32_t rotation_buffer_size = 0U;
 #endif
 
@@ -257,14 +258,31 @@ int lv_aic_display_init(lv_display_t **display)
 
 #if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
     ctx->use_rotation = true;
-    ctx->lv_buffer_stride = lv_draw_buf_width_to_stride(ctx->info.width, color_format);
-    if (ctx->info.height > (UINT32_MAX / ctx->lv_buffer_stride)) {
-        LV_LOG_ERROR("LVGL software rotation buffer size overflows 32-bit arithmetic");
-        mpp_fb_close(ctx->fb);
-        lv_free(ctx);
-        return LV_AIC_ERR_NO_MEMORY;
+    rotation = (lv_display_rotation_t)(LV_ROTATE_DEGREE / 90);
+    {
+        int32_t logical_width = (int32_t)ctx->info.width;
+        int32_t logical_height = (int32_t)ctx->info.height;
+        if ((rotation == LV_DISPLAY_ROTATION_90) || (rotation == LV_DISPLAY_ROTATION_270)) {
+            const int32_t temporary = logical_width;
+            logical_width = logical_height;
+            logical_height = temporary;
+        }
+        ctx->lv_buffer_stride = lv_draw_buf_width_to_stride((uint32_t)logical_width, color_format);
+        {
+            /* lv_display_set_buffers_with_stride() validates against the
+             * original height before LVGL reshapes the layer for rotation.
+             * Reserve the larger of the two row counts so both validations
+             * remain valid for portrait and landscape panels. */
+            const uint32_t buffer_height = LV_MAX(ctx->info.height, (uint32_t)logical_height);
+            if (buffer_height > (UINT32_MAX / ctx->lv_buffer_stride)) {
+                LV_LOG_ERROR("LVGL software rotation buffer size overflows 32-bit arithmetic");
+                mpp_fb_close(ctx->fb);
+                lv_free(ctx);
+                return LV_AIC_ERR_NO_MEMORY;
+            }
+            rotation_buffer_size = ctx->lv_buffer_stride * buffer_height;
+        }
     }
-    rotation_buffer_size = ctx->lv_buffer_stride * ctx->info.height;
     ctx->rotation_buffer = (uint8_t *)lv_aic_alloc_cma(rotation_buffer_size);
     if (ctx->rotation_buffer == NULL) {
         LV_LOG_ERROR("failed to allocate LVGL software rotation buffer");
@@ -297,7 +315,7 @@ int lv_aic_display_init(lv_display_t **display)
     lv_display_set_physical_resolution(ctx->display, (int32_t)ctx->info.width,
                                        (int32_t)ctx->info.height);
 #if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
-    lv_display_set_rotation(ctx->display, (lv_display_rotation_t)(LV_ROTATE_DEGREE / 90));
+    lv_display_set_rotation(ctx->display, rotation);
 #endif
     lv_display_set_buffers_with_stride(ctx->display, buffer1, buffer2,
                                        ctx->use_rotation ? ctx->rotation_buffer_size : ctx->framebuffer_size,

@@ -148,14 +148,16 @@ static void lv_aic_touch_worker(void *parameter)
         }
 
         if (ctx->device != RT_NULL) {
-            rt_size_t count = rt_device_read(ctx->device, 0, ctx->read_data, ctx->info.point_num);
-            if (count > ctx->info.point_num) {
-                count = ctx->info.point_num;
-            }
+            rt_size_t count;
             bool have_pressed = false;
             bool have_event = false;
             int16_t event_x = 0;
             int16_t event_y = 0;
+
+            count = rt_device_read(ctx->device, 0, ctx->read_data, ctx->info.point_num);
+            if (count > ctx->info.point_num) {
+                count = ctx->info.point_num;
+            }
 
             for (rt_size_t i = 0; i < count; ++i) {
                 switch (ctx->read_data[i].event) {
