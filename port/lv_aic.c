@@ -1,0 +1,86 @@
+/**
+ * @file lv_aic.c
+ * @brief Public lifecycle glue for the ArtInChip LVGL platform port.
+ */
+
+#include "lvgl_aic.h"
+#include "lv_aic_display.h"
+#include "lv_aic_indev.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#if AIC_LVGL_BSP_RTTHREAD
+#include <rtthread.h>
+
+static uint32_t lv_aic_tick_get_ms(void)
+{
+    return (uint32_t)rt_tick_get_millisecond();
+}
+#endif
+
+static lv_display_t *lv_aic_display;
+static lv_indev_t *lv_aic_pointer_indev;
+static bool lv_aic_initialized;
+
+int lv_aic_init(void)
+{
+    int result;
+
+    if (lv_aic_initialized) {
+        return LV_AIC_ERR_INVALID_STATE;
+    }
+
+    lv_aic_display = NULL;
+    lv_aic_pointer_indev = NULL;
+
+#if AIC_LVGL_BSP_RTTHREAD
+    lv_tick_set_cb(lv_aic_tick_get_ms);
+#endif
+
+    result = lv_aic_display_init(&lv_aic_display);
+    if (result != LV_AIC_OK) {
+        return result;
+    }
+
+#if AIC_LVGL_USE_TOUCH
+    result = lv_aic_indev_init(lv_aic_display, &lv_aic_pointer_indev);
+    if (result != LV_AIC_OK) {
+        lv_aic_display_deinit(lv_aic_display);
+        lv_aic_display = NULL;
+        return result;
+    }
+#else
+    (void)result;
+#endif
+
+    lv_aic_initialized = true;
+    return LV_AIC_OK;
+}
+
+void lv_aic_deinit(void)
+{
+    if (!lv_aic_initialized) {
+        return;
+    }
+
+    if (lv_aic_pointer_indev != NULL) {
+        lv_aic_indev_deinit(lv_aic_pointer_indev);
+        lv_aic_pointer_indev = NULL;
+    }
+    if (lv_aic_display != NULL) {
+        lv_aic_display_deinit(lv_aic_display);
+        lv_aic_display = NULL;
+    }
+    lv_aic_initialized = false;
+}
+
+lv_display_t *lv_aic_get_display(void)
+{
+    return lv_aic_display;
+}
+
+lv_indev_t *lv_aic_get_pointer_indev(void)
+{
+    return lv_aic_pointer_indev;
+}
