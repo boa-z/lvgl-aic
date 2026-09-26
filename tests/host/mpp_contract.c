@@ -83,6 +83,21 @@ int main(int argc, char **argv) {
         assert(live_cma==0);
     }
 
+    /* CMA lifecycle counters. Modes 0 and 2 each allocate once and release once;
+     * the failed-allocation and rejected-stride modes must not move the counters
+     * at all, so the accounting stays symmetric. */
+    {
+        const lv_aic_mpp_cma_stats_t *cma = lv_aic_mpp_cma_stats();
+        assert(cma->alloc_count == 2U);
+        assert(cma->free_count == cma->alloc_count);
+        assert(cma->current_cma_bytes == 0U);
+        assert(cma->peak_cma_bytes == 2448U * 480U);
+        lv_aic_mpp_cma_stats_reset();
+        cma = lv_aic_mpp_cma_stats();
+        assert(cma->alloc_count == 0U && cma->free_count == 0U);
+        assert(cma->current_cma_bytes == 0U && cma->peak_cma_bytes == 0U);
+    }
+
     /* PNG chunk CRC gate. The SDK MPP PNG decoder skips every chunk CRC and the
      * zlib Adler-32, so a file with corrupt-but-still-inflatable IDAT would
      * otherwise open successfully. The wrapper must reject it before the bytes
@@ -120,6 +135,6 @@ int main(int argc, char **argv) {
     }
 
     lv_deinit();
-    puts("PASS: MPP allocator ABI, padded JPEG stride/height, failure cleanup, PNG CRC gate");
+    puts("PASS: MPP allocator ABI, padded JPEG stride/height, failure cleanup, CMA lifecycle counters, PNG CRC gate");
     return 0;
 }

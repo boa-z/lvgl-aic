@@ -39,6 +39,23 @@ typedef struct {
 const lv_aic_mpp_decode_stats_t *lv_aic_mpp_decoder_last_stats(void);
 #endif
 
+/** @brief Cumulative CMA lifecycle counters for the decoder's own buffers.
+ *
+ * Counted at this wrapper's MEM_CMA alloc/free sites only; CMA held inside the
+ * SDK MPP engine is not visible here. A decode/close run is leak-free when
+ * @c current_cma_bytes is 0 and @c alloc_count equals @c free_count. */
+typedef struct {
+    uint32_t current_cma_bytes;
+    uint32_t peak_cma_bytes;
+    uint32_t alloc_count;
+    uint32_t free_count;
+} lv_aic_mpp_cma_stats_t;
+
+#if AIC_LVGL_USE_MPP_DEC
+const lv_aic_mpp_cma_stats_t *lv_aic_mpp_cma_stats(void);
+void lv_aic_mpp_cma_stats_reset(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

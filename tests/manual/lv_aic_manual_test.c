@@ -116,7 +116,8 @@ int lv_aic_manual_test_create(void)
     if (lv_aic_mpp_label == NULL) {
         goto fail;
     }
-    lv_label_set_text(lv_aic_mpp_label, "mpp: L:/data/mpp_test/{a.jpg,b.png,c.png}");
+    lv_label_set_text(lv_aic_mpp_label,
+                      "mpp: a.jpg JPEG | b.png RGB | c.png RGBA on white");
     lv_obj_set_style_text_color(lv_aic_mpp_label, lv_color_hex(0xffffff), 0);
     lv_obj_set_pos(lv_aic_mpp_label, 24, 210);
 
@@ -126,15 +127,35 @@ int lv_aic_manual_test_create(void)
             "L:/data/mpp_test/b.png",
             "L:/data/mpp_test/c.png",
         };
+        lv_obj_t *backdrop;
+
         for (int i = 0; i < 3; i++) {
+            if (i == 2) {
+                /* White swatch under the RGBA fixture. c.png carries a 0..255
+                 * alpha ramp, so against white the transparent corner stays
+                 * white and the opaque corner keeps its colour: alpha blending
+                 * becomes provable instead of blending into the dark page. */
+                backdrop = lv_obj_create(lv_aic_manual_root);
+                if (backdrop == NULL) {
+                    goto fail;
+                }
+                lv_obj_set_size(backdrop, 128, 128);
+                lv_obj_set_pos(backdrop, 24 + i * 220, 240);
+                lv_obj_set_style_bg_color(backdrop, lv_color_hex(0xffffff), 0);
+                lv_obj_set_style_bg_opa(backdrop, LV_OPA_COVER, 0);
+                lv_obj_set_style_border_width(backdrop, 0, 0);
+                lv_obj_set_style_radius(backdrop, 0, 0);
+                lv_obj_set_style_pad_all(backdrop, 0, 0);
+            }
             lv_aic_mpp_images[i] = lv_image_create(lv_aic_manual_root);
             if (lv_aic_mpp_images[i] == NULL) {
                 goto fail;
             }
             lv_image_set_src(lv_aic_mpp_images[i], paths[i]);
             lv_obj_set_pos(lv_aic_mpp_images[i], 24 + i * 220, 240);
-            /* Keep the JPEG at 160x120; enlarge the 32x32 PNG fixtures so
-             * channel order and alpha are visible on the 800x480 panel. */
+            /* Keep the JPEG at 160x120; enlarge the 32x32 PNG fixtures to
+             * 128x128 so channel order and alpha are visible on the 800x480
+             * panel (pivot 0,0 grows the scaled image right/down). */
             if (i != 0) {
                 lv_image_set_pivot(lv_aic_mpp_images[i], 0, 0);
                 lv_image_set_scale(lv_aic_mpp_images[i], 1024);

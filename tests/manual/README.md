@@ -23,5 +23,17 @@ With `AIC_LVGL_USE_MPP_DEC=1`, the SDK smoke owner calls
 unsupported/corrupt/missing inputs, then 1000 uncached decode/close cycles.
 Failure skips stress but still leaves the page available. Watch `lvgl.mpp.test`
 logs; a successful open must belong to the MPP decoder, not a software fallback.
-Heap before/after is diagnostic only; SDK CMA accounting and visible pixel/alpha
-correctness remain board acceptance requirements. GE2D remains disabled.
+
+The 1000-cycle loop is measured with the decoder's own CMA lifecycle counters
+(`lv_aic_mpp_cma_stats()`). The loop resets them first, then requires
+`current_cma_bytes == 0` and `alloc_count == free_count` afterwards, plus
+`alloc_count >= 1000` so a bypassed allocator cannot make the check vacuous.
+These counters cover only the wrapper's own `MEM_CMA` buffers; CMA held inside
+the SDK MPP engine is not visible here. Heap before/after stays diagnostic.
+
+The page renders `a.jpg` (JPEG), `b.png` (RGB PNG) and `c.png` (RGBA PNG). Both
+32x32 PNG fixtures are scaled 4x from pivot (0,0), and `c.png` sits on a white
+swatch: its 0..255 alpha ramp then reads as white at the transparent corner and
+as its own colour at the opaque corner, making alpha blending unambiguous on the
+panel. Visible pixel/alpha correctness and the Gate 1 display/touch baseline
+remain board acceptance requirements. GE2D remains disabled.

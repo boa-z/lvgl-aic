@@ -91,6 +91,9 @@ int lv_aic_mpp_test_run(void)
         LOG_E("FAIL acceptance cases=%d; stress skipped", failures);
         return -1;
     }
+    /* Measure exactly the stress loop: the acceptance cases above already
+     * balanced their own CMA, so this yields a clean 1000-cycle verdict. */
+    lv_aic_mpp_cma_stats_reset();
     rt_memory_info(&total, &used_before, &peak);
     for (unsigned i = 0; i < 1000; i++) {
         if (check_image(cases[i % 3].path, true, false) != 0) return -1;
@@ -99,8 +102,26 @@ int lv_aic_mpp_test_run(void)
     }
     rt_memory_info(&total, &used_after, &peak);
     LOG_I("PASS 1000 decode/close cycles");
-    LOG_I("heap before=%u after=%u peak=%u; CMA not measured",
+    LOG_I("heap before=%u after=%u peak=%u",
           (unsigned)used_before, (unsigned)used_after, (unsigned)peak);
+    {
+        const lv_aic_mpp_cma_stats_t *cma = lv_aic_mpp_cma_stats();
+        LOG_I("CMA current=%u peak=%u alloc=%u free=%u",
+              (unsigned)cma->current_cma_bytes, (unsigned)cma->peak_cma_bytes,
+              (unsigned)cma->alloc_count, (unsigned)cma->free_count);
+        if (cma->current_cma_bytes != 0U || cma->alloc_count != cma->free_count) {
+            LOG_E("FAIL CMA lifecycle unbalanced current=%u alloc=%u free=%u",
+                  (unsigned)cma->current_cma_bytes,
+                  (unsigned)cma->alloc_count, (unsigned)cma->free_count);
+            return -1;
+        }
+        if (cma->alloc_count < 1000U) {
+            /* A bypassed allocator would make the balance check vacuous. */
+            LOG_E("FAIL MPP allocator exercised only %u times", (unsigned)cma->alloc_count);
+            return -1;
+        }
+    }
+    LOG_I("PASS CMA lifecycle balanced across 1000 cycles");
     return 0;
 }
 #endif

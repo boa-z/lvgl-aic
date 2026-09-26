@@ -60,6 +60,7 @@ typedef struct {
 
 static lv_image_decoder_t *g_aic_mpp_decoder;
 static lv_aic_mpp_decode_stats_t g_aic_mpp_last_stats;
+static lv_aic_mpp_cma_stats_t g_aic_mpp_cma_stats;
 
 static uint32_t lv_aic_mpp_align_up(uint32_t value, uint32_t align)
 {
@@ -67,6 +68,34 @@ static uint32_t lv_aic_mpp_align_up(uint32_t value, uint32_t align)
         return value;
     }
     return (value + align - 1U) & ~(align - 1U);
+}
+
+/* CMA lifecycle accounting. Every MEM_CMA allocation and its matching release
+ * goes through this pair, so alloc_count/free_count stay symmetric by
+ * construction and current_cma_bytes is exact for the wrapper's own buffers.
+ * These counters are debug-only: they do not affect allocation behaviour. */
+static void *lv_aic_mpp_cma_alloc(uint32_t size)
+{
+    void *ptr = aicos_malloc_align(MEM_CMA, size, CACHE_LINE_SIZE);
+
+    if (ptr != NULL) {
+        g_aic_mpp_cma_stats.current_cma_bytes += size;
+        g_aic_mpp_cma_stats.alloc_count++;
+        if (g_aic_mpp_cma_stats.current_cma_bytes > g_aic_mpp_cma_stats.peak_cma_bytes) {
+            g_aic_mpp_cma_stats.peak_cma_bytes = g_aic_mpp_cma_stats.current_cma_bytes;
+        }
+    }
+    return ptr;
+}
+
+static void lv_aic_mpp_cma_free(void *ptr, uint32_t size)
+{
+    if (ptr == NULL) {
+        return;
+    }
+    aicos_free_align(MEM_CMA, ptr);
+    g_aic_mpp_cma_stats.current_cma_bytes -= size;
+    g_aic_mpp_cma_stats.free_count++;
 }
 
 /* The SDK skips PNG chunk CRCs. Validate them before handing the packet to
@@ -245,7 +274,7 @@ static int lv_aic_mpp_alloc_ext_frame(struct frame_allocator *p, struct mpp_fram
         return -1;
     }
     session->cma_size = lv_aic_mpp_align_up((uint32_t)bytes, CACHE_LINE_SIZE);
-    session->allocation_base = aicos_malloc_align(MEM_CMA, session->cma_size, CACHE_LINE_SIZE);
+    session->allocation_base = lv_aic_mpp_cma_alloc(session->cma_size);
     if (session->allocation_base == NULL) {
         return -1;
     }
@@ -397,7 +426,7 @@ static void lv_aic_mpp_session_release(lv_aic_mpp_session_t *session)
         session->heap_buf = NULL;
     }
     if (session->allocation_base != NULL) {
-        aicos_free_align(MEM_CMA, session->allocation_base);
+        lv_aic_mpp_cma_free(session->allocation_base, session->cma_size);
         session->allocation_base = NULL;
     }
     lv_free(session);
@@ -528,10 +557,11 @@ static lv_result_t lv_aic_mpp_decode_file(const char *src, enum mpp_codec_type c
             goto fail_session;
         }
         if (adjusted != &session->draw_buf) {
-            /* Post-process copied to a heap buffer; CMA is no longer needed. */
-            aicos_free_align(MEM_CMA, session->allocation_base);
+            /* Post-process copied to a heap buffer; CMA is no longer needed.
+             * Free before clearing cma_size so the counter sees the real size. */
+            lv_aic_mpp_cma_free(session->allocation_base, session->cma_size);
             session->allocation_base = NULL;
-                session->cma_size = 0U;
+            session->cma_size = 0U;
             session->heap_buf = adjusted;
             dsc->decoded = adjusted;
             dsc->user_data = session;
@@ -729,6 +759,7 @@ int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
     lv_image_decoder_set_close_cb(g_aic_mpp_decoder, lv_aic_mpp_close_cb);
 
     memset(&g_aic_mpp_last_stats, 0, sizeof(g_aic_mpp_last_stats));
+    memset(&g_aic_mpp_cma_stats, 0, sizeof(g_aic_mpp_cma_stats));
     *decoder = g_aic_mpp_decoder;
     return LV_AIC_OK;
 }
@@ -745,6 +776,16 @@ void lv_aic_mpp_decoder_deinit(lv_image_decoder_t *decoder)
 const lv_aic_mpp_decode_stats_t *lv_aic_mpp_decoder_last_stats(void)
 {
     return &g_aic_mpp_last_stats;
+}
+
+const lv_aic_mpp_cma_stats_t *lv_aic_mpp_cma_stats(void)
+{
+    return &g_aic_mpp_cma_stats;
+}
+
+void lv_aic_mpp_cma_stats_reset(void)
+{
+    memset(&g_aic_mpp_cma_stats, 0, sizeof(g_aic_mpp_cma_stats));
 }
 
 /* Phase 2A has no custom image cache. OSAL's try_cma path calls this when CMA
