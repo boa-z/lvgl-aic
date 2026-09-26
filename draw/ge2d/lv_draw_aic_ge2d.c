@@ -109,10 +109,12 @@ void lv_draw_aic_ge2d_init(void)
 {
     lv_draw_aic_ge2d_unit_t *unit;
 
-    if (g_ge2d_registered) {
-        return;
-    }
-
+    /* The device is opened on EVERY init, not only the first one. The smoke
+     * application runs LVGL deinit/init cycles, and lv_draw_aic_ge2d_deinit()
+     * closes the device while LVGL keeps the unit in its draw-unit list (there
+     * is no API to unregister one). Guarding the open on g_ge2d_registered left
+     * the device closed from the second cycle onwards, so every task silently
+     * fell back to software. */
     if (g_ge2d_dev == NULL) {
         g_ge2d_dev = mpp_ge_open();
     }
@@ -124,6 +126,11 @@ void lv_draw_aic_ge2d_init(void)
          * renderer keeps the display working instead of the unit dispatching
          * into a NULL device. */
         LV_LOG_ERROR("GE2D device unavailable; the GE2D unit will decline every task");
+    }
+
+    if (g_ge2d_registered) {
+        /* Device reopened; the unit is already in LVGL's draw-unit list. */
+        return;
     }
 
     unit = (lv_draw_aic_ge2d_unit_t *)lv_draw_create_unit(sizeof(lv_draw_aic_ge2d_unit_t));

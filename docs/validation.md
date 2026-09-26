@@ -11,7 +11,7 @@ This file is intentionally explicit about unverified work.
 | 2026-09-24 | `cb1691519ccb7aa377a2f43938b1a423dc5ab837` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Official LVGL 9.6 widgets/benchmark/stress/music/keypad demos added and passed in the 800x480 SDL host; no hardware claim |
 | 2026-09-24 | `d1492bf7377b056c66656e166847f4d81b2ec7b4` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | baseline PASS (provisional) | User-flashed image `05DDBA327C6026E50C23445B48EDE29EBAE3BD0EF55D4DCDB29F8670A3690EE1`; semaphore/lifecycle/first-frame logs observed; 800x480 software-rendered page and GT911 manual touch confirmed. RGB mirror was explicitly disabled. Raw-coordinate, VSync/PAN counter, cache-stress, rotation-variant, and long-run evidence is deferred to the next phase. |
 | 2026-09-26 | `c151970` + working tree (see Phase 2B closeout) | `3b135eda4eaf91e6d0607d37ca24551b836ca725` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Phase 2B closeout: CMA lifecycle counters and an alpha-observable manual page. Host 9/9 CTest PASS; target build plus both static gates PASS on image `a5e1275b4c23811a0da0bf2c619f29f1adf23c765279b37ba2389d922a122d2c`. Board confirmation of items 1.1/1.2 and the Gate 1 display/touch regression check are still pending, so Gate 2 stays open. |
-| 2026-09-27 | `cce04be` + working tree (see Phase 3A closeout) | `4d065e442de54a011b17208468ebcf6eae348297` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | fail | Phase 3A: independent GE2D draw unit, opaque FILL only, synchronous, everything else falls back to software. Host build plus CTest PASS; target build plus both static gates PASS on image `31ae0db5c965c99df9d195adc1d59d7fa664e4d13042eb4265f0e8a1384a630f`. Board run: lifecycle, all MPP fixtures, 1000 decode cycles and balanced CMA PASS, but `mpp_ge_open()` returned NULL, so the GE2D unit declined every task and the page rendered in software. Criteria 2/3/4/7 fail or are unprovable; 6 and 8 confirmed. Gate 3 stays open. |
+| 2026-09-27 | `cce04be` + working tree (see Phase 3A closeout) | `4d065e442de54a011b17208468ebcf6eae348297` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | fail | Phase 3A board run 1 of image `31ae0db5c965c99df9d195adc1d59d7fa664e4d13042eb4265f0e8a1384a630f`: lifecycle, all MPP fixtures, 1000 decode/close cycles and balanced CMA PASS, but the GE2D unit declined every task. Root-caused to a deinit/init bug in `lv_draw_aic_ge2d_init()` (the `g_ge2d_registered` guard skipped `mpp_ge_open()` after the first deinit), not to the driver. Fixed and rebuilt as `f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`; both static gates and the 9/9 host suite pass again. Criteria 6 and 8 confirmed on hardware, 2/3/4/7 pending the re-flash. Gate 3 stays open. |
 
 ## Required Phase 1 evidence
 
@@ -480,7 +480,7 @@ Target, built with the project's own entry point
   `31ae0db5c965c99df9d195adc1d59d7fa664e4d13042eb4265f0e8a1384a630f`.
   Recompiling all five units from scratch reproduced a byte-identical image.
 
-### Board result (2026-09-27): GE2D bring-up failed
+### Board result (2026-09-27): GE2D bring-up failed, root-caused and fixed
 
 The image above was flashed to the D50T-2-Lite board. The run split cleanly.
 
@@ -502,16 +502,60 @@ Failed:
   software. Criteria 2, 3, 4 and 7 are unverified as a result, and criterion 5
   is only trivially true because GE2D drew nothing.
 
-The root cause is inside `mpp_ge_open()` and was not identifiable from the
-captured log: the capture starts at the 0.4 s mark, while the GE probe runs
-earlier, at the device-init stage. Static inspection of this build rules out the
-obvious candidates - the driver is linked with `__rt_init_aic_ge_probe` present
-in the init table, `hal_ge_cmdq.o` is the only GE HAL built, `hal_ge_control()`
-handles `IOC_GE_MODE`, and `GE_CMA`/`GE_DEFAULT` alias the `MEM_CMA`/`MEM_DEFAULT`
-regions the working decoder already uses.
+The root cause was in the draw unit itself, not in the driver. The full boot log
+shows `hal_ge_init()` running at 0.515 (`[I]hal_ge_init()342 cmd queue hal, cmdq
+buffer size = 2048`), and **no `mpp_ge_open()` failure message appears anywhere**
+- yet `mpp_ge_open()` has three failure exits and every one of them prints.
 
-The distinguishing messages to capture on the next run are `Failed to open.`,
-`cmdq aicos_malloc failed!`, `cmd_buf aicos_malloc failed!`, `ioctl() return N`
-and `ge_cmd_buf_size failed N`.
+`lv_draw_aic_ge2d_init()` began with:
 
-Gate 3 stays open. Phase 3B (IMAGE + LAYER) has not been started.
+```c
+if (g_ge2d_registered) {
+    return;                 /* <-- skipped mpp_ge_open() on re-init */
+}
+if (g_ge2d_dev == NULL) {
+    g_ge2d_dev = mpp_ge_open();
+}
+```
+
+The smoke application runs three lifecycle cycles and then a fourth init, so
+`lv_aic_init()` runs four times and `lv_aic_deinit()` three times.
+`lv_draw_aic_ge2d_deinit()` closes the device and clears `g_ge2d_dev`, but it
+cannot clear `g_ge2d_registered` - LVGL has no API to unregister a draw unit, so
+the unit stays in the draw-unit list by design. The guard therefore made the
+second init a no-op, leaving the device closed and `g_ge2d_ready` false for the
+rest of the boot. GE2D was never exercised at all, and the "device unavailable"
+message was a misleading diagnosis derived from the `ready` flag.
+
+Fixed by opening the device on every init and guarding only the unit creation:
+
+```c
+if (g_ge2d_dev == NULL) {
+    g_ge2d_dev = mpp_ge_open();
+}
+g_ge2d_ready = (g_ge2d_dev != NULL);
+g_ge2d_stats.ready = g_ge2d_ready;
+if (!g_ge2d_ready) {
+    LV_LOG_ERROR("GE2D device unavailable; ...");
+}
+if (g_ge2d_registered) {
+    return;                 /* device reopened; unit already listed */
+}
+/* ... create the unit ... */
+```
+
+Confirmed in the linked image: in `lv_draw_aic_ge2d_init`, the branch to
+`mpp_ge_open` (`0x40083b5a`) is taken before any load of `g_ge2d_registered`
+(`0x40083b08`), and the failure path calls `lv_log_add` before falling through to
+the registration check.
+
+This was not a test-only defect: any deinit/init cycle would silently disable
+GE2D acceleration for the remainder of the run, and the product UI re-initialises
+LVGL on the same path.
+
+Rebuilt image
+`f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`
+(1,802,752 bytes): both static gates PASS again and the host suite is 9/9 PASS.
+Re-flash it to decide criteria 2, 3, 4 and 7.
+
+Gate 3 stays open.
