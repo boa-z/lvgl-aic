@@ -142,3 +142,34 @@ if(AIC_BUILD_SDL_SMOKE)
         endforeach()
     endif()
 endif()
+
+# Optional real-decoder contract test; SDK headers, mocked engine/OSAL only.
+set(AIC_SDK_ROOT "" CACHE PATH "Luban-Lite SDK for MPP ABI tests")
+if(AIC_SDK_ROOT)
+    add_executable(lvgl_aic_mpp_contract mpp_contract.c
+        "${AIC_ROOT}/image/mpp/lv_aic_mpp_format.c"
+        "${AIC_ROOT}/image/mpp/lv_aic_mpp_stream.c")
+    target_include_directories(lvgl_aic_mpp_contract PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs" "${AIC_ROOT}/include"
+        "${AIC_ROOT}/compat" "${AIC_ROOT}/image/mpp"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+    target_compile_definitions(lvgl_aic_mpp_contract PRIVATE
+        AIC_LVGL_USE_MPP_DEC=1 AIC_LVGL_BSP_MPP=1 AIC_LVGL_BSP_RTTHREAD=0)
+    target_link_libraries(lvgl_aic_mpp_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_mpp_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_mpp_contract COMMAND lvgl_aic_mpp_contract "${AIC_ROOT}/tests/data/mpp")
+endif()
+
+add_executable(lvgl_aic_disabled_features lifecycle_disabled.c "${AIC_ROOT}/port/lv_aic.c")
+target_include_directories(lvgl_aic_disabled_features PRIVATE
+    "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${AIC_ROOT}/port")
+target_compile_definitions(lvgl_aic_disabled_features PRIVATE
+    AIC_LVGL_USE_MPP_DEC=0 AIC_LVGL_USE_TOUCH=0 AIC_LVGL_BSP_RTTHREAD=0)
+target_link_libraries(lvgl_aic_disabled_features PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_disabled_features PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_disabled_features COMMAND lvgl_aic_disabled_features)

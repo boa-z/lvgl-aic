@@ -35,7 +35,7 @@ typedef struct {
     lv_color_format_t color_format;
 } lv_aic_mpp_decode_stats_t;
 
-#ifdef AIC_LVGL_USE_MPP_DEC
+#if AIC_LVGL_USE_MPP_DEC
 const lv_aic_mpp_decode_stats_t *lv_aic_mpp_decoder_last_stats(void);
 #endif
 

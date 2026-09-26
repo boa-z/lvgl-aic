@@ -18,6 +18,23 @@
 #include <rtconfig.h>
 #endif
 
+/* Luban-Lite emits enabled bools as empty defines; normalize these before
+ * using numeric feature guards. Host builds keep their explicit 0/1 values. */
+#if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
+#ifdef AIC_LVGL_USE_MPP_DEC
+#undef AIC_LVGL_USE_MPP_DEC
+#define AIC_LVGL_USE_MPP_DEC 1
+#endif
+#ifdef AIC_LVGL_USE_TOUCH
+#undef AIC_LVGL_USE_TOUCH
+#define AIC_LVGL_USE_TOUCH 1
+#endif
+#ifdef AIC_LVGL_USE_DISPLAY
+#undef AIC_LVGL_USE_DISPLAY
+#define AIC_LVGL_USE_DISPLAY 1
+#endif
+#endif
+
 /* v9.6 configuration names. Keep the OS setting aligned with the RT-Thread
  * OSAL; do not maintain a second LVGL mutex/thread abstraction here. */
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)

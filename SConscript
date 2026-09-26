@@ -52,4 +52,19 @@ if GetDepend('AIC_LVGL_PORT'):
         CPPDEFINES=cppdefines,
     )
 
+# Filesystem packing is a link post-action in this SDK. Make fixture edits,
+# additions and removals invalidate the ELF so the packed image cannot stay stale.
+if GetDepend('AIC_LVGL_USE_MPP_DEC') and GetDepend('AIC_LVGL_SMOKE_APP'):
+    Import('PRJ_OUT_DIR', 'PRJ_CHIP')
+    from SCons.Script import Depends, File, Value
+    import SCons.Errors
+    stage = os.path.join(AIC_ROOT, 'build', 'lvgl-mpp-data', 'mpp_test')
+    if not os.path.isfile(os.path.join(stage, 'SHA256.json')):
+        raise SCons.Errors.UserError('Run python packages/custom/lvgl-aic/tools/sdk/stage_assets.py before the MPP build')
+    assets = sorted(os.path.join(stage, name) for name in os.listdir(stage)
+                    if os.path.isfile(os.path.join(stage, name)))
+    target = '#/' + PRJ_OUT_DIR + PRJ_CHIP + '.elf'
+    Depends(target, [File(path) for path in assets])
+    Depends(target, Value('\n'.join(os.path.basename(path) for path in assets)))
+
 Return('group')

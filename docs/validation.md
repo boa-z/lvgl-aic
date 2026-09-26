@@ -198,3 +198,40 @@ Still required on hardware before any Gate 2 claim:
   `lv_aic_init/deinit` repeats with heap/CMA sampled.
 - Record `decode_time_ms`/buffer sizes from `lv_aic_mpp_decoder_last_stats()`.
 - Re-confirm the Gate 1 display/touch baseline did not regress.
+
+## Phase 2A review and user board log (2026-09-26)
+
+The user supplied a D50T-2-Lite log reporting semaphore self-test, three
+lifecycle cycles, all listed acceptance cases, 1000 decode/close cycles and
+first software frame presented. No image SHA256 was supplied; this evidence
+cannot be bound to the newly reviewed build. RT heap before=119708,
+after=115396, peak=144900 is not proof of no CMA leak. The odd-width JPEG
+reports 801x479, stride 2448, CMA 1175040 bytes. Visual color/alpha correctness
+and touch regression still need confirmation. The /sdcard mount failure is
+separate from the /data fixture filesystem.
+
+Review retained PNG chunk CRC checks and expected rejection of 4-bit palette
+files: the SDK accepts only 8-bit PNG input. No vendor decoder changes were
+made. Fixed a CRC walker bounds error (chunk framing needs 12 bytes, not 8),
+validated packet signature and empty IEND, and added every truncated prefix
+of a valid PNG to the production-code host regression test. CRC validity is
+separate from decoder format support. Adler-32 is not checked; the SDK still
+swallows some PNG hardware errors, so arbitrary corrupt-stream rejection is
+not established by these fixtures.
+
+The external allocator uses SDK-provided byte stride and padded height,
+preserves frame metadata, and places its allocator interface first. Disabled
+feature guards use numeric values; RT-Thread empty Kconfig defines are
+normalized. Removed unused session fields, consolidated fixture preconditions
+and shortened stress logs to avoid ULOG truncation.
+
+Build/evidence tools live in this repository's `tools/sdk/`. The component
+SConscript tracks staged fixtures so asset changes trigger link/packing.
+See `tools/sdk/README.md`. Fresh build manifests mark board validation
+NOT_RUN. Gate 2 remains open pending image-bound visual, touch and CMA evidence.
+
+Review verification: 9/9 host CTests and 22 fixture header decisions plus
+PNG CRC checks passed. The Windows MPP build passed static integration,
+ELF ABI, 9 firmware payload CRCs and 26 packaged fixture/provenance hashes.
+An asset-only README change triggered relink/repack without recompiling C.
+Detailed logs and source snapshots are in SDK build/lvgl-evidence/.

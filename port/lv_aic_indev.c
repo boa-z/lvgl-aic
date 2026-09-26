@@ -16,7 +16,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#if defined(AIC_LVGL_USE_TOUCH) && AIC_LVGL_BSP_RTTHREAD
+#if AIC_LVGL_USE_TOUCH && AIC_LVGL_BSP_RTTHREAD
 
 #include <rtconfig.h>
 #include <rtdevice.h>

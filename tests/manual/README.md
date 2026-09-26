@@ -18,4 +18,10 @@ Phase 1 should eventually provide tests for:
 - text;
 - touch down/move/release.
 
-MPP and hardware-accelerated tests are later gates.
+With `AIC_LVGL_USE_MPP_DEC=1`, the SDK smoke owner calls
+`lv_aic_mpp_test_run()` before the final page: accepted JPEG/PNG fixtures,
+unsupported/corrupt/missing inputs, then 1000 uncached decode/close cycles.
+Failure skips stress but still leaves the page available. Watch `lvgl.mpp.test`
+logs; a successful open must belong to the MPP decoder, not a software fallback.
+Heap before/after is diagnostic only; SDK CMA accounting and visible pixel/alpha
+correctness remain board acceptance requirements. GE2D remains disabled.

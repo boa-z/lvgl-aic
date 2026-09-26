@@ -14,7 +14,7 @@ static lv_obj_t *lv_aic_manual_status;
 static lv_obj_t *lv_aic_manual_marker;
 static lv_timer_t *lv_aic_manual_timer;
 static int32_t lv_aic_manual_marker_x;
-#if defined(AIC_LVGL_USE_MPP_DEC)
+#if AIC_LVGL_USE_MPP_DEC
 static lv_obj_t *lv_aic_mpp_label;
 static lv_obj_t *lv_aic_mpp_images[3];
 #endif
@@ -109,7 +109,7 @@ int lv_aic_manual_test_create(void)
         goto fail;
     }
 
-#if defined(AIC_LVGL_USE_MPP_DEC)
+#if AIC_LVGL_USE_MPP_DEC
     /* Phase 2A MPP section: three FILE images, non-product test assets.
      * Missing files render as LVGL placeholders; no crash, no product UI. */
     lv_aic_mpp_label = lv_label_create(lv_aic_manual_root);
@@ -133,7 +133,12 @@ int lv_aic_manual_test_create(void)
             }
             lv_image_set_src(lv_aic_mpp_images[i], paths[i]);
             lv_obj_set_pos(lv_aic_mpp_images[i], 24 + i * 220, 240);
-            lv_obj_set_size(lv_aic_mpp_images[i], 200, 150);
+            /* Keep the JPEG at 160x120; enlarge the 32x32 PNG fixtures so
+             * channel order and alpha are visible on the 800x480 panel. */
+            if (i != 0) {
+                lv_image_set_pivot(lv_aic_mpp_images[i], 0, 0);
+                lv_image_set_scale(lv_aic_mpp_images[i], 1024);
+            }
         }
     }
 #endif
@@ -164,7 +169,7 @@ void lv_aic_manual_test_deinit(void)
         lv_aic_manual_root = NULL;
         lv_aic_manual_status = NULL;
         lv_aic_manual_marker = NULL;
-#if defined(AIC_LVGL_USE_MPP_DEC)
+#if AIC_LVGL_USE_MPP_DEC
         lv_aic_mpp_label = NULL;
         lv_aic_mpp_images[0] = NULL;
         lv_aic_mpp_images[1] = NULL;

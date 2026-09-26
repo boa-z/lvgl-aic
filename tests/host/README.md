@@ -64,3 +64,13 @@ The executable also accepts `--frames N` for a bounded run,
 `--self-test` to inject a mouse click and verify the status label changes to
 `button event received`. When SDL2 is built, CTest also runs the bounded
 self-test and the official demo smoke modes with SDL's dummy video driver.
+
+## Decoder and feature-guard regressions
+
+Pass `-DAIC_SDK_ROOT=/path/to/luban-lite` to enable `lvgl_aic_mpp_contract`.
+It compiles the production decoder and real SDK MPP ABI headers with a fake
+engine/OSAL: fixture info parsing, padded JPEG allocation, correct allocator
+callback address, allocation failure and decode-failure cleanup are exercised.
+It does not decode image pixels or prove CMA/cache hardware behavior.
+`lvgl_aic_disabled_features` exercises the real lifecycle with MPP and touch
+explicitly set to zero; no disabled backend may be called.

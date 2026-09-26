@@ -8,3 +8,6 @@ out/
 *.elf
 *.map
 *.log
+
+__pycache__/
+*.pyc

@@ -54,7 +54,7 @@ lv_display_t *lv_aic_get_display(void);
 /** @brief Return the LVGL pointer input device, or NULL. */
 lv_indev_t *lv_aic_get_pointer_indev(void);
 
-#ifdef AIC_LVGL_USE_MPP_DEC
+#if AIC_LVGL_USE_MPP_DEC
 /** @brief Return the MPP image decoder owned by the port, or NULL. */
 lv_image_decoder_t *lv_aic_get_mpp_decoder(void);
 #endif
