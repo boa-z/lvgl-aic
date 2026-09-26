@@ -12,6 +12,7 @@ This file is intentionally explicit about unverified work.
 | 2026-09-24 | `d1492bf7377b056c66656e166847f4d81b2ec7b4` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | baseline PASS (provisional) | User-flashed image `05DDBA327C6026E50C23445B48EDE29EBAE3BD0EF55D4DCDB29F8670A3690EE1`; semaphore/lifecycle/first-frame logs observed; 800x480 software-rendered page and GT911 manual touch confirmed. RGB mirror was explicitly disabled. Raw-coordinate, VSync/PAN counter, cache-stress, rotation-variant, and long-run evidence is deferred to the next phase. |
 | 2026-09-26 | `c151970` + working tree (see Phase 2B closeout) | `3b135eda4eaf91e6d0607d37ca24551b836ca725` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Phase 2B closeout: CMA lifecycle counters and an alpha-observable manual page. Host 9/9 CTest PASS; target build plus both static gates PASS on image `a5e1275b4c23811a0da0bf2c619f29f1adf23c765279b37ba2389d922a122d2c`. Board confirmation of items 1.1/1.2 and the Gate 1 display/touch regression check are still pending, so Gate 2 stays open. |
 | 2026-09-27 | `cce04be` + working tree (see Phase 3A closeout) | `4d065e442de54a011b17208468ebcf6eae348297` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | fail | Phase 3A board run 1 of image `31ae0db5c965c99df9d195adc1d59d7fa664e4d13042eb4265f0e8a1384a630f`: lifecycle, all MPP fixtures, 1000 decode/close cycles and balanced CMA PASS, but the GE2D unit declined every task. Root-caused to a deinit/init bug in `lv_draw_aic_ge2d_init()` (the `g_ge2d_registered` guard skipped `mpp_ge_open()` after the first deinit), not to the driver. Fixed and rebuilt as `f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`; both static gates and the 9/9 host suite pass again. Criteria 6 and 8 confirmed on hardware, 2/3/4/7 pending the re-flash. Gate 3 stays open. |
+| 2026-09-27 | `a7002a3` | `312ec07a` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS** | Phase 3A board run 2 of image `f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`: `ge2d fill accepted=10 completed=10 fallback=5 errors=0` and `PASS GE2D opaque fill: 10 rectangles accelerated, 5 fell back to software`. Criteria 1, 2, 3, 4, 6, 7 and 8 are board-confirmed. Criteria 5 (no screen corruption) and 9 (touch interaction) still need a human at the panel, so Gate 3 stays open. |
 
 ## Required Phase 1 evidence
 
@@ -369,7 +370,7 @@ the host, the link map, or the image CRCs.
 4. Merge `phase2-mpp` into `main` (`origin/main` is at `f90f5e0`) and tag
    `v0.2.0`.
 
-## Phase 3A closeout (code complete, board run failed)
+## Phase 3A closeout (code complete, board run 2 PASS)
 
 Branch `phase3-ge2d`, cut from the Phase 2 closeout. Scope is exactly one task
 type: `LV_DRAW_TASK_TYPE_FILL`, opaque, `radius == 0`, no gradient, supported
@@ -556,6 +557,58 @@ LVGL on the same path.
 Rebuilt image
 `f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`
 (1,802,752 bytes): both static gates PASS again and the host suite is 9/9 PASS.
-Re-flash it to decide criteria 2, 3, 4 and 7.
 
-Gate 3 stays open.
+### Board result 2 (2026-09-27): PASS
+
+The rebuilt image was flashed. The GE2D section of the console:
+
+```text
+[   2.367] I/lvgl.ge2d.test: ge2d fill accepted=10 completed=10 fallback=5 errors=0
+[   2.367] I/lvgl.ge2d.test: PASS GE2D opaque fill: 10 rectangles accelerated, 5 fell back to software
+[   2.382] I/lvgl.aic.smoke: LVGL 9.6 smoke page is running
+[   2.388] I/lvgl.aic.smoke: first frame presented; scheduler is still progressing
+```
+
+The fix worked, and criteria 2, 3, 4 and 7 are now decided: the unit claimed
+opaque fills, completed every one it claimed, declined the unsupported ones, and
+reported no execution error.
+
+`accepted=10` is a clean census rather than a coincidence. LVGL calls each
+unit's `evaluate_cb` exactly once per task, at task-creation time
+(`lv_draw_finalize_task_creation()` in `src/draw/lv_draw.c`), and the unit
+returns before incrementing any counter for non-`FILL` types. The page sets
+`bg_opa = LV_OPA_COVER` on twelve objects, ten of which have `radius == 0`: the
+page root (800x480), the MPP alpha swatch (128x128), the large (280x56) and
+medium (120x56) rectangles, and the six 28x28 squares. Ten accepted, and
+`completed == accepted`, so every claimed rectangle was actually drawn by the
+engine.
+
+Only eight of those ten are Phase 3A test shapes: the unit also claimed the page
+background and the MPP white swatch without being asked. The board check's
+`>= 8` guard is deliberately below the observed value for exactly this reason.
+
+`fallback=5` is higher than the two rounded objects the page declares
+(`lv_aic_manual_marker`, radius 16; `lv_aic_ge2d_round`, radius 18). The other
+three are additional `FILL` tasks LVGL submitted on this page that Phase 3A
+declines by design; they are not individually identified here. Naming them would
+need a debug line in `evaluate()` plus another board cycle, and no completion
+criterion depends on the exact number - the board check asserts only
+`fallback >= 1`, because the count is a property of the page rather than of the
+unit. Recorded as an open observation, not a defect.
+
+The `Built on Sep 27 2026 01:13:46` banner is identical in run 1 and run 2 and
+is **not** evidence of a stale flash. `kernel/rt-thread/src/kservice.c` prints
+`__DATE__ __TIME__`, so the string is frozen at the moment that one translation
+unit was compiled: `kservice.o` is stamped `01:13:46` while
+`lv_draw_aic_ge2d.o` is stamped `01:52:27`, and the flashed `d13x.elf` and image
+are stamped `01:52`. The banner tracks `kservice.c`, not the image.
+
+Still not claimed:
+
+- criterion 5 (no screen corruption) - run 2 did draw the shapes with GE2D, so
+  the trivially-clean software-only case from run 1 no longer applies. Whether
+  the page looks right needs a person at the panel;
+- criterion 9 (display/touch regression) - the display half is confirmed on both
+  runs, but touch interaction has not been exercised.
+
+Gate 3 stays open until those two are answered.
