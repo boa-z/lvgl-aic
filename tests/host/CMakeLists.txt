@@ -35,6 +35,7 @@ set(AIC_SOURCES
     "${AIC_ROOT}/port/lv_aic.c"
     "${AIC_ROOT}/port/lv_aic_display.c"
     "${AIC_ROOT}/port/lv_aic_indev.c"
+    "${AIC_ROOT}/common/lv_aic_pixel_format.c"
     "${AIC_ROOT}/image/mpp/lv_aic_mpp_format.c"
     "${AIC_ROOT}/image/mpp/lv_aic_mpp_stream.c"
     "${AIC_ROOT}/image/mpp/lv_aic_mpp_decoder.c")
@@ -42,6 +43,7 @@ add_library(lvgl_aic STATIC ${AIC_SOURCES})
 target_include_directories(lvgl_aic
     PUBLIC "${AIC_ROOT}/include"
     PRIVATE "${AIC_ROOT}/compat"
+    PRIVATE "${AIC_ROOT}/common"
     PRIVATE "${AIC_ROOT}/image/mpp")
 target_compile_definitions(lvgl_aic PRIVATE
     AIC_LVGL_BSP_MPP=0
@@ -147,11 +149,12 @@ endif()
 set(AIC_SDK_ROOT "" CACHE PATH "Luban-Lite SDK for MPP ABI tests")
 if(AIC_SDK_ROOT)
     add_executable(lvgl_aic_mpp_contract mpp_contract.c
+        "${AIC_ROOT}/common/lv_aic_pixel_format.c"
         "${AIC_ROOT}/image/mpp/lv_aic_mpp_format.c"
         "${AIC_ROOT}/image/mpp/lv_aic_mpp_stream.c")
     target_include_directories(lvgl_aic_mpp_contract PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs" "${AIC_ROOT}/include"
-        "${AIC_ROOT}/compat" "${AIC_ROOT}/image/mpp"
+        "${AIC_ROOT}/compat" "${AIC_ROOT}/common" "${AIC_ROOT}/image/mpp"
         "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
         "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
     target_compile_definitions(lvgl_aic_mpp_contract PRIVATE

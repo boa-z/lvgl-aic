@@ -16,15 +16,23 @@ LVGL versions other than 9.6.x.
 
 ## Public/private API policy
 
-Display and touch code use public LVGL APIs. Any future GE2D implementation
-must isolate required private headers behind `compat/lvgl_aic_private.h` and
-record the dependency in this document and `porting-notes.md`.
+Display and touch code use public LVGL APIs. The GE2D implementation lives in
+`draw/ge2d/` and, like the MPP decoder, isolates the private headers it needs
+behind `compat/lvgl_aic_private.h`.
 
 MPP decoder depends on LVGL 9.6 image decoder private API.
-`image/mpp/lv_aic_mpp_decoder.c` is the only file allowed to include
-`compat/lvgl_aic_private.h` for `lv_image_decoder_dsc_t`; format and stream
-helpers stay public-only. `AIC_LVGL_USE_PRIVATE_API` is enabled for that
-translation unit only.
+`image/mpp/lv_aic_mpp_decoder.c` and the three
+`draw/ge2d/lv_draw_aic_ge2d*.c` files are the only translation units that
+enable `AIC_LVGL_USE_PRIVATE_API` and include
+`compat/lvgl_aic_private.h`; format and stream helpers stay public-only.
+
+The GE2D unit needs the private header for the `lv_draw_task_t` and
+`lv_draw_unit_t` definitions it reads (`state`, `type`, `draw_dsc`,
+`preference_score`, `preferred_draw_unit_id`, `target_layer`, `clip_area`) and
+for the `lv_draw_aic_ge2d_unit_t` base member. The create/dispatch entry points
+it calls (`lv_draw_create_unit`, `lv_draw_get_available_task`,
+`lv_draw_layer_alloc_buf`, `lv_draw_dispatch_request`) are all public. It does
+not depend on any other private structure.
 
 ## OS integration decision
 
@@ -47,7 +55,7 @@ copies state. It does not call LVGL from an ISR.
 | D13x software display | hardware validation pending |
 | GT911 touch | hardware validation pending |
 | VSync/PAN/rotation board test | hardware validation pending |
-| MPP decoder | not started |
-| GE2D | not started |
+| MPP decoder | code complete, board validation pending |
+| GE2D draw unit (opaque FILL) | code complete, board validation pending |
 
 A missing board test must be reported as `Hardware validation pending`.

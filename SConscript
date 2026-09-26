@@ -12,9 +12,17 @@ if GetDepend('AIC_LVGL_PORT'):
     src = Glob('port/*.c')
 
     # Phase 2 decoder boundary is always compiled; the sources stub out when
-    # AIC_LVGL_USE_MPP_DEC is off. GE2D stays in draw/ge2d and is never pulled
-    # in by the image decoder.
+    # AIC_LVGL_USE_MPP_DEC is off. GE2D lives in draw/ge2d and is never pulled
+    # in by the image decoder; it stubs out when AIC_LVGL_USE_GE2D is off.
     src += Glob('image/mpp/*.c')
+
+    # Shared LVGL<->MPP pixel format mapper. Both the decoder (image/mpp) and
+    # the GE2D backend (draw/ge2d) depend on it, so it lives outside either.
+    src += Glob('common/*.c')
+
+    # Phase 3A GE2D draw unit. Compiling it unconditionally keeps the source in
+    # the dependency graph; the file body is guarded by AIC_LVGL_USE_GE2D.
+    src += Glob('draw/ge2d/*.c')
 
     if GetDepend('AIC_LVGL_MANUAL_TEST'):
         src += Glob('tests/manual/*.c')
@@ -24,13 +32,17 @@ if GetDepend('AIC_LVGL_PORT'):
         cwd,
         os.path.join(cwd, 'include'),
         os.path.join(cwd, 'compat'),
+        os.path.join(cwd, 'common'),
         os.path.join(cwd, 'image', 'mpp'),
+        os.path.join(cwd, 'draw', 'ge2d'),
         os.path.join(lvgl_root, 'include'),
         os.path.join(lvgl_root, 'include', 'lvgl'),
     ]
-    if GetDepend('AIC_LVGL_USE_MPP_DEC'):
-        # MPP decoder API (mpp_decoder.h/frame_allocator.h) and UAPI pixel
-        # formats. No GE2D paths are added here by design.
+    if GetDepend('AIC_LVGL_USE_MPP_DEC') or GetDepend('AIC_LVGL_USE_GE2D'):
+        # MPP decoder API (mpp_decoder.h/frame_allocator.h), GE2D API
+        # (mpp_ge.h) and UAPI pixel formats. The GE2D sources also need
+        # bsp/artinchip/include/drv for aic_drv_ge.h, which the artinchip BSP
+        # build already puts on the global include path.
         cpppath += [
             os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'include'),
             os.path.join(AIC_ROOT, 'bsp', 'artinchip', 'include', 'uapi'),

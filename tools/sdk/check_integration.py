@@ -73,12 +73,20 @@ def check_config(root, phase="gate1"):
     if '#define AIC_LVGL_TOUCH_DEVICE "gt911"' not in header:
         fail("rtconfig.h does not select AIC_LVGL_TOUCH_DEVICE=gt911")
     disabled = list(DISABLED_CONFIG_SYMBOLS)
-    if phase == "mpp":
+    if phase in ("mpp", "ge2d"):
         disabled.remove("AIC_LVGL_USE_MPP_DEC")
         if not re.search(r"^CONFIG_AIC_LVGL_USE_MPP_DEC=y$", config, re.MULTILINE):
             fail("MPP test profile must enable AIC_LVGL_USE_MPP_DEC")
         if not re.search(r"^#define AIC_LVGL_USE_MPP_DEC(?:\s|$)", header, re.MULTILINE):
             fail("MPP test header must enable AIC_LVGL_USE_MPP_DEC")
+    if phase == "ge2d":
+        # The GE2D profile is the MPP profile plus the draw unit, so the MPP
+        # regression is observable on the same image.
+        disabled.remove("AIC_LVGL_USE_GE2D")
+        if not re.search(r"^CONFIG_AIC_LVGL_USE_GE2D=y$", config, re.MULTILINE):
+            fail("GE2D test profile must enable AIC_LVGL_USE_GE2D")
+        if not re.search(r"^#define AIC_LVGL_USE_GE2D(?:\s|$)", header, re.MULTILINE):
+            fail("GE2D test header must enable AIC_LVGL_USE_GE2D")
     for symbol in disabled:
         if re.search(r"^CONFIG_%s=y$" % re.escape(symbol), config, re.MULTILINE):
             fail("forbidden Phase 1 symbol enabled: %s" % symbol)
@@ -118,7 +126,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--map", dest="map_path", type=Path, required=True)
-    parser.add_argument("--phase", choices=("gate1", "mpp"), default="gate1")
+    parser.add_argument("--phase", choices=("gate1", "mpp", "ge2d"), default="gate1")
     parser.add_argument("--allow-component-dirty", action="store_true",
                         help="Development builds only; preserve the component diff with evidence")
     args = parser.parse_args()
@@ -143,11 +151,40 @@ def main():
         fail("link map is outside the integration checkout: %s" % map_path)
     check_config(root, args.phase)
     check_map(map_path)
-    if args.phase == "mpp":
+    if args.phase in ("mpp", "ge2d"):
         text = map_path.read_text(encoding="utf-8", errors="replace")
         for symbol in ("lv_aic_mpp_decoder_init", "mpp_decoder_decode", "lv_aic_mpp_test_run"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("MPP live symbol absent: " + symbol)
+    if args.phase == "ge2d":
+        # The draw unit must be linked from our own sources, not from the
+        # legacy ArtInChip lvgl-ui tree (already rejected in check_map).
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        required_ge2d = (
+            ("lv_draw_aic_ge2d_init",
+             r"custom[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d\.o"),
+            ("lv_draw_aic_ge2d_fill",
+             r"custom[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d_fill\.o"),
+            ("lv_aic_ge2d_test_run",
+             r"custom[\\/]lvgl-aic[\\/]tests[\\/]manual[\\/]lv_aic_ge2d_test\.o"),
+        )
+        for symbol, object_pattern in required_ge2d:
+            indexes = [index for index, line in enumerate(text.splitlines())
+                       if re.search(r"\b%s\b" % re.escape(symbol), line)]
+            if not indexes:
+                fail("GE2D live symbol absent: " + symbol)
+            lines = text.splitlines()
+            contexts = ["\n".join(lines[max(0, index - 4):index + 5])
+                        for index in indexes]
+            if not any(re.search(object_pattern, context, re.IGNORECASE)
+                       for context in contexts):
+                fail("GE2D symbol %s does not resolve to its required object" % symbol)
+            print("symbol %s: required object verified" % symbol)
+        # The engine entry points prove the backend actually talks to the GE
+        # driver instead of quietly falling back to software.
+        for symbol in ("mpp_ge_open", "mpp_ge_fillrect", "mpp_ge_emit", "mpp_ge_sync"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("GE2D engine symbol absent: " + symbol)
     print(args.phase + " static checks: PASS (not board validation)")
 
 

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-# Windows-native Gate 1 / MPP board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+# Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) { $SdkRoot=Join-Path $PSScriptRoot '../../../../..' }
 $root=(Resolve-Path $SdkRoot).Path
@@ -41,6 +41,12 @@ $def='d13x_d50t-2-lite_rt-thread_lvgl-aic-smoke_defconfig'
 if ($Phase -eq 'mpp') {
     Run-Step 'assets' @('packages/custom/lvgl-aic/tools/sdk/stage_assets.py')
     $def='d13x_d50t-2-lite_rt-thread_lvgl-aic-mpp_defconfig'
+}
+if ($Phase -eq 'ge2d') {
+    # The GE2D profile is the MPP profile plus the draw unit, so the MPP
+    # regression is exercised on the same image.
+    Run-Step 'assets' @('packages/custom/lvgl-aic/tools/sdk/stage_assets.py')
+    $def='d13x_d50t-2-lite_rt-thread_lvgl-aic-ge2d_defconfig'
 }
 Run-Step 'app-config' @($scons,"--apply-def=$def")
 Run-Step 'app-build' @($scons,"-j$Jobs")

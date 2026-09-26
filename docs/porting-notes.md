@@ -36,10 +36,16 @@ a temporary BSP event.
 ## Draw unit boundary
 
 The old ArtInChip implementation aliased its GE2D unit to
-`lv_draw_sw_unit_t`. That is not acceptable for the new component. GE2D must
-have an independent unit structure and must explicitly handle v9.6 task states
-(`WAITING`, `QUEUED`, `IN_PROGRESS`, `FINISHED`, and `FAILED`). This work is
-not part of Phase 1.
+`lv_draw_sw_unit_t`, which coupled the hardware unit to the software unit's
+thread, sync and saved layer/clip fields. The new component does not do that.
+
+Phase 3A (`draw/ge2d/`) owns an independent
+`lv_draw_aic_ge2d_unit_t { lv_draw_unit_t base_unit; lv_draw_task_t *task_act; }`
+and drives v9.6 task states explicitly: `evaluate` sets the preference score,
+`dispatch` moves the task to `IN_PROGRESS`, the GE call runs synchronously, and
+the task ends `FINISHED` or `FAILED`. There is no `LV_DRAW_TASK_STATE_READY` in
+v9.6; the vendor port's use of it was wrong. Clip geometry comes from the task's
+own `clip_area` and `target_layer`, never from a field cached on the unit.
 
 ## ArtInChip framebuffer details
 
@@ -61,9 +67,19 @@ baseline.
 
 Phase 2 boundary (`image/mpp/`): `lv_aic_mpp_decoder_init/deinit` own a single
 `lv_image_decoder_t`; `lv_aic_init/deinit` wire it as display -> input ->
-decoder with reverse teardown. Format mapping lives in `lv_aic_mpp_format.*`
-and never includes GE2D. Stream helpers use `lv_fs` FILE sources only.
+decoder with reverse teardown. The LVGL <-> MPP translation lives in
+`common/lv_aic_pixel_format.*`, shared with the GE2D unit so the switch exists
+exactly once; `lv_aic_mpp_format.*` keeps only the decoder's acceptance policy
+and is still the only thing that defines what the decoder will request or
+accept. Stream helpers use `lv_fs` FILE sources only.
 Decoded buffers must be built with `lv_draw_buf_init()` (valid `data`,
 `unaligned_data`, `handlers`, `stride`, `data_size`); YUV/metadata hacks are
 forbidden. CMA ownership is `allocation_base` -> `aligned_data` ->
 `draw_buf.data`, freed from the base pointer on close.
+
+Phase 3A boundary (`draw/ge2d/`): the unit owns no buffer and no thread. It
+reads `layer->draw_buf->data` and `header.stride` directly and must not assume
+`stride == width * bpp`. Destination cache is cleaned and invalidated per row
+for the touched region only; the global LVGL draw-buffer handlers are not
+overridden. The GE address window (`>= 0x40000000` on D13x/G73x) is checked
+before every task.

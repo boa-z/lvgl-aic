@@ -9,6 +9,9 @@
 #if AIC_LVGL_USE_MPP_DEC
 #include "lv_aic_mpp_decoder.h"
 #endif
+#if AIC_LVGL_USE_GE2D
+#include "lv_draw_aic_ge2d.h"
+#endif
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -76,6 +79,13 @@ int lv_aic_init(void)
     }
 #endif
 
+#if AIC_LVGL_USE_GE2D
+    /* Registered last, so a failure in any earlier step never leaves the GE2D
+     * device open. init() cannot fail: if mpp_ge_open() returns NULL the unit
+     * is still created and declines every task, keeping software rendering. */
+    lv_draw_aic_ge2d_init();
+#endif
+
     lv_aic_initialized = true;
     return LV_AIC_OK;
 }
@@ -95,6 +105,11 @@ void lv_aic_deinit(void)
         lv_aic_mpp_decoder_deinit(lv_aic_mpp_decoder);
         lv_aic_mpp_decoder = NULL;
     }
+#endif
+#if AIC_LVGL_USE_GE2D
+    /* Close the GE2D device before the display goes away: the unit must not be
+     * able to touch a freed draw buffer. */
+    lv_draw_aic_ge2d_deinit();
 #endif
     if (lv_aic_display != NULL) {
         lv_aic_display_deinit(lv_aic_display);

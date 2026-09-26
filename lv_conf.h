@@ -19,11 +19,17 @@
 #endif
 
 /* Luban-Lite emits enabled bools as empty defines; normalize these before
- * using numeric feature guards. Host builds keep their explicit 0/1 values. */
+ * using numeric feature guards. Host builds keep their explicit 0/1 values.
+ * Every AIC_LVGL_USE_* symbol that is read with `#if` must be listed here:
+ * a bare `#define X` makes `#if X` a compile error, not a false branch. */
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
 #ifdef AIC_LVGL_USE_MPP_DEC
 #undef AIC_LVGL_USE_MPP_DEC
 #define AIC_LVGL_USE_MPP_DEC 1
+#endif
+#ifdef AIC_LVGL_USE_GE2D
+#undef AIC_LVGL_USE_GE2D
+#define AIC_LVGL_USE_GE2D 1
 #endif
 #ifdef AIC_LVGL_USE_TOUCH
 #undef AIC_LVGL_USE_TOUCH

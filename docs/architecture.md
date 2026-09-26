@@ -32,6 +32,30 @@ Phase 1 has one public integration entry point, `lv_aic_init()`:
 GE2D, MPP decoding, FreeType cache, encoder, and mouse are disabled for this
 phase.
 
+## Phase 3A
+
+Phase 3A adds an independent GE2D draw unit, registered by `lv_aic_init()`
+through `lv_draw_aic_ge2d_init()`. It claims exactly one kind of work —
+`LV_DRAW_TASK_TYPE_FILL` that is opaque, has `radius == 0`, no gradient, a
+destination format GE2D can write, and a buffer inside the GE address window —
+and leaves every other task to the software renderer.
+
+The unit runs synchronously on the dispatching thread: `ge_fillrect` ->
+`mpp_ge_emit` -> `mpp_ge_sync`, all three return codes checked. There is no
+render thread and no task queue, so the unit owns nothing but the task it is
+executing, which is why it is an independent `lv_draw_aic_ge2d_unit_t` rather
+than an alias of `lv_draw_sw_unit_t`. A GE failure marks the task FAILED, never
+FINISHED.
+
+It is gated on `mpp_ge_open()`: if the device is unavailable the unit is still
+registered and declines every task, so the software renderer keeps the display
+alive. The destination cache is prepared inside the backend for the touched
+region only; the global LVGL draw-buffer handlers are deliberately left
+untouched.
+
+IMAGE, LAYER, scaling, rotation and asynchronous execution are Phase 3B and
+later. MPP decoding, the FreeType cache, encoder and mouse remain separate.
+
 ## Display ownership
 
 The display port owns the `mpp_fb` handle, screen information, any temporary

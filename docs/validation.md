@@ -11,6 +11,7 @@ This file is intentionally explicit about unverified work.
 | 2026-09-24 | `cb1691519ccb7aa377a2f43938b1a423dc5ab837` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Official LVGL 9.6 widgets/benchmark/stress/music/keypad demos added and passed in the 800x480 SDL host; no hardware claim |
 | 2026-09-24 | `d1492bf7377b056c66656e166847f4d81b2ec7b4` | `c5807f9e7d18292f920dafaa018b8174635085c4` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | baseline PASS (provisional) | User-flashed image `05DDBA327C6026E50C23445B48EDE29EBAE3BD0EF55D4DCDB29F8670A3690EE1`; semaphore/lifecycle/first-frame logs observed; 800x480 software-rendered page and GT911 manual touch confirmed. RGB mirror was explicitly disabled. Raw-coordinate, VSync/PAN counter, cache-stress, rotation-variant, and long-run evidence is deferred to the next phase. |
 | 2026-09-26 | `c151970` + working tree (see Phase 2B closeout) | `3b135eda4eaf91e6d0607d37ca24551b836ca725` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Phase 2B closeout: CMA lifecycle counters and an alpha-observable manual page. Host 9/9 CTest PASS; target build plus both static gates PASS on image `a5e1275b4c23811a0da0bf2c619f29f1adf23c765279b37ba2389d922a122d2c`. Board confirmation of items 1.1/1.2 and the Gate 1 display/touch regression check are still pending, so Gate 2 stays open. |
+| 2026-09-27 | `cce04be` + working tree (see Phase 3A closeout) | `4d065e442de54a011b17208468ebcf6eae348297` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | fail | Phase 3A: independent GE2D draw unit, opaque FILL only, synchronous, everything else falls back to software. Host build plus CTest PASS; target build plus both static gates PASS on image `31ae0db5c965c99df9d195adc1d59d7fa664e4d13042eb4265f0e8a1384a630f`. Board run: lifecycle, all MPP fixtures, 1000 decode cycles and balanced CMA PASS, but `mpp_ge_open()` returned NULL, so the GE2D unit declined every task and the page rendered in software. Criteria 2/3/4/7 fail or are unprovable; 6 and 8 confirmed. Gate 3 stays open. |
 
 ## Required Phase 1 evidence
 
@@ -367,3 +368,150 @@ the host, the link map, or the image CRCs.
    and does not describe the artifact above.
 4. Merge `phase2-mpp` into `main` (`origin/main` is at `f90f5e0`) and tag
    `v0.2.0`.
+
+## Phase 3A closeout (code complete, board run failed)
+
+Branch `phase3-ge2d`, cut from the Phase 2 closeout. Scope is exactly one task
+type: `LV_DRAW_TASK_TYPE_FILL`, opaque, `radius == 0`, no gradient, supported
+destination format, GE-addressable buffer. Everything else is left to the
+software renderer on purpose. IMAGE, LAYER, scale, rotation and an asynchronous
+render thread are out of scope and were not started.
+
+### What changed
+
+New:
+
+- `common/lv_aic_pixel_format.{c,h}` - the single LVGL <-> MPP format
+  translation. The decoder and the GE2D unit both need it, so it belongs to
+  neither. `lv_aic_pixel_format_is_ge2d_dst()` holds the GE2D destination
+  policy;
+- `draw/ge2d/lv_draw_aic_ge2d.{c,h}` - the draw unit: registration, `evaluate`,
+  `dispatch`, `delete`, counters. `lv_draw_aic_ge2d_unit_t` is an independent
+  struct (`base_unit` + `task_act`); it does **not** reuse `lv_draw_sw_unit_t`,
+  and it never touches `LV_DRAW_TASK_STATE_READY` or a saved
+  `target_layer`/`clip_area` on the unit;
+- `draw/ge2d/lv_draw_aic_ge2d_fill.c` - one opaque `ge_fillrect` ->
+  `mpp_ge_emit` -> `mpp_ge_sync`, all three return codes checked;
+- `draw/ge2d/lv_draw_aic_ge2d_utils.{c,h}` - GE address-window check
+  (`>= 0x40000000` on D13x/G73x), destination format check, and explicit
+  destination cache preparation for the touched region only;
+- `tests/manual/lv_aic_ge2d_test.c` - finite board check, `lv_aic_ge2d_test_run()`.
+
+Changed:
+
+- `image/mpp/lv_aic_mpp_format.c` now delegates to the shared mapper. Its
+  accepted set is unchanged: `to_lvgl()` still rejects XRGB8888 and the BGR
+  family, so Phase 2 decoder behaviour is byte-identical;
+- `port/lv_aic.c` calls `lv_draw_aic_ge2d_init()` last (so no earlier failure
+  can leave the GE device open) and `lv_draw_aic_ge2d_deinit()` before the
+  display goes away;
+- `tests/manual/lv_aic_manual_test.{c,h}` add the Phase 3A page: one large, one
+  medium and six small opaque rectangles (GE2D), plus one rounded rectangle that
+  must fall back;
+- `lv_conf.h` - see the trap below;
+- `SConscript`, `tests/host/CMakeLists.txt`, `tools/sdk/*` and
+  `target/configs/d13x_d50t-2-lite_rt-thread_lvgl-aic-ge2d_defconfig` wire the
+  new sources and a `ge2d` build phase into the existing entry points.
+
+### Design points worth keeping
+
+- `evaluate()` returns 1 when it accepts a task. The vendor port returned 0;
+  LVGL 9.6 ignores the return value but the intent is now readable.
+- A GE failure marks the task `LV_DRAW_TASK_STATE_FAILED`, never `FINISHED`. A
+  rectangle the engine did not draw must not be reported as drawn.
+- The unit is gated on `mpp_ge_open()`. If the device is unavailable the unit is
+  still registered and declines every task, so software rendering keeps the
+  display alive instead of the unit dispatching into a NULL device. The
+  2026-09-27 board run exercised exactly this path.
+- `header.stride` is authoritative and is never assumed to equal `width * bpp`.
+- The destination cache is prepared inside the backend for the touched region
+  only. The global LVGL draw-buffer handlers are deliberately left alone, so the
+  rest of LVGL keeps its own cache policy.
+- Preference score is 70. The software unit claims at `>= 100`, so 70 wins, and
+  a task GE2D declines still reaches the software renderer.
+- `dispatch()` must keep the explicit `preferred_draw_unit_id !=
+  AIC_GE2D_DRAW_UNIT_ID` check: `lv_draw_get_available_task()` also returns tasks
+  whose `preferred_draw_unit_id` is `LV_DRAW_UNIT_NONE`, and dropping the check
+  would dispatch another backend's work.
+
+### Trap found and fixed while bringing this up
+
+`rtconfig.h` emits an enabled `bool` as a *bare* `#define AIC_LVGL_USE_GE2D`.
+A bare define makes `#if AIC_LVGL_USE_GE2D` a hard compile error
+(`#if with no expression`), not a false branch. `lv_conf.h` already normalized
+`AIC_LVGL_USE_MPP_DEC`, `AIC_LVGL_USE_TOUCH` and `AIC_LVGL_USE_DISPLAY` to `1`
+for exactly this reason; `AIC_LVGL_USE_GE2D` had been missed. Any future
+`AIC_LVGL_USE_*` symbol read with `#if` must be added to that block.
+
+### Verification so far (host and target, no board claim)
+
+Host, `build/lvgl-host` (external LVGL checkout):
+
+- `cmake --build` clean under `-Wall -Wextra -Werror` for `lvgl_aic`,
+  `lvgl_aic_smoke`, `lvgl_aic_mpp_contract` and `lvgl_aic_disabled_features`;
+- `ctest`: 9/9 PASS in 11.82 s. The SDL tests need `/c/msys64/ucrt64/bin` on
+  `PATH` for `SDL2.dll`; without it they fail with `0xc0000135`
+  (STATUS_DLL_NOT_FOUND), which is environmental.
+
+Target, built with the project's own entry point
+`packages/custom/lvgl-aic/tools/sdk/build.sh` (`PHASE=ge2d`,
+`ALLOW_COMPONENT_DIRTY=1`):
+
+- the five new/changed translation units compile with no warning attributable to
+  them (`lv_aic_pixel_format.c`, `lv_draw_aic_ge2d.c`,
+  `lv_draw_aic_ge2d_fill.c`, `lv_draw_aic_ge2d_utils.c`, `lv_aic_mpp_format.c`);
+- `ge2d static checks: PASS (not board validation)`: all 10 base symbols plus
+  `lv_draw_aic_ge2d_init`, `lv_draw_aic_ge2d_fill` and `lv_aic_ge2d_test_run`
+  resolve to their required objects;
+- `verify_image.py`: application and bootloader ELF32 RISC-V double-float ABI
+  PASS, 9 payload CRCs PASS, 26 packaged MPP fixture/provenance hashes PASS;
+- link map: our objects are `common/lv_aic_pixel_format.o`,
+  `draw/ge2d/lv_draw_aic_ge2d{,_fill,_utils}.o`,
+  `tests/manual/lv_aic_ge2d_test.o`; the engine entry points `mpp_ge_open`,
+  `mpp_ge_fillrect`, `mpp_ge_emit` and `mpp_ge_sync` are all present, so the
+  backend really does call the GE driver; 0 `lvgl-ui`/`lvgl_v9` hits;
+- `.config` has `CONFIG_AIC_LVGL_USE_GE2D=y` **and**
+  `CONFIG_AIC_LVGL_USE_MPP_DEC=y`, so the MPP regression is observable on the
+  same image; `CONFIG_AIC_GE_DRV=y`, `CONFIG_AIC_GE_DRV_V11=y`,
+  `CONFIG_AIC_GE_CMDQ=y`;
+- image
+  `output/d13x_d50t-2-lite_rt-thread_lvgl-aic-ge2d/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+  1,802,752 bytes, SHA256
+  `31ae0db5c965c99df9d195adc1d59d7fa664e4d13042eb4265f0e8a1384a630f`.
+  Recompiling all five units from scratch reproduced a byte-identical image.
+
+### Board result (2026-09-27): GE2D bring-up failed
+
+The image above was flashed to the D50T-2-Lite board. The run split cleanly.
+
+Confirmed on hardware:
+
+- display and touch come up, and the smoke page presents a first frame with the
+  scheduler still progressing (`first frame presented; scheduler is still
+  progressing`), so there is no scheduler stall;
+- the MPP decoder is not regressed: every fixture PASSes (including the
+  interlace/bit-depth rejection cases and the corrupt-CRC gate), 1000
+  decode/close cycles complete, and CMA stays balanced (`current=0 peak=61440
+  alloc=1000 free=1000`).
+
+Failed:
+
+- `E/lvgl.ge2d.test: FAIL GE2D device unavailable: mpp_ge_open() failed; check
+  the GE driver`. The unit therefore declined every task - the designed
+  behaviour for an unavailable device - and the page rendered entirely in
+  software. Criteria 2, 3, 4 and 7 are unverified as a result, and criterion 5
+  is only trivially true because GE2D drew nothing.
+
+The root cause is inside `mpp_ge_open()` and was not identifiable from the
+captured log: the capture starts at the 0.4 s mark, while the GE probe runs
+earlier, at the device-init stage. Static inspection of this build rules out the
+obvious candidates - the driver is linked with `__rt_init_aic_ge_probe` present
+in the init table, `hal_ge_cmdq.o` is the only GE HAL built, `hal_ge_control()`
+handles `IOC_GE_MODE`, and `GE_CMA`/`GE_DEFAULT` alias the `MEM_CMA`/`MEM_DEFAULT`
+regions the working decoder already uses.
+
+The distinguishing messages to capture on the next run are `Failed to open.`,
+`cmdq aicos_malloc failed!`, `cmd_buf aicos_malloc failed!`, `ioctl() return N`
+and `ge_cmd_buf_size failed N`.
+
+Gate 3 stays open. Phase 3B (IMAGE + LAYER) has not been started.

@@ -42,8 +42,15 @@ Phase 0/Phase 1 bring-up is under development:
 - LVGL 9.6 version guard and configuration;
 - RT-Thread software-renderer display baseline;
 - ArtInChip framebuffer/VSync/rotation integration;
-- touch input baseline;
-- GE2D and MPP decoder intentionally remain disabled until their gates pass.
+- touch input baseline.
+
+Opt-in features, each behind its own `AIC_LVGL_USE_*` Kconfig symbol and each
+off by default until its gate passes:
+
+- `AIC_LVGL_USE_MPP_DEC` — MPP JPEG/PNG image decoder (`image/mpp/`);
+- `AIC_LVGL_USE_GE2D` — GE2D draw unit for opaque, unrounded, non-gradient
+  fills (`draw/ge2d/`). IMAGE and LAYER tasks are not claimed; they stay on the
+  software renderer.
 
 No hardware validation is claimed by the repository until the validation record
 contains board-specific evidence.

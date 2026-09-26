@@ -69,7 +69,7 @@ print(f'PASS: {images[0].name}: {len(components)} payload CRCs, {len(data)} byte
 
 from sdk_paths import sdk_root
 root = sdk_root()
-if len(sys.argv) > 3 and sys.argv[3] == "mpp":
+if len(sys.argv) > 3 and sys.argv[3] in ("mpp", "ge2d"):
     inventory = json.loads((root / "build/lvgl-mpp-data/mpp_test/SHA256.json").read_text())
     tool = root / "tools/scripts" / ("mcopy.exe" if os.name == "nt" else "mcopy")
     with tempfile.TemporaryDirectory(prefix="lvgl-mpp-image-") as directory:

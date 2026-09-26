@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Build a D50T-2-Lite platform-only Gate 1 or MPP test image.
+# Build a D50T-2-Lite platform-only Gate 1, MPP or GE2D test image.
 set -euo pipefail
 
 ROOT="${LVGL_AIC_SDK_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd)}"
@@ -18,7 +18,13 @@ case "$PHASE" in
         APP_DEFCONFIG="d13x_d50t-2-lite_rt-thread_lvgl-aic-mpp_defconfig"
         python3 packages/custom/lvgl-aic/tools/sdk/stage_assets.py
         ;;
-    *) echo "PHASE must be gate1 or mpp" >&2; exit 2 ;;
+    ge2d)
+        # The GE2D profile is the MPP profile plus the draw unit, so the MPP
+        # regression is exercised on the same image.
+        APP_DEFCONFIG="d13x_d50t-2-lite_rt-thread_lvgl-aic-ge2d_defconfig"
+        python3 packages/custom/lvgl-aic/tools/sdk/stage_assets.py
+        ;;
+    *) echo "PHASE must be gate1, mpp or ge2d" >&2; exit 2 ;;
 esac
 APP_OUTPUT="output/${APP_DEFCONFIG%_defconfig}"
 

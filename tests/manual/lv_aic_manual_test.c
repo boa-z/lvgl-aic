@@ -18,6 +18,37 @@ static int32_t lv_aic_manual_marker_x;
 static lv_obj_t *lv_aic_mpp_label;
 static lv_obj_t *lv_aic_mpp_images[3];
 #endif
+#if AIC_LVGL_USE_GE2D
+#define LV_AIC_GE2D_SMALL_COUNT 6
+static lv_obj_t *lv_aic_ge2d_label;
+static lv_obj_t *lv_aic_ge2d_large;
+static lv_obj_t *lv_aic_ge2d_medium;
+static lv_obj_t *lv_aic_ge2d_small[LV_AIC_GE2D_SMALL_COUNT];
+static lv_obj_t *lv_aic_ge2d_round;
+#endif
+
+#if AIC_LVGL_USE_GE2D
+/* Plain opaque rectangle. radius 0 and no gradient are exactly the Phase 3A
+ * preconditions, so these shapes are what the GE2D unit is allowed to claim. */
+static lv_obj_t *lv_aic_ge2d_make_rect(lv_obj_t *parent, int32_t x, int32_t y,
+                                       int32_t w, int32_t h, uint32_t color,
+                                       int32_t radius)
+{
+    lv_obj_t *rect = lv_obj_create(parent);
+
+    if (rect == NULL) {
+        return NULL;
+    }
+    lv_obj_set_size(rect, w, h);
+    lv_obj_set_pos(rect, x, y);
+    lv_obj_set_style_bg_color(rect, lv_color_hex(color), 0);
+    lv_obj_set_style_bg_opa(rect, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(rect, 0, 0);
+    lv_obj_set_style_pad_all(rect, 0, 0);
+    lv_obj_set_style_radius(rect, radius, 0);
+    return rect;
+}
+#endif
 
 static void lv_aic_manual_button_event(lv_event_t *event)
 {
@@ -164,6 +195,43 @@ int lv_aic_manual_test_create(void)
     }
 #endif
 
+#if AIC_LVGL_USE_GE2D
+    /* Phase 3A GE2D section. The left-hand shapes are opaque with square
+     * corners, so the GE2D unit claims them; the right-hand rounded rectangle
+     * is deliberately unclaimable and exercises the software fallback. */
+    lv_aic_ge2d_label = lv_label_create(lv_aic_manual_root);
+    if (lv_aic_ge2d_label == NULL) {
+        goto fail;
+    }
+    lv_label_set_text(lv_aic_ge2d_label,
+                      "ge2d: opaque squares accelerated | rounded -> software");
+    lv_obj_set_style_text_color(lv_aic_ge2d_label, lv_color_hex(0xffffff), 0);
+    lv_obj_set_pos(lv_aic_ge2d_label, 16, 372);
+
+    lv_aic_ge2d_large = lv_aic_ge2d_make_rect(lv_aic_manual_root, 16, 400, 280, 56,
+                                              0xc04040, 0);
+    lv_aic_ge2d_medium = lv_aic_ge2d_make_rect(lv_aic_manual_root, 308, 400, 120, 56,
+                                               0x4080c0, 0);
+    if ((lv_aic_ge2d_large == NULL) || (lv_aic_ge2d_medium == NULL)) {
+        goto fail;
+    }
+
+    for (int i = 0; i < LV_AIC_GE2D_SMALL_COUNT; i++) {
+        lv_aic_ge2d_small[i] = lv_aic_ge2d_make_rect(lv_aic_manual_root,
+                                                     444 + i * 34, 414, 28, 28,
+                                                     0x50c080, 0);
+        if (lv_aic_ge2d_small[i] == NULL) {
+            goto fail;
+        }
+    }
+
+    lv_aic_ge2d_round = lv_aic_ge2d_make_rect(lv_aic_manual_root, 664, 400, 88, 56,
+                                              0xd0a040, 18);
+    if (lv_aic_ge2d_round == NULL) {
+        goto fail;
+    }
+#endif
+
     return LV_AIC_OK;
 
 fail:
@@ -195,6 +263,15 @@ void lv_aic_manual_test_deinit(void)
         lv_aic_mpp_images[0] = NULL;
         lv_aic_mpp_images[1] = NULL;
         lv_aic_mpp_images[2] = NULL;
+#endif
+#if AIC_LVGL_USE_GE2D
+        lv_aic_ge2d_label = NULL;
+        lv_aic_ge2d_large = NULL;
+        lv_aic_ge2d_medium = NULL;
+        lv_aic_ge2d_round = NULL;
+        for (int i = 0; i < LV_AIC_GE2D_SMALL_COUNT; i++) {
+            lv_aic_ge2d_small[i] = NULL;
+        }
 #endif
     }
     lv_aic_manual_marker_x = 0;
