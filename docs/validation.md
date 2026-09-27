@@ -14,6 +14,7 @@ This file is intentionally explicit about unverified work.
 | 2026-09-27 | `cce04be` + working tree (see Phase 3A closeout) | `4d065e442de54a011b17208468ebcf6eae348297` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | fail | Phase 3A board run 1 of image `31ae0db5c965c99df9d195adc1d59d7fa664e4d13042eb4265f0e8a1384a630f`: lifecycle, all MPP fixtures, 1000 decode/close cycles and balanced CMA PASS, but the GE2D unit declined every task. Root-caused to a deinit/init bug in `lv_draw_aic_ge2d_init()` (the `g_ge2d_registered` guard skipped `mpp_ge_open()` after the first deinit), not to the driver. Fixed and rebuilt as `f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`; both static gates and the 9/9 host suite pass again. Criteria 6 and 8 confirmed on hardware, 2/3/4/7 pending the re-flash. Gate 3 stays open. |
 | 2026-09-27 | `a7002a3` | `312ec07a` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS** | Phase 3A board run 2 of image `f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`: `ge2d fill accepted=10 completed=10 fallback=5 errors=0` and `PASS GE2D opaque fill: 10 rectangles accelerated, 5 fell back to software`. Criteria 1, 2, 3, 4, 6, 7 and 8 are board-confirmed. Criteria 5 (no screen corruption) and 9 (touch interaction) still need a human at the panel, so Gate 3 stays open. |
 | 2026-09-27 | `a7002a3` + docs | `bf56a184` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS (closed)** | Phase 3A closeout. The operator confirmed the two panel-only criteria after run 2: no screen corruption (5) and touch interaction still works (9). **All nine completion criteria are board-confirmed** and Phase 3A is closed. Criteria 5 and 9 are operator judgements, not measurements - no pixel diff was captured. Phase 3B (IMAGE + LAYER) is planned separately. |
+| 2026-09-27 | `3efc79d` + docs (see Phase 3B closeout) | `15e67f67` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Phase 3B IMAGE + LAYER: the GE2D unit blits untransformed images and composites layers through the same code path. Host 9/9 CTest PASS (13.56 s); target build plus both static gates PASS on image `ad32c8540a640c71c25bae6ddf06b1835eec773937c4bf9dae997203e0e5f18b`. **No board run.** The IMAGE half is expected to be engine-drawn; the LAYER composite is expected to fall back to software, because LVGL allocates layer buffers from the RT-Thread system heap at `0x30040000`, below the GE address window. See the Phase 3B closeout. |
 
 ## Required Phase 1 evidence
 
@@ -628,3 +629,147 @@ looked right and touch responded", not "every pixel matched a reference" or "the
 touch coordinates were within N units". A machine-checkable version of either
 (framebuffer capture versus a reference image; raw touch coordinates versus the
 panel mapping) is separate work and is not claimed here.
+
+## Phase 3B closeout (in progress: host and target verified, board run pending)
+
+Branch `phase3-ge2d`, continuing from the Phase 3A closeout. Scope is two more
+task types on the draw unit Phase 3A built:
+
+```text
+LV_DRAW_TASK_TYPE_IMAGE   untransformed, untiled, unrecolored, no mask
+LV_DRAW_TASK_TYPE_LAYER   the same blit, fed from a child layer's buffer
+```
+
+Scale, rotation, skew, recolor, masks, colour keys, non-normal blend modes, image
+opacity and the asynchronous render thread are still out of scope and were not
+started. A LAYER task is the one place a partial opacity is accepted, because
+LVGL only creates a LAYER task for a transform or for a partial layer opacity
+(`calculate_layer_type()` in `lv_obj_style.c`); declining it would decline nearly
+every layer.
+
+### What changed
+
+New:
+
+- `draw/ge2d/lv_draw_aic_ge2d_image.c` - the blit: `ge_bitblt` ->
+  `mpp_ge_emit` -> `mpp_ge_sync`, all three return codes checked. It also reports
+  which of three outcomes occurred: the engine drew it, the engine declined and
+  software drew it, or there was nothing to draw.
+
+Changed:
+
+- `draw/ge2d/lv_draw_aic_ge2d.{c,h}` - `evaluate()` gained the IMAGE and LAYER
+  cases; `dispatch()` routes both to the one blit entry point and counts the
+  engine-versus-software split. New `image_sw_fallback` / `layer_sw_fallback`
+  counters and a new `lv_draw_aic_ge2d_outcome_t`;
+- `common/lv_aic_pixel_format.h` - the source-format policy now documents why
+  ARGB8888 is accepted: it is blended with its own per-pixel alpha, not copied.
+  Accepting it and then dropping the alpha channel would paint a transparent
+  image as an opaque one;
+- `tests/manual/lv_aic_manual_test.c` and `tests/manual/lv_aic_ge2d_test.c` - the
+  Phase 3B probes and the extended board check.
+
+### Reused, not reimplemented
+
+The decode, the clip intersection and the decoder lifetime stay LVGL's: the blit
+supplies a core callback to LVGL 9.6's own `lv_draw_image_normal_helper()`. The
+9.1 helpers `_lv_draw_image_normal_helper()` and `_lv_draw_image_tiled_helper()`
+are not ported.
+
+A LAYER task carries an `lv_layer_t` where an IMAGE task carries its source, so
+the layer's `draw_buf` is wrapped in a temporary image descriptor and the
+identical blit runs - the same trick `lv_draw_sw_layer()` uses, for the same
+reason. There is no second "blend a layer" implementation to drift, and no second
+draw unit.
+
+### Design points worth keeping
+
+- The blend is chosen by operation, not by task type: `opa >= LV_OPA_COVER &&
+  src_cf != ARGB8888` takes the plain-copy path, everything else takes
+  `GE_PD_SRC_OVER` with `src_alpha_mode = 2` (mixed, pixel alpha x global alpha).
+  `accepts_image()` still declines image opacity, so today the global-alpha half
+  is reached only by LAYER - but the condition is written for the operation so it
+  stays correct when Phase 3C lifts that.
+- `struct ge_ctrl.alpha_en` is inverted in the D13x header comment
+  (`aic_drv_ge.h` says "0: enable Porter/Duff alpha blending"). The HAL and the
+  vendor port both treat non-zero as blending on. Trust the HAL; the comment is
+  wrong.
+- The fallback keeps the ORIGINAL descriptor, so the layer path goes through
+  `lv_draw_sw_layer()` and the layer bookkeeping stays in upstream's hands.
+- The image assertions in the board check compile out when the MPP decoder is
+  disabled, so a GE2D-without-decoder build does not fail a check whose probes do
+  not exist.
+
+### Trap found while bringing this up: the source side of the GE address window
+
+Phase 3A gated the **destination** at `>= 0x40000000` on D13x/G73x, matching the
+vendor port (`lv_drivers/lv_ge2d/lv_draw_ge2d.c`). Phase 3B has to gate the
+**source** too, because the engine reads it. That second gate is not a formality:
+
+| Buffer | Allocation | Address | Inside the GE window? |
+| --- | --- | --- | --- |
+| Display draw buffer | `mpp_fb` AICFB framebuffer | PSRAM | yes |
+| Decoded image | `aicos_malloc_align(MEM_CMA, ...)` | `0x400e2464` | yes |
+| Layer draw buffer | `lv_draw_buf_create` -> `lv_malloc` -> `rt_malloc` | `0x30040000`-`0x30140000` | **no** |
+
+`CONFIG_AIC_DEFAULT_SYS_HEAP_SRAM=y` puts `__heap_start` at `0x30040000` (D13x
+linker script, initialised in `target/d13x/d50t-2-lite/board.c`), and
+`lv_mem_core_rtthread.c` makes `lv_malloc` `rt_malloc`. So every LAYER composite
+is declined after being accepted, and composited in software.
+
+This was found while writing the board check, not on hardware. It matters because
+the first version of the check would have asserted `layer_completed > 0` and
+printed "N layers accelerated" - both of which would have been true statements
+about the counters and false statements about the engine. Two things changed as a
+result:
+
+1. the executor now reports the outcome, and `*_sw_fallback` counts the
+   hand-offs, so the engine-drawn count is `completed - sw_fallback`;
+2. the board check asserts only that a LAYER task is claimed and completed, and
+   reports the engine-versus-software split instead of requiring engine work.
+   Requiring engine work would fail on correct code.
+
+Moving layer buffers into CMA is the fix, and it is deliberately NOT part of this
+phase: CMA is shared with the decoder and the display, so it is a memory-policy
+decision. The address gate already makes the transition safe, so the blit itself
+would not change.
+
+### Verification so far (host and target, no board claim)
+
+Host, `build/lvgl-host` (external LVGL checkout):
+
+- `ctest`: 9/9 PASS in 13.56 s. The SDL tests need `/c/msys64/ucrt64/bin` on
+  `PATH` for `SDL2.dll`; without it they fail with `0xc0000135`
+  (STATUS_DLL_NOT_FOUND), which is environmental.
+
+Target, built with the project's own entry point
+`packages/custom/lvgl-aic/tools/sdk/build.sh` (`PHASE=ge2d`,
+`ALLOW_COMPONENT_DIRTY=1`):
+
+- `lv_draw_aic_ge2d.c`, `lv_draw_aic_ge2d_image.c` and both manual test files
+  compile with no warning attributable to them;
+- `ge2d static checks: PASS (not board validation)`: the Phase 3A symbol set plus
+  `lv_draw_aic_ge2d_image` resolve to their required objects;
+- `verify_image.py`: application and bootloader ELF32 RISC-V double-float ABI
+  PASS, 9 payload CRCs PASS, 26 packaged MPP fixture/provenance hashes PASS;
+- image
+  `output/d13x_d50t-2-lite_rt-thread_lvgl-aic-ge2d/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+  1,804,800 bytes, SHA256
+  `ad32c8540a640c71c25bae6ddf06b1835eec773937c4bf9dae997203e0e5f18b`.
+  Phase 3A's image was 1,802,752 bytes; the 2,048-byte growth is the new
+  counters, the outcome enum and the extra log strings.
+
+None of the above is board evidence. Compiling, linking and passing a static gate
+does not prove the engine drew anything.
+
+### What is claimed for LAYER, and what is not
+
+Claimed: the unit claims a LAYER task, the composite is correct because the
+software path draws it, the layer is never dropped, and the log states which path
+ran.
+
+**Not** claimed: that a LAYER composite is drawn by the engine on this board. The
+expected board result is `engine layer == 0` with `sw_fallback layer == layer`.
+
+Phase 3B stays **open** until a board run confirms the criteria in
+[phase3b-image-layer-plan.md](../../../../docs/phase3b-image-layer-plan.md).
