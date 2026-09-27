@@ -1,11 +1,10 @@
 /**
  * @file lv_draw_aic_ge2d_image.c
- * @brief Plain image blit through the ArtInChip GE2D engine.
+ * @brief RGB copy/scale through the ArtInChip GE2D engine.
  *
- * Supports exactly one shape of work: an untransformed copy from a
- * GE-addressable source into a GE-addressable destination. No scale, no
- * rotation, no recolor, no tile, no mask. evaluate() rejects everything else,
- * so this function can assume the simple case.
+ * Supports unrotated copies and bounded RGB scaling with explicit inverse-map
+ * phases. Unsupported geometry falls back before submission; a hardware
+ * failure never retries blending on a potentially partly written target.
  *
  * Source alpha is the one thing that is not "the simple case" and is handled
  * anyway: an ARGB8888 source is blended with its own per-pixel alpha, and a
@@ -54,6 +53,7 @@
 #include "lv_draw_aic_ge2d.h"
 #include "lv_draw_aic_ge2d_utils.h"
 #include "lv_aic_pixel_format.h"
+#include "lv_draw_aic_ge2d_scale.h"
 
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 
@@ -61,6 +61,7 @@
 
 #include <aic_core.h>
 #include <mpp_ge.h>
+#include <limits.h>
 
 /**
  * Outcome of one blit attempt.
@@ -74,13 +75,13 @@
  */
 static bool s_blit_called;
 static bool s_blit_ok;
+static bool s_blit_failed;
 
 /**
  * Build the GE2D blit descriptor and run it.
  *
- * Returns true when the engine accepted and completed the copy. A false return
- * is a request to fall back, not an error: the caller still has to draw the
- * pixels somehow.
+ * Returns true when the engine completed the copy. A false return requests
+ * fallback unless s_blit_failed records a real hardware failure.
  */
 static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
                                   const lv_draw_image_dsc_t *draw_dsc,
@@ -100,6 +101,8 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     enum mpp_pixel_format dst_fmt;
     int32_t blit_w;
     int32_t blit_h;
+    int64_t rx, ry, rw, rh;
+    bool scaled = draw_dsc->scale_x != LV_SCALE_NONE || draw_dsc->scale_y != LV_SCALE_NONE;
 
     if (layer == NULL || layer->draw_buf == NULL) {
         return false;
@@ -140,14 +143,47 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         return false;
     }
 
-    /* Source crop, relative to the buffer origin. For an untransformed image
-     * the decoded pixel (0,0) sits at img_coords->x1/y1. */
-    src_area = *clipped_img_area;
-    lv_area_move(&src_area, -img_coords->x1, -img_coords->y1);
-
-    /* Destination crop, relative to the layer buffer origin. */
-    dst_area = *clipped_img_area;
-    lv_area_move(&dst_area, -layer->buf_area.x1, -layer->buf_area.y1);
+    /* LVGL 9.6 has intersected the transformed area and task clip. Intersect
+     * actual layer storage before inverse mapping; never drop an edge pixel. */
+    if (!lv_area_intersect(&dst_area, clipped_img_area, &layer->buf_area)) {
+        return false;
+    }
+    rx = (int64_t)dst_area.x1 - img_coords->x1;
+    ry = (int64_t)dst_area.y1 - img_coords->y1;
+    rw = (int64_t)dst_area.x2 - dst_area.x1 + 1;
+    rh = (int64_t)dst_area.y2 - dst_area.y1 + 1;
+    if (rx < INT32_MIN || ry < INT32_MIN || rw < 1 || rh < 1 ||
+        rw > INT32_MAX || rh > INT32_MAX ||
+        rx + rw - 1 > INT32_MAX || ry + rh - 1 > INT32_MAX) return false;
+    src_area = (lv_area_t){(int32_t)rx, (int32_t)ry,
+                           (int32_t)(rx+rw-1), (int32_t)(ry+rh-1)};
+    if (scaled) {
+        lv_aic_ge2d_scale_axis_t x, y;
+        if (draw_dsc->rotation != 0 || draw_dsc->skew_x != 0 || draw_dsc->skew_y != 0 ||
+            !lv_aic_ge2d_scale_axis(src->header.w, src_area.x1, lv_area_get_width(&dst_area),
+                                    draw_dsc->pivot.x, draw_dsc->scale_x, &x) ||
+            !lv_aic_ge2d_scale_axis(src->header.h, src_area.y1, lv_area_get_height(&dst_area),
+                                    draw_dsc->pivot.y, draw_dsc->scale_y, &y) ||
+            lv_aic_ge2d_scale_split_risk(x.step_16, lv_area_get_width(&dst_area))) {
+            return false;
+        }
+        src_area.x1 = x.crop;
+        src_area.x2 = x.crop + x.extent - 1;
+        src_area.y1 = y.crop;
+        src_area.y2 = y.crop + y.extent - 1;
+        blt.scale_phase.scale_phase_en = 1;
+        blt.scale_phase.scaler_en = 1;
+        blt.scale_phase.channel_num = 1;
+        blt.scale_phase.dx_16[0] = x.step_16;
+        blt.scale_phase.dy_16[0] = y.step_16;
+        blt.scale_phase.h_phase_16[0] = x.phase_16;
+        blt.scale_phase.v_phase_16[0] = y.phase_16;
+    }
+    rx = (int64_t)dst_area.x1 - layer->buf_area.x1;
+    ry = (int64_t)dst_area.y1 - layer->buf_area.y1;
+    if (rx < 0 || ry < 0 || rx+rw > dst->header.w || ry+rh > dst->header.h) return false;
+    dst_area = (lv_area_t){(int32_t)rx, (int32_t)ry,
+                           (int32_t)(rx+rw-1), (int32_t)(ry+rh-1)};
 
     blit_w = lv_area_get_width(&src_area);
     blit_h = lv_area_get_height(&src_area);
@@ -155,9 +191,10 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         /* Fully clipped: nothing to draw, and that is not a failure. */
         return true;
     }
-    /* A plain blit maps the source crop 1:1 onto the destination crop. */
-    if (lv_area_get_width(&dst_area) != blit_w ||
-        lv_area_get_height(&dst_area) != blit_h) {
+    if (src_area.x1 < 0 || src_area.y1 < 0 ||
+        src_area.x2 >= (int32_t)src->header.w || src_area.y2 >= (int32_t)src->header.h ||
+        dst_area.x1 < 0 || dst_area.y1 < 0 ||
+        dst_area.x2 >= (int32_t)dst->header.w || dst_area.y2 >= (int32_t)dst->header.h) {
         return false;
     }
 
@@ -189,8 +226,8 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     blt.dst_buf.crop_en = 1U;
     blt.dst_buf.crop.x = dst_area.x1;
     blt.dst_buf.crop.y = dst_area.y1;
-    blt.dst_buf.crop.width = (uint32_t)blit_w;
-    blt.dst_buf.crop.height = (uint32_t)blit_h;
+    blt.dst_buf.crop.width = (uint32_t)lv_area_get_width(&dst_area);
+    blt.dst_buf.crop.height = (uint32_t)lv_area_get_height(&dst_area);
 
     /* Blending is needed when either side can contribute transparency: the
      * source may carry a per-pixel alpha channel, and the draw descriptor may
@@ -249,14 +286,17 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     }
 
     if (mpp_ge_bitblt(ge, &blt) < 0) {
+        s_blit_failed = true;
         LV_LOG_ERROR("GE2D bitblt failed");
         return false;
     }
     if (mpp_ge_emit(ge) < 0) {
+        s_blit_failed = true;
         LV_LOG_ERROR("GE2D emit failed");
         return false;
     }
     if (mpp_ge_sync(ge) < 0) {
+        s_blit_failed = true;
         LV_LOG_ERROR("GE2D sync failed");
         return false;
     }
@@ -291,6 +331,10 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
     const lv_draw_image_dsc_t *blit_dsc;
     lv_draw_image_dsc_t layer_dsc;
     lv_layer_t *layer_to_draw;
+    const lv_image_decoder_args_t decoder_args = {
+        .stride_align = false,
+        .premultiply = false,
+    };
 
     if (outcome != NULL) {
         *outcome = LV_DRAW_AIC_GE2D_OUTCOME_NOTHING;
@@ -334,11 +378,19 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
 
     s_blit_called = false;
     s_blit_ok = false;
+    s_blit_failed = false;
 
-    /* LVGL owns the decode, the clip intersection and the decoder lifetime. */
+    /* GE consumes the decoded byte stride directly. Default bin-decoder
+     * normalization can replace a padded CMA source with an inaccessible
+     * LVGL heap copy. Preserve its layout and straight alpha instead.
+     * LVGL still owns decode, clipping and the decoder lifetime. */
     lv_draw_image_normal_helper(task, blit_dsc, &task->area,
-                                lv_draw_aic_ge2d_image_cb, NULL);
+                                lv_draw_aic_ge2d_image_cb, &decoder_args);
 
+    if (s_blit_failed) {
+        /* GE may already have blended pixels: never retry those in software. */
+        return LV_RESULT_INVALID;
+    }
     if (s_blit_called && s_blit_ok) {
         if (outcome != NULL) {
             *outcome = LV_DRAW_AIC_GE2D_OUTCOME_ENGINE;

@@ -13,11 +13,15 @@ extern "C" {
 #endif
 
 int lv_aic_manual_test_create(void);
+#if AIC_LVGL_BSP_RTTHREAD && AIC_LVGL_BSP_MPP
+void lv_aic_capture_poll(void);
+#endif
 #if AIC_LVGL_USE_MPP_DEC
 int lv_aic_mpp_test_run(void);
 #endif
 #if AIC_LVGL_USE_GE2D
 int lv_aic_ge2d_test_run(void);
+int lv_aic_ge2d_scale_test_run(void);
 #endif
 void lv_aic_manual_test_deinit(void);
 const char *lv_aic_manual_test_status_text(void);

@@ -24,6 +24,11 @@ LVGL_AIC_SDK_ROOT=/path/to/sdk PHASE=mpp ALLOW_COMPONENT_DIRTY=1 bash packages/c
 
 Dirty component builds are opt-in. Windows archives logs, image, ELF, map,
 configuration, source patches, untracked sources and hashes under SDK
-build/lvgl-evidence/{gate1,mpp}. The shell entry builds and verifies in output/.
+build/lvgl-evidence/{gate1,mpp,ge2d}. The shell entry builds and verifies in output/.
 Python helpers accept LVGL_AIC_SDK_ROOT; check_integration.py takes --root.
 No entry flashes hardware. All board testing uses D50T-2-Lite.
+
+GE2D profile: build.ps1 -Phase ge2d -Jobs 8 -AllowComponentDirty.
+For real framebuffer export see [capture instructions](../../docs/framebuffer-capture.md).
+For the existing development UART upgrade route and defconfig requirements see
+[UART upgrade](../../docs/d50t-uart-upgrade.md).

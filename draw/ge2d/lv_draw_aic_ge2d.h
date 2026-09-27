@@ -63,6 +63,7 @@ typedef struct {
     uint32_t fill_completed;
     uint32_t image_accepted;
     uint32_t image_completed;
+    uint32_t scaled_image_engine; /**< successful scaled IMAGE tasks only */
     uint32_t image_sw_fallback;
     uint32_t layer_accepted;
     uint32_t layer_completed;
@@ -125,7 +126,7 @@ typedef enum {
 } lv_draw_aic_ge2d_outcome_t;
 
 /**
- * @brief Execute a plain image blit for @p task through GE2D.
+ * @brief Execute an RGB copy or scale for @p task through GE2D.
  *
  * Handles both LV_DRAW_TASK_TYPE_IMAGE and LV_DRAW_TASK_TYPE_LAYER. A LAYER task
  * carries an lv_layer_t in place of the image source; this function wraps that
@@ -145,8 +146,8 @@ typedef enum {
  *     the software renderer, and @p outcome is OUTCOME_SOFTWARE.
  *   - the task is a LAYER whose layer has no buffer, because nothing was drawn
  *     on it. There is nothing to blend, and @p outcome is OUTCOME_NOTHING.
- * LV_RESULT_INVALID means the task itself is malformed (wrong type, NULL
- * descriptor) - a programming error, not a runtime condition.
+ * LV_RESULT_INVALID means a malformed task or a bitblt/emit/sync failure.
+ * Hardware failures are never retried as software blends.
  *
  * The task must already have been accepted by this unit's evaluate().
  */

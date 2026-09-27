@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #if AIC_LVGL_USE_DISPLAY && AIC_LVGL_BSP_MPP
 
@@ -39,6 +40,8 @@ typedef struct {
     uint32_t lv_buffer_stride;
     lv_color_format_t lv_color_format;
     unsigned int present_index;
+    unsigned int last_presented_index;
+    bool last_presented_valid;
     bool use_pan_display;
     bool use_rotation;
     bool powered_on;
@@ -110,18 +113,22 @@ static void lv_aic_power_on(lv_aic_display_ctx_t *ctx)
     ctx->powered_on = true;
 }
 
-static void lv_aic_present(lv_aic_display_ctx_t *ctx, unsigned int buffer_index)
+static bool lv_aic_present(lv_aic_display_ctx_t *ctx, unsigned int buffer_index)
 {
+    bool ok = true;
     if (ctx->use_pan_display) {
         if (mpp_fb_ioctl(ctx->fb, AICFB_PAN_DISPLAY, &buffer_index) < 0) {
             LV_LOG_ERROR("AIC framebuffer pan failed");
+            ok = false;
         }
     }
     lv_aic_power_on(ctx);
 
     if (mpp_fb_ioctl(ctx->fb, AICFB_WAIT_FOR_VSYNC, 0) < 0) {
         LV_LOG_ERROR("AIC framebuffer VSync wait failed");
+        ok = false;
     }
+    return ok && ctx->powered_on;
 }
 
 void lv_aic_display_flush_count_reset(void)
@@ -184,12 +191,48 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
         lv_aic_cache_clean(active->data, ctx->framebuffer_size);
     }
 
-    lv_aic_present(ctx, buffer_index);
+    ctx->last_presented_valid = lv_aic_present(ctx, buffer_index);
+    if (ctx->last_presented_valid) ctx->last_presented_index = buffer_index;
     lv_aic_display_flush_count++;
     if (ctx->use_rotation && ctx->use_pan_display) {
         ctx->present_index = (ctx->present_index == 0U) ? 1U : 0U;
     }
     lv_display_flush_ready(display);
+}
+
+int lv_aic_display_snapshot(lv_display_t *display, lv_draw_buf_t *copy, uint32_t *frame)
+{
+    lv_aic_display_ctx_t *ctx;
+    void *source, *data;
+    if (!display || !copy || !frame) return LV_AIC_ERR_INVALID_STATE;
+    memset(copy, 0, sizeof(*copy));
+    ctx = lv_display_get_driver_data(display);
+    if (!ctx || !ctx->last_presented_valid) return LV_AIC_ERR_DISPLAY;
+    data = aicos_malloc_align(MEM_CMA, ctx->framebuffer_size, CACHE_LINE_SIZE);
+    if (!data) return LV_AIC_ERR_NO_MEMORY;
+    source = lv_aic_framebuffer_at(ctx, ctx->last_presented_index);
+    /* All CPU/GE work completed before present. Refresh the CPU view of
+     * scanout without writing stale cached pixels over the GE output. */
+    aicos_dcache_invalid_range((unsigned long *)source,
+                              lv_aic_align_up(ctx->framebuffer_size, CACHE_LINE_SIZE));
+    memcpy(data, source, ctx->framebuffer_size);
+    if (lv_draw_buf_init(copy, ctx->info.width, ctx->info.height,
+                         ctx->lv_color_format, ctx->info.stride, data,
+                         ctx->framebuffer_size) != LV_RESULT_OK) {
+        aicos_free_align(MEM_CMA, data);
+        memset(copy, 0, sizeof(*copy));
+        return LV_AIC_ERR_DISPLAY;
+    }
+    *frame = lv_aic_display_flush_count;
+    return LV_AIC_OK;
+}
+
+void lv_aic_display_snapshot_free(lv_draw_buf_t *copy)
+{
+    if (copy && copy->data) {
+        aicos_free_align(MEM_CMA, copy->data);
+        memset(copy, 0, sizeof(*copy));
+    }
 }
 
 int lv_aic_display_init(lv_display_t **display)
@@ -376,6 +419,13 @@ void lv_aic_display_deinit(lv_display_t *display)
 }
 
 #else /* AIC_LVGL_USE_DISPLAY && AIC_LVGL_BSP_MPP */
+
+int lv_aic_display_snapshot(lv_display_t *display, lv_draw_buf_t *copy, uint32_t *frame)
+{
+    (void)display; (void)copy; (void)frame;
+    return LV_AIC_ERR_NO_BSP;
+}
+void lv_aic_display_snapshot_free(lv_draw_buf_t *copy) { (void)copy; }
 
 int lv_aic_display_init(lv_display_t **display)
 {

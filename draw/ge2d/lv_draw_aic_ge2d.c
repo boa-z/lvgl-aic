@@ -3,7 +3,7 @@
  * @brief ArtInChip GE2D draw unit: registration, evaluation and dispatch.
  *
  * Scope is deliberately narrow. FILL: opaque, unrounded, non-gradient tasks.
- * IMAGE: untransformed, untiled, unrecolored copies at any visible opacity -
+ * IMAGE: unrotated, untiled, unrecolored RGB copies/scales at visible opacity -
  * the blit blends, so a partial opacity is supported rather than declined.
  * LAYER: the same blit, fed from a child layer's buffer instead of a decoded
  * image. Everything else is declined, and a declined task simply stays with the
@@ -176,8 +176,10 @@ static bool lv_draw_aic_ge2d_accepts_image(const lv_draw_task_t *task)
         return false;
     }
 
-    /* A plain copy only. Any transform needs the scaler or the rotator. */
-    if (!lv_draw_aic_ge2d_dsc_is_untransformed(dsc)) {
+    /* Phase 3C2: bounded RGB scale only. LAYER keeps its existing policy. */
+    if (dsc->rotation != 0 || dsc->skew_x != 0 || dsc->skew_y != 0 ||
+        dsc->scale_x < LV_SCALE_NONE / 16 || dsc->scale_x > LV_SCALE_NONE * 16 ||
+        dsc->scale_y < LV_SCALE_NONE / 16 || dsc->scale_y > LV_SCALE_NONE * 16) {
         return false;
     }
 
@@ -329,6 +331,7 @@ void lv_draw_aic_ge2d_stats_reset(void)
     g_ge2d_stats.fill_completed = 0U;
     g_ge2d_stats.image_accepted = 0U;
     g_ge2d_stats.image_completed = 0U;
+    g_ge2d_stats.scaled_image_engine = 0U;
     g_ge2d_stats.image_sw_fallback = 0U;
     g_ge2d_stats.layer_accepted = 0U;
     g_ge2d_stats.layer_completed = 0U;
@@ -447,6 +450,11 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
             break;
         case LV_DRAW_TASK_TYPE_IMAGE:
             g_ge2d_stats.image_completed++;
+            if (outcome == LV_DRAW_AIC_GE2D_OUTCOME_ENGINE &&
+                (((const lv_draw_image_dsc_t *)task->draw_dsc)->scale_x != LV_SCALE_NONE ||
+                 ((const lv_draw_image_dsc_t *)task->draw_dsc)->scale_y != LV_SCALE_NONE)) {
+                g_ge2d_stats.scaled_image_engine++;
+            }
             if (outcome == LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE) {
                 g_ge2d_stats.image_sw_fallback++;
             }

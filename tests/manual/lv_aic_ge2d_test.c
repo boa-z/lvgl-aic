@@ -357,10 +357,12 @@ int lv_aic_ge2d_test_run(void)
     fallback = stats->fallback - before.fallback;
     errors = stats->errors - before.errors;
 
-    LOG_I("ge2d accepted fill=%u image=%u layer=%u | engine fill=%u image=%u layer=%u | sw_fallback image=%u layer=%u | declined=%u errors=%u",
-          (unsigned)fill, (unsigned)image, (unsigned)layer,
+    LOG_I("ge2d accepted fill=%u image=%u layer=%u",
+          (unsigned)fill, (unsigned)image, (unsigned)layer);
+    LOG_I("ge2d engine fill=%u image=%u layer=%u",
           (unsigned)fill_done, (unsigned)(image_done - image_sw),
-          (unsigned)(layer_done - layer_sw),
+          (unsigned)(layer_done - layer_sw));
+    LOG_I("ge2d sw image=%u layer=%u declined=%u errors=%u",
           (unsigned)image_sw, (unsigned)layer_sw,
           (unsigned)fallback, (unsigned)errors);
 
@@ -407,6 +409,15 @@ int lv_aic_ge2d_test_run(void)
     if (aic_ge2d_blend_checks() != 0) {
         return -1;
     }
+    if (lv_aic_ge2d_scale_test_run() != 0) {
+        return -1;
+    }
+    if (stats->scaled_image_engine == before.scaled_image_engine) {
+        LOG_E("FAIL no scaled IMAGE task was engine-drawn by the scheduler");
+        return -1;
+    }
+    LOG_I("scale scheduler engine=%u errors=%u",
+          (unsigned)(stats->scaled_image_engine - before.scaled_image_engine), (unsigned)errors);
 #endif /* AIC_GE2D_IMAGE_PROBES */
 
     /* Phase 3B: the opa_layered rectangle, which LVGL composites through a
@@ -430,8 +441,8 @@ int lv_aic_ge2d_test_run(void)
         return -1;
     }
 
-    /* Still declining what it cannot do: the rounded rectangle, and the two
-     * images the Phase 2 row scales by 4x. */
+    /* Still declining the rounded rectangle. The Phase 2 row now also
+     * exercises the scaler through its 4x PNG images. */
     if (fallback < 1U) {
         LOG_E("FAIL nothing fell back to software; the fallback probes are missing");
         return -1;

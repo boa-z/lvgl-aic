@@ -1181,3 +1181,18 @@ The `opa` values are the ones the phase specifies: 255, 128, 64. The row adds
 six IMAGE tasks and two FILL tasks to the page, all of which the unit should now
 claim, so the board check's `image` count should rise from 3 to 9 and its `fill`
 count from 11 to 13.
+
+## Phase 3C2 candidate (2026-09-27)
+
+Scale implementation and board probes are ready for D50T-2-Lite validation.
+Host regression: 10/10 CTests PASS, including the new production-code scale
+contract. GE2D firmware builds and passes static/image checks. These results
+are not board acceptance. See [per-stage gates](phase3c-transform.md).
+3C3/3C4/3C5 remain NOT_STARTED pending each preceding board gate.
+
+Board feedback from the first candidate showed RGB 0.5 falling back to software despite 19 page IMAGE engine executions. Reproduced and corrected decoder stride normalization moving a padded CMA variable source into inaccessible heap. Full-decoder regression now passes for four formats and three ratios. The corrected image passed the D50T-2-Lite board probes: RGB/ARGB 0.5, 1.5, 2.0, nonuniform, clipped pivot and fallback cases all passed; the scheduler reported 10 scaled engine executions and zero errors. The captured 800x480 RGB888 framebuffer (frame 1703, CRC32 309be4bb) shows the scale, alpha and clip rows without visible corruption. 3C2 is closed.
+The optional serial framebuffer capture and Python PNG converter are described
+in [capture instructions](framebuffer-capture.md); converter integrity tests
+pass, but actual board capture still needs validation.
+The [UART upgrade audit](d50t-uart-upgrade.md) confirms required existing
+Bootloader/application features and linked entry points, without flashing.

@@ -185,6 +185,9 @@ def main():
                        for context in contexts):
                 fail("GE2D symbol %s does not resolve to its required object" % symbol)
             print("symbol %s: required object verified" % symbol)
+        for symbol in ("lv_aic_ge2d_scale_axis", "lv_aic_ge2d_scale_test_run"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("GE2D scale symbol absent: " + symbol)
         # The engine entry points prove the backend actually talks to the GE
         # driver instead of quietly falling back to software.
         for symbol in ("mpp_ge_open", "mpp_ge_fillrect", "mpp_ge_bitblt",

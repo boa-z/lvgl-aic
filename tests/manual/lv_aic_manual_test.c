@@ -104,6 +104,9 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
     const int32_t marker_limit = 240;
 
     (void)timer;
+#if AIC_LVGL_BSP_RTTHREAD && AIC_LVGL_BSP_MPP
+    lv_aic_capture_poll();
+#endif
     if (lv_aic_manual_marker == NULL) {
         return;
     }
@@ -301,9 +304,8 @@ int lv_aic_manual_test_create(void)
     lv_obj_set_pos(lv_aic_ge2d_b3_label, 600, 240);
 
 #if LV_AIC_GE2D_IMAGE_TEST
-    /* The same two fixtures the Phase 2 row scales, at their native 32x32. A
-     * scaled image is a transformed copy and stays with the software renderer;
-     * unscaled they are plain blits, and the decoder's output format picks the
+    /* The same two fixtures the Phase 2 row scales, at their native 32x32.
+     * Unscaled they are plain blits, and the decoder's output format picks the
      * path: b.png is RGB -> RGB888, a straight copy, and c.png is RGBA ->
      * ARGB8888, a blend with its own per-pixel alpha. The white swatch under
      * c.png is what makes the alpha ramp provable - against the dark page a
@@ -375,6 +377,32 @@ int lv_aic_manual_test_create(void)
                 goto fail;
             }
             lv_obj_set_style_image_opa(lv_aic_ge2d_c1_img[i], opas[i % 3], 0);
+        }
+    }
+    /* 3C2: use the free upper-right strip, preserving the earlier page rows.
+     * Root ownership releases these children on every lifecycle test. */
+    {
+        static const uint16_t scales[8] = {128,384,512,128,384,512,384,384};
+        static const char *const names[8] = {"R .5", "R 1.5", "R 2", "A .5",
+                                              "A 1.5", "A 2", "XY", "clip"};
+        for (int i = 0; i < 8; i++) {
+            lv_obj_t *label = lv_label_create(lv_aic_manual_root);
+            lv_obj_t *frame = lv_aic_ge2d_make_rect(lv_aic_manual_root,
+                                                    220+i*70,78,i==7?20:64,i==7?13:64,0xffffff,0);
+            lv_obj_t *image;
+            if (!label || !frame) goto fail;
+            lv_obj_set_scrollable(frame, false);
+            lv_label_set_text(label,names[i]);
+            lv_obj_set_style_text_color(label,lv_color_hex(0xffffff),0);
+            lv_obj_set_pos(label,220+i*70,58);
+            image = lv_aic_ge2d_make_image(frame,
+                      i<3 ? "L:/data/mpp_test/b.png" : "L:/data/mpp_test/c.png",
+                      i==7 ? -1 : 0,i==7 ? -3 : 0);
+            if (!image) goto fail;
+            lv_image_set_pivot(image,i==7?7:0,i==7?9:0);
+            lv_image_set_scale_x(image,scales[i]);
+            lv_image_set_scale_y(image,i>=6?192:scales[i]);
+            if (i>=3) lv_obj_set_style_image_opa(image,128,0);
         }
     }
 #endif /* LV_AIC_GE2D_IMAGE_TEST */
