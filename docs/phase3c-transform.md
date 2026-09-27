@@ -59,8 +59,8 @@ until the board gate passes; then commit 3C2 independently.
 | 3C2 | scaled scheduler count >0, errors=0 | PASS: engine=10, errors=0 |
 | 3C2 | panel edges, alpha, display/touch | framebuffer PASS; physical photo/touch operator confirmation pending |
 | 3C3 | 90/180/270, pivot/clip/alpha | **PASS** - operator visually confirmed D50T-2-Lite page and rotation output |
-| 3C4 | 0.5+90, 1.5+90, 2+180, ARGB | **IMPLEMENTED / BOARD PENDING** - host contract and candidate image |
-| 3C5 | light counters + GE ON/OFF timing | NOT_STARTED until 3C4 passes |
+| 3C4 | 0.5+90, 1.5+90, 2+180, ARGB | **PASS** - D50T-2-Lite operator visually confirmed |
+| 3C5 | light counters + GE ON/OFF timing | **NEXT** - timing probe and paired builds |
 
 ### 2026-09-27 board feedback and correction
 
@@ -109,8 +109,18 @@ flag, and keeps unsupported angles and unsafe geometry on the software path.
 The host suite is 6/6 PASS and the D50T GE2D image passed static and payload
 checks. Candidate image SHA256:
 `2aa203738b98110bd4655c16e499ee729ad0206727cf9a593a0e6f6358585b83`.
-Do not treat this as a board gate until the four requested RGB/ARGB cases and
-their clipped output are checked on D50T-2-Lite.
+The D50T-2-Lite operator subsequently confirmed the combined-transform page
+visually. This closes the display portion of 3C4; numeric pixel and clipped
+edge evidence remains represented by the host contract and the existing GE
+error counters.
+
+### 3C5 implementation start
+
+3C5 will add a bounded, machine-readable refresh timing probe around the same
+manual page and run paired GE-enabled/GE-disabled builds. The comparison will
+report frame time and engine task counters together, without treating a single
+board timing sample as a performance guarantee. No allocator, scheduler or
+display-buffer policy changes are part of this stage.
 
 Each stage needs its own evidence and commit. No arbitrary rotation, CMA layer
 copies, async thread, YUV, tile, recolor or allocator replacement. Stop after
