@@ -23,12 +23,14 @@ int main(void)
     uint32_t initial = lv_obj_get_child_count(screen);
     for (int cycle = 0; cycle < 3; cycle++) {
         assert(lv_aic_manual_test_create() == LV_AIC_OK);
-        assert(lv_obj_get_child_count(screen) == initial + 2);
+        assert(lv_obj_get_child_count(screen) == initial + 3);
         lv_obj_t *baseline = lv_obj_get_child(screen, initial);
         lv_obj_t *rotation = lv_obj_get_child(screen, initial + 1);
-        lv_obj_t *next = find_button(baseline, "Next >  (1/2)");
-        lv_obj_t *prev = find_button(rotation, "< Prev  (2/2)");
-        assert(next && prev);
+        lv_obj_t *combo = lv_obj_get_child(screen, initial + 2);
+        lv_obj_t *next = find_button(baseline, "Next >  (1/3)");
+        lv_obj_t *prev = find_button(rotation, "< Prev  (2/3)");
+        lv_obj_t *combo_prev = find_button(combo, "< Prev  (3/3)");
+        assert(next && prev && combo_prev);
         lv_obj_update_layout(screen);
         lv_area_t area;
         lv_obj_get_coords(next, &area);

@@ -18,6 +18,7 @@ static volatile int lv_aic_manual_page_pending = -1;
 static int lv_aic_manual_page_active;
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
 static lv_obj_t *lv_aic_rotation_root;
+static lv_obj_t *lv_aic_combo_root;
 #endif
 #if AIC_LVGL_USE_MPP_DEC
 static lv_obj_t *lv_aic_mpp_label;
@@ -128,7 +129,7 @@ void lv_aic_manual_page_request(int page)
 {
     int last_page = 0;
 #if LV_AIC_GE2D_IMAGE_TEST
-    last_page = 1;
+    last_page = 2;
 #endif
     if (page >= 0 && page <= last_page) {
         lv_aic_manual_page_pending = page;
@@ -146,11 +147,19 @@ void lv_aic_manual_page_poll(void)
         lv_obj_set_hidden(lv_aic_manual_root, false);
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
         lv_obj_set_hidden(lv_aic_rotation_root, true);
+        lv_obj_set_hidden(lv_aic_combo_root, true);
+#endif
+    } else if (page == 1) {
+        lv_obj_set_hidden(lv_aic_manual_root, true);
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+        lv_obj_set_hidden(lv_aic_rotation_root, false);
+        lv_obj_set_hidden(lv_aic_combo_root, true);
 #endif
     } else {
         lv_obj_set_hidden(lv_aic_manual_root, true);
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
-        lv_obj_set_hidden(lv_aic_rotation_root, false);
+        lv_obj_set_hidden(lv_aic_rotation_root, true);
+        lv_obj_set_hidden(lv_aic_combo_root, false);
 #endif
     }
 }
@@ -158,19 +167,21 @@ void lv_aic_manual_page_poll(void)
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
 static void lv_aic_page_button_event(lv_event_t *event)
 {
+    int direction = (int)(intptr_t)lv_event_get_user_data(event);
     (void)event;
-    lv_aic_manual_page_request(1 - lv_aic_manual_page_active);
+    lv_aic_manual_page_request((lv_aic_manual_page_active + direction + 3) % 3);
     lv_aic_manual_page_poll();
 }
 
-static int lv_aic_page_button_create(lv_obj_t *parent, const char *text)
+static int lv_aic_page_button_create(lv_obj_t *parent, const char *text, int direction)
 {
     lv_obj_t *button = lv_button_create(parent);
     lv_obj_t *label;
     if (button == NULL) return LV_AIC_ERR_NO_MEMORY;
     lv_obj_set_size(button, 190, 44);
     lv_obj_align(button, LV_ALIGN_TOP_RIGHT, -16, 8);
-    lv_obj_add_event_cb(button, lv_aic_page_button_event, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(button, lv_aic_page_button_event, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)direction);
     label = lv_label_create(button);
     if (label == NULL) return LV_AIC_ERR_NO_MEMORY;
     lv_label_set_text(label, text);
@@ -218,9 +229,56 @@ static int lv_aic_rotation_page_create(lv_display_t *display)
             lv_label_set_text(label, text);
         }
     }
-    if (lv_aic_page_button_create(lv_aic_rotation_root, "< Prev  (2/2)") != LV_AIC_OK)
+    if (lv_aic_page_button_create(lv_aic_rotation_root, "< Prev  (2/3)", -1) != LV_AIC_OK)
         return LV_AIC_ERR_NO_MEMORY;
     lv_obj_set_hidden(lv_aic_rotation_root, true);
+    return LV_AIC_OK;
+}
+
+static int lv_aic_combo_page_create(lv_display_t *display)
+{
+    static const int32_t rotations[4] = {900, 900, 1800, 1800};
+    static const uint32_t scales[4] = {128, 384, 512, 512};
+    lv_aic_combo_root = lv_obj_create(lv_screen_active());
+    if (lv_aic_combo_root == NULL) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_size(lv_aic_combo_root, lv_display_get_horizontal_resolution(display),
+                    lv_display_get_vertical_resolution(display));
+    lv_obj_set_style_bg_color(lv_aic_combo_root, lv_color_hex(0x202020), 0);
+    lv_obj_set_style_bg_opa(lv_aic_combo_root, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(lv_aic_combo_root, 0, 0);
+    lv_obj_set_style_border_width(lv_aic_combo_root, 0, 0);
+    lv_obj_set_style_radius(lv_aic_combo_root, 0, 0);
+    lv_obj_set_scrollable(lv_aic_combo_root, false);
+    lv_obj_center(lv_aic_combo_root);
+    {
+        lv_obj_t *title = lv_label_create(lv_aic_combo_root);
+        if (!title) return LV_AIC_ERR_NO_MEMORY;
+        lv_label_set_text(title, "3C4 GE2D rotation + scale: RGB / ARGB");
+        lv_obj_set_pos(title, 24, 24);
+    }
+    for (int i = 0; i < 4; i++) {
+        int32_t x = 24 + i * 190;
+        lv_obj_t *frame = lv_aic_ge2d_make_rect(lv_aic_combo_root, x, 112, 160, 160,
+                                                0xffffff, 0);
+        lv_obj_t *image;
+        lv_obj_t *label;
+        if (!frame) return LV_AIC_ERR_NO_MEMORY;
+        image = lv_aic_ge2d_make_image(frame, (i & 1) ? "L:/data/mpp_test/c.png" :
+                                       "L:/data/mpp_test/b.png", 64, 64);
+        label = lv_label_create(lv_aic_combo_root);
+        if (!image || !label) return LV_AIC_ERR_NO_MEMORY;
+        lv_image_set_pivot(image, 16, 16);
+        lv_image_set_scale_x(image, scales[i]);
+        lv_image_set_scale_y(image, scales[i]);
+        lv_image_set_rotation(image, rotations[i]);
+        if (i & 1) lv_obj_set_style_image_opa(image, 128, 0);
+        lv_obj_set_pos(label, x + 12, 88);
+        lv_label_set_text_fmt(label, "%s %dx + %d deg", (i & 1) ? "ARGB" : "RGB",
+                              scales[i] / 256, (int)(rotations[i] / 10));
+    }
+    if (lv_aic_page_button_create(lv_aic_combo_root, "< Prev  (3/3)", -1) != LV_AIC_OK)
+        return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_hidden(lv_aic_combo_root, true);
     return LV_AIC_OK;
 }
 #endif
@@ -524,7 +582,9 @@ int lv_aic_manual_test_create(void)
 
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
     if (lv_aic_rotation_page_create(display) != LV_AIC_OK) goto fail;
-    if (lv_aic_page_button_create(lv_aic_manual_root, "Next >  (1/2)") != LV_AIC_OK) goto fail;
+    if (lv_aic_combo_page_create(display) != LV_AIC_OK) goto fail;
+    if (lv_aic_page_button_create(lv_aic_manual_root, "Next >  (1/3)", 1) != LV_AIC_OK) goto fail;
+    if (lv_aic_page_button_create(lv_aic_rotation_root, "Next >  (2/3)", 1) != LV_AIC_OK) goto fail;
 #endif
 
     return LV_AIC_OK;
@@ -552,6 +612,10 @@ void lv_aic_manual_test_deinit(void)
     if (lv_aic_rotation_root != NULL) {
         lv_obj_delete(lv_aic_rotation_root);
         lv_aic_rotation_root = NULL;
+    }
+    if (lv_aic_combo_root != NULL) {
+        lv_obj_delete(lv_aic_combo_root);
+        lv_aic_combo_root = NULL;
     }
 #endif
     if (lv_aic_manual_root != NULL) {
