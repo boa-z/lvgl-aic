@@ -16,6 +16,12 @@
  *   2. a GE failure marks the task FAILED, never FINISHED. A rectangle or an
  *      image the engine did not draw must not be reported as drawn.
  *
+ * A third point is specific to this file: the counters separate "the unit
+ * claimed the task" from "the engine drew it". A completed count alone would
+ * let a log line claim acceleration that never happened, because the executor
+ * can still succeed by handing the task to the software renderer. The
+ * *_sw_fallback pair is what makes that visible.
+ *
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -317,8 +323,10 @@ void lv_draw_aic_ge2d_stats_reset(void)
     g_ge2d_stats.fill_completed = 0U;
     g_ge2d_stats.image_accepted = 0U;
     g_ge2d_stats.image_completed = 0U;
+    g_ge2d_stats.image_sw_fallback = 0U;
     g_ge2d_stats.layer_accepted = 0U;
     g_ge2d_stats.layer_completed = 0U;
+    g_ge2d_stats.layer_sw_fallback = 0U;
     g_ge2d_stats.fallback = 0U;
     g_ge2d_stats.errors = 0U;
     g_ge2d_stats.ready = ready;
@@ -380,6 +388,7 @@ static int32_t lv_draw_aic_ge2d_evaluate(lv_draw_unit_t *unit, lv_draw_task_t *t
 static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer)
 {
     lv_draw_aic_ge2d_unit_t *ge2d = (lv_draw_aic_ge2d_unit_t *)unit;
+    lv_draw_aic_ge2d_outcome_t outcome = LV_DRAW_AIC_GE2D_OUTCOME_NOTHING;
     lv_draw_task_t *task;
     lv_result_t result;
 
@@ -406,13 +415,17 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
 
     switch (task->type) {
     case LV_DRAW_TASK_TYPE_FILL:
+        /* The fill path has no fallback: it either runs on the engine or
+         * reports a failure, so the outcome is always ENGINE here. */
         result = lv_draw_aic_ge2d_fill(task);
+        outcome = LV_DRAW_AIC_GE2D_OUTCOME_ENGINE;
         break;
     case LV_DRAW_TASK_TYPE_IMAGE:
     case LV_DRAW_TASK_TYPE_LAYER:
         /* A LAYER task is the same blit with the child layer's buffer as the
-         * source, so both types enter through the one entry point. */
-        result = lv_draw_aic_ge2d_image(task);
+         * source, so both types enter through the one entry point. It reports
+         * back whether the engine really did the copy. */
+        result = lv_draw_aic_ge2d_image(task, &outcome);
         break;
     default:
         /* evaluate() claims nothing else, so this is unreachable. */
@@ -428,9 +441,15 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
             break;
         case LV_DRAW_TASK_TYPE_IMAGE:
             g_ge2d_stats.image_completed++;
+            if (outcome == LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE) {
+                g_ge2d_stats.image_sw_fallback++;
+            }
             break;
         default:
             g_ge2d_stats.layer_completed++;
+            if (outcome == LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE) {
+                g_ge2d_stats.layer_sw_fallback++;
+            }
             break;
         }
     }

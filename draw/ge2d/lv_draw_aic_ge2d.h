@@ -38,15 +38,24 @@ struct mpp_ge;
  *   each type this unit claimed in evaluate(). evaluate() runs exactly once per
  *   task, at creation time, so these are exact per-refresh censuses.
  * @c fill_completed / @c image_completed / @c layer_completed count the subset
- *   that reached FINISHED, which is not the same as "drawn by the engine": the
- *   executor hands a task it cannot blit to the software renderer and still
- *   reports success, so the task is finished but was not accelerated. A layer
- *   task also finishes without drawing anything when its layer has no buffer -
- *   there is nothing to blend. Neither case is a failure.
+ *   that reached FINISHED. That is NOT "drawn by the engine": the executor hands
+ *   a task it cannot blit to the software renderer and still reports success, so
+ *   a task can finish without the engine having touched a pixel. Read the
+ *   engine-drawn count as completed minus sw_fallback.
+ * @c image_sw_fallback / @c layer_sw_fallback count the accepted tasks of that
+ *   type the executor handed to the software renderer because the engine could
+ *   not take the source - an unsupported format, or an address outside the GE
+ *   window. This pair is the only way to tell "the unit claimed it" from "the
+ *   engine drew it"; without it a completed count reads as acceleration that
+ *   never happened. It is expected to be non-zero for LAYER on any board whose
+ *   LVGL heap sits below the GE window: layer buffers come from lv_malloc, so
+ *   the composite is declined and drawn in software. Nothing is dropped and
+ *   nothing is misreported. There is no fill counterpart because the fill path
+ *   cannot fall back - it either runs on the engine or fails.
  * @c fallback counts tasks of a supported type this unit declined in
  *   evaluate(), which the software renderer then owns. A task the executor
- *   rejects after the source became visible is not counted here. It is not an
- *   error counter either way.
+ *   rejects after the source became visible is counted in the sw_fallback pair
+ *   instead, not here. It is not an error counter either way.
  * @c errors counts GE2D execution failures (fillrect/bitblt/emit/sync).
  */
 typedef struct {
@@ -54,8 +63,10 @@ typedef struct {
     uint32_t fill_completed;
     uint32_t image_accepted;
     uint32_t image_completed;
+    uint32_t image_sw_fallback;
     uint32_t layer_accepted;
     uint32_t layer_completed;
+    uint32_t layer_sw_fallback;
     uint32_t fallback;
     uint32_t errors;
     bool ready;
@@ -100,6 +111,20 @@ void lv_draw_aic_ge2d_stats_reset(void);
 lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task);
 
 /**
+ * @brief How a dispatched image-shaped task's pixels were produced.
+ *
+ * The executors report this so the dispatcher can count what actually happened
+ * instead of what was attempted. Without it a task the engine declined after
+ * acceptance is indistinguishable from one it drew, and the counters overstate
+ * acceleration.
+ */
+typedef enum {
+    LV_DRAW_AIC_GE2D_OUTCOME_ENGINE,   /**< the GE engine performed the copy */
+    LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE, /**< the engine declined; software drew it */
+    LV_DRAW_AIC_GE2D_OUTCOME_NOTHING,  /**< there was nothing to draw */
+} lv_draw_aic_ge2d_outcome_t;
+
+/**
  * @brief Execute a plain image blit for @p task through GE2D.
  *
  * Handles both LV_DRAW_TASK_TYPE_IMAGE and LV_DRAW_TASK_TYPE_LAYER. A LAYER task
@@ -109,19 +134,21 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task);
  *
  * Runs bitblt -> emit -> sync synchronously, with a GE_PD_SRC_OVER blend when
  * the source has an alpha channel or the descriptor has a partial opacity, and
- * a plain copy otherwise. Returns LV_RESULT_OK for every outcome that leaves the
- * screen correct, including two that draw nothing through the engine:
+ * a plain copy otherwise. @p outcome, when not NULL, reports which of the three
+ * cases happened. Returns LV_RESULT_OK for every outcome that leaves the screen
+ * correct, including two that draw nothing through the engine:
  *   - the source turns out to be unusable after the decode (an unsupported
  *     format, or an address outside the GE window). The task is then handed to
- *     the software renderer.
+ *     the software renderer, and @p outcome is OUTCOME_SOFTWARE.
  *   - the task is a LAYER whose layer has no buffer, because nothing was drawn
- *     on it. There is nothing to blend.
+ *     on it. There is nothing to blend, and @p outcome is OUTCOME_NOTHING.
  * LV_RESULT_INVALID means the task itself is malformed (wrong type, NULL
  * descriptor) - a programming error, not a runtime condition.
  *
  * The task must already have been accepted by this unit's evaluate().
  */
-lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task);
+lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
+                                   lv_draw_aic_ge2d_outcome_t *outcome);
 
 #endif /* AIC_LVGL_USE_GE2D */
 

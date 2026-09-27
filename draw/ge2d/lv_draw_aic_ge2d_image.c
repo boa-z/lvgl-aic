@@ -33,6 +33,19 @@
  *      of a layer nothing was drawn on, so the task completes having drawn
  *      nothing, which is exactly what lv_draw_sw_layer() does.
  *
+ * The executor also reports WHICH of those happened, through the outcome
+ * out-parameter, because "the unit claimed it" and "the engine drew it" are not
+ * the same statement and only the executor can tell them apart. See the note on
+ * the sw_fallback counters in lv_draw_aic_ge2d.h.
+ *
+ * Note on the LAYER source address: LVGL allocates layer buffers with
+ * lv_malloc, which on this SDK is rt_malloc, i.e. the RT-Thread system heap.
+ * With CONFIG_AIC_DEFAULT_SYS_HEAP_SRAM that heap is at 0x30040000, below the
+ * 0x40000000 floor the D13x GE can reach, so a LAYER composite is declined here
+ * and composited in software. That is a buffer-placement property, not a defect
+ * in this file: moving layer buffers into CMA would make the same code run on
+ * the engine, and the address gate already makes the transition safe.
+ *
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -247,12 +260,17 @@ static void lv_draw_aic_ge2d_image_cb(lv_draw_task_t *task,
                                       clipped_img_area);
 }
 
-lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task)
+lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
+                                   lv_draw_aic_ge2d_outcome_t *outcome)
 {
     const lv_draw_image_dsc_t *dsc;
     const lv_draw_image_dsc_t *blit_dsc;
     lv_draw_image_dsc_t layer_dsc;
     lv_layer_t *layer_to_draw;
+
+    if (outcome != NULL) {
+        *outcome = LV_DRAW_AIC_GE2D_OUTCOME_NOTHING;
+    }
 
     if (task == NULL) {
         return LV_RESULT_INVALID;
@@ -280,7 +298,9 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task)
         if (layer_to_draw->draw_buf == NULL) {
             /* Nothing was drawn on the layer, so LVGL never allocated its
              * buffer. There is nothing to blend, and that is not a failure:
-             * lv_draw_sw_layer() returns here for exactly the same case. */
+             * lv_draw_sw_layer() returns here for exactly the same case. The
+             * outcome stays OUTCOME_NOTHING - no pixels were needed, so this
+             * must not be reported as either engine work or a software fallback. */
             return LV_RESULT_OK;
         }
         layer_dsc = *dsc;
@@ -296,6 +316,9 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task)
                                 lv_draw_aic_ge2d_image_cb, NULL);
 
     if (s_blit_called && s_blit_ok) {
+        if (outcome != NULL) {
+            *outcome = LV_DRAW_AIC_GE2D_OUTCOME_ENGINE;
+        }
         return LV_RESULT_OK;
     }
 
@@ -312,6 +335,12 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task)
     }
     else {
         lv_draw_sw_image(task, dsc, &task->area);
+    }
+
+    /* Report the fallback, so the dispatcher can record that an accepted task
+     * was drawn by the CPU rather than by the engine. */
+    if (outcome != NULL) {
+        *outcome = LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE;
     }
     return LV_RESULT_OK;
 }
