@@ -27,6 +27,24 @@ static lv_obj_t *lv_aic_ge2d_small[LV_AIC_GE2D_SMALL_COUNT];
 static lv_obj_t *lv_aic_ge2d_round;
 #endif
 
+/* The Phase 3B image probes reuse the Phase 2 MPP fixtures, so they need the
+ * draw unit AND the decoder. The LAYER probe needs only the draw unit. */
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+#define LV_AIC_GE2D_IMAGE_TEST 1
+#else
+#define LV_AIC_GE2D_IMAGE_TEST 0
+#endif
+
+#if AIC_LVGL_USE_GE2D
+static lv_obj_t *lv_aic_ge2d_b3_label;
+static lv_obj_t *lv_aic_ge2d_layer;
+#endif
+#if LV_AIC_GE2D_IMAGE_TEST
+static lv_obj_t *lv_aic_ge2d_img_plain;
+static lv_obj_t *lv_aic_ge2d_img_swatch;
+static lv_obj_t *lv_aic_ge2d_img_argb;
+#endif
+
 #if AIC_LVGL_USE_GE2D
 /* Plain opaque rectangle. radius 0 and no gradient are exactly the Phase 3A
  * preconditions, so these shapes are what the GE2D unit is allowed to claim. */
@@ -47,6 +65,24 @@ static lv_obj_t *lv_aic_ge2d_make_rect(lv_obj_t *parent, int32_t x, int32_t y,
     lv_obj_set_style_pad_all(rect, 0, 0);
     lv_obj_set_style_radius(rect, radius, 0);
     return rect;
+}
+#endif
+
+#if LV_AIC_GE2D_IMAGE_TEST
+/* One of the Phase 2 MPP fixtures at its NATIVE size. The Phase 2 row scales
+ * b.png and c.png by 4x, which makes them transformed copies; these are the
+ * same files unscaled, so they are plain blits the GE2D unit can claim. */
+static lv_obj_t *lv_aic_ge2d_make_image(lv_obj_t *parent, const char *path,
+                                        int32_t x, int32_t y)
+{
+    lv_obj_t *image = lv_image_create(parent);
+
+    if (image == NULL) {
+        return NULL;
+    }
+    lv_image_set_src(image, path);
+    lv_obj_set_pos(image, x, y);
+    return image;
 }
 #endif
 
@@ -230,7 +266,71 @@ int lv_aic_manual_test_create(void)
     if (lv_aic_ge2d_round == NULL) {
         goto fail;
     }
-#endif
+
+    /* Phase 3B section. It occupies the free strip to the right of the Phase 2
+     * MPP row and adds no object that could shift the Phase 2 or Phase 3A
+     * baselines.
+     *
+     * The layer probe is the reason the section exists: opa_layered !=
+     * LV_OPA_COVER makes LVGL render the rectangle into a child layer and
+     * submit a LAYER task to composite it (calculate_layer_type() ->
+     * LV_LAYER_TYPE_SIMPLE). The rectangle is fully covered and opaque
+     * underneath, so that layer is RGB rather than ARGB and the composite is a
+     * plain layer blit carrying a partial global opacity.
+     *
+     * That composite is CLAIMED by the GE2D unit but not drawn by the engine on
+     * this board: LVGL allocates the layer buffer with lv_malloc, which is the
+     * RT-Thread system heap at 0x30040000, below the 0x40000000 floor the D13x
+     * GE can reach, so the blit declines and the task is composited in software.
+     * The probe is still worth having - it exercises the claim path and proves
+     * the layer is never dropped - and it becomes a real engine test the moment
+     * layer buffers are placed where the engine can see them. The 50% blend also
+     * makes a wrong result visible at the panel rather than only in a counter. */
+    lv_aic_ge2d_b3_label = lv_label_create(lv_aic_manual_root);
+    if (lv_aic_ge2d_b3_label == NULL) {
+        goto fail;
+    }
+    lv_label_set_text(lv_aic_ge2d_b3_label,
+                      LV_AIC_GE2D_IMAGE_TEST ? "3b: rgb|argb|layer" : "3b: layer");
+    lv_obj_set_style_text_color(lv_aic_ge2d_b3_label, lv_color_hex(0xffffff), 0);
+    lv_obj_set_pos(lv_aic_ge2d_b3_label, 600, 240);
+
+#if LV_AIC_GE2D_IMAGE_TEST
+    /* The same two fixtures the Phase 2 row scales, at their native 32x32. A
+     * scaled image is a transformed copy and stays with the software renderer;
+     * unscaled they are plain blits, and the decoder's output format picks the
+     * path: b.png is RGB -> RGB888, a straight copy, and c.png is RGBA ->
+     * ARGB8888, a blend with its own per-pixel alpha. The white swatch under
+     * c.png is what makes the alpha ramp provable - against the dark page a
+     * missing blend would be far harder to see. */
+    lv_aic_ge2d_img_plain = lv_aic_ge2d_make_image(lv_aic_manual_root,
+                                                   "L:/data/mpp_test/b.png",
+                                                   600, 268);
+    if (lv_aic_ge2d_img_plain == NULL) {
+        goto fail;
+    }
+
+    lv_aic_ge2d_img_swatch = lv_aic_ge2d_make_rect(lv_aic_manual_root, 640, 268,
+                                                   32, 32, 0xffffff, 0);
+    if (lv_aic_ge2d_img_swatch == NULL) {
+        goto fail;
+    }
+
+    lv_aic_ge2d_img_argb = lv_aic_ge2d_make_image(lv_aic_manual_root,
+                                                  "L:/data/mpp_test/c.png",
+                                                  640, 268);
+    if (lv_aic_ge2d_img_argb == NULL) {
+        goto fail;
+    }
+#endif /* LV_AIC_GE2D_IMAGE_TEST */
+
+    lv_aic_ge2d_layer = lv_aic_ge2d_make_rect(lv_aic_manual_root, 600, 312, 88, 40,
+                                              0x40a0e0, 0);
+    if (lv_aic_ge2d_layer == NULL) {
+        goto fail;
+    }
+    lv_obj_set_style_opa_layered(lv_aic_ge2d_layer, LV_OPA_50, 0);
+#endif /* AIC_LVGL_USE_GE2D */
 
     return LV_AIC_OK;
 
@@ -269,9 +369,16 @@ void lv_aic_manual_test_deinit(void)
         lv_aic_ge2d_large = NULL;
         lv_aic_ge2d_medium = NULL;
         lv_aic_ge2d_round = NULL;
+        lv_aic_ge2d_b3_label = NULL;
+        lv_aic_ge2d_layer = NULL;
         for (int i = 0; i < LV_AIC_GE2D_SMALL_COUNT; i++) {
             lv_aic_ge2d_small[i] = NULL;
         }
+#endif
+#if LV_AIC_GE2D_IMAGE_TEST
+        lv_aic_ge2d_img_plain = NULL;
+        lv_aic_ge2d_img_swatch = NULL;
+        lv_aic_ge2d_img_argb = NULL;
 #endif
     }
     lv_aic_manual_marker_x = 0;
