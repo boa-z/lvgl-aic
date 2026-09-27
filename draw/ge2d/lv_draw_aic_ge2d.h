@@ -1,11 +1,16 @@
 /**
  * @file lv_draw_aic_ge2d.h
- * @brief ArtInChip GE2D draw unit for LVGL 9.6 (Phase 3A: FILL only).
+ * @brief ArtInChip GE2D draw unit for LVGL 9.6 (FILL, IMAGE and LAYER).
  *
  * The GE2D unit is an independent draw unit. The legacy ArtInChip port aliased
  * it onto lv_draw_sw_unit_t, which coupled the hardware unit to the software
- * unit's thread, sync and saved layer/clip fields. Phase 3A runs synchronously
+ * unit's thread, sync and saved layer/clip fields. This unit runs synchronously
  * and owns nothing but the task it is currently executing.
+ *
+ * One unit handles all three task types. There is deliberately no second draw
+ * unit for IMAGE/LAYER: acceptance, dispatch and the GE2D device handle are
+ * shared, and a second unit would duplicate the device lifecycle that Phase 3A
+ * already had to get right.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -27,17 +32,25 @@ extern "C" {
 struct mpp_ge;
 
 /**
- * @brief Phase 3A GE2D counters.
+ * @brief GE2D counters, one accepted/completed pair per task type.
  *
- * @c fill_accepted counts FILL tasks this unit claimed in evaluate().
- * @c fill_completed counts the subset that reached FINISHED.
- * @c fallback counts FILL tasks this unit declined, which the software
- *   renderer then owns. It is not an error counter.
- * @c errors counts GE2D execution failures (fillrect/emit/sync).
+ * @c fill_accepted / @c image_accepted / @c layer_accepted count the tasks of
+ *   each type this unit claimed in evaluate(). evaluate() runs exactly once per
+ *   task, at creation time, so these are exact per-refresh censuses.
+ * @c fill_completed / @c image_completed / @c layer_completed count the subset
+ *   that reached FINISHED. A layer task completes without drawing anything when
+ *   its layer has no buffer; that is a success, not a failure.
+ * @c fallback counts tasks of a supported type this unit declined, which the
+ *   software renderer then owns. It is not an error counter.
+ * @c errors counts GE2D execution failures (fillrect/bitblt/emit/sync).
  */
 typedef struct {
     uint32_t fill_accepted;
     uint32_t fill_completed;
+    uint32_t image_accepted;
+    uint32_t image_completed;
+    uint32_t layer_accepted;
+    uint32_t layer_completed;
     uint32_t fallback;
     uint32_t errors;
     bool ready;
@@ -80,6 +93,22 @@ void lv_draw_aic_ge2d_stats_reset(void);
  * The task must already have been accepted by this unit's evaluate().
  */
 lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task);
+
+/**
+ * @brief Execute a plain image blit for @p task through GE2D.
+ *
+ * Handles both LV_DRAW_TASK_TYPE_IMAGE and LV_DRAW_TASK_TYPE_LAYER: a LAYER task
+ * carries an lv_layer_t in place of the image source, which this function wraps
+ * into an lv_draw_buf_t and blits with the same code path.
+ *
+ * Runs bitblt -> emit -> sync synchronously. Returns LV_RESULT_INVALID only on
+ * a genuine engine failure. A source the engine cannot address, or a decode
+ * failure, falls back to the software renderer and returns LV_RESULT_OK, so the
+ * image is never dropped.
+ *
+ * The task must already have been accepted by this unit's evaluate().
+ */
+lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task);
 
 #endif /* AIC_LVGL_USE_GE2D */
 

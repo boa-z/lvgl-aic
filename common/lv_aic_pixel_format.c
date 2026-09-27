@@ -74,4 +74,17 @@ bool lv_aic_pixel_format_is_ge2d_dst(lv_color_format_t lv_fmt)
     }
 }
 
+bool lv_aic_pixel_format_is_ge2d_src(lv_color_format_t lv_fmt)
+{
+    switch (lv_fmt) {
+    case LV_COLOR_FORMAT_RGB565:
+    case LV_COLOR_FORMAT_RGB888:
+    case LV_COLOR_FORMAT_ARGB8888:
+    case LV_COLOR_FORMAT_XRGB8888:
+        return true;
+    default:
+        return false;
+    }
+}
+
 #endif /* AIC_LVGL_BSP_MPP */

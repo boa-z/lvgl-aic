@@ -165,6 +165,11 @@ def main():
              r"custom[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d\.o"),
             ("lv_draw_aic_ge2d_fill",
              r"custom[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d_fill\.o"),
+            # Phase 3B. A separate object on purpose: the IMAGE/LAYER blit must
+            # not be folded back into the FILL unit, and this proves the linker
+            # took it from the new file rather than from the legacy tree.
+            ("lv_draw_aic_ge2d_image",
+             r"custom[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d_image\.o"),
             ("lv_aic_ge2d_test_run",
              r"custom[\\/]lvgl-aic[\\/]tests[\\/]manual[\\/]lv_aic_ge2d_test\.o"),
         )
@@ -182,7 +187,8 @@ def main():
             print("symbol %s: required object verified" % symbol)
         # The engine entry points prove the backend actually talks to the GE
         # driver instead of quietly falling back to software.
-        for symbol in ("mpp_ge_open", "mpp_ge_fillrect", "mpp_ge_emit", "mpp_ge_sync"):
+        for symbol in ("mpp_ge_open", "mpp_ge_fillrect", "mpp_ge_bitblt",
+                       "mpp_ge_emit", "mpp_ge_sync"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("GE2D engine symbol absent: " + symbol)
     print(args.phase + " static checks: PASS (not board validation)")

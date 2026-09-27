@@ -47,6 +47,18 @@ bool lv_draw_aic_ge2d_dst_format_supported(lv_color_format_t cf);
 void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *draw_buf,
                                         const lv_area_t *rel_area);
 
+/**
+ * @brief Write back the source cache lines covering @p rel_area.
+ *
+ * The GE engine READS the source, so the CPU's dirty lines must reach memory
+ * before the blit starts: this is a clean, not a clean-and-invalidate. An
+ * invalidate would be wrong here - it could drop lines the CPU has not yet
+ * written back and hand the engine stale pixels. @p rel_area is relative to
+ * the buffer origin and rows are pitched by the header stride.
+ */
+void lv_draw_aic_ge2d_prepare_src_cache(const lv_draw_buf_t *draw_buf,
+                                        const lv_area_t *rel_area);
+
 #endif /* AIC_LVGL_USE_GE2D */
 
 #ifdef __cplusplus

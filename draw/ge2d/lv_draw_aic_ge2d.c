@@ -2,17 +2,18 @@
  * @file lv_draw_aic_ge2d.c
  * @brief ArtInChip GE2D draw unit: registration, evaluation and dispatch.
  *
- * Phase 3A scope is deliberately narrow: opaque, unrounded, non-gradient FILL
- * tasks whose destination buffer the GE block can address. The unit runs
- * synchronously on the dispatching thread - there is no render thread, no task
- * queue and no saved layer/clip state, which is why it does not reuse
- * lv_draw_sw_unit_t the way the legacy port did.
+ * Scope is deliberately narrow. FILL: opaque, unrounded, non-gradient tasks.
+ * IMAGE: untransformed, untiled, unrecolored, fully opaque copies. Everything
+ * else is declined, and a declined task simply stays with the software
+ * renderer. The unit runs synchronously on the dispatching thread - there is no
+ * render thread, no task queue and no saved layer/clip state, which is why it
+ * does not reuse lv_draw_sw_unit_t the way the legacy port did.
  *
  * Two departures from the legacy port are the reason this file exists
  * separately and are easy to regress:
  *   1. evaluate() reports acceptance (returns 1), not 0.
- *   2. a GE failure marks the task FAILED, never FINISHED. A rectangle the
- *      engine did not draw must not be reported as drawn.
+ *   2. a GE failure marks the task FAILED, never FINISHED. A rectangle or an
+ *      image the engine did not draw must not be reported as drawn.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -53,12 +54,12 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
 static int32_t lv_draw_aic_ge2d_delete(lv_draw_unit_t *unit);
 
 /**
- * True when Phase 3A can render @p task with GE2D.
+ * True when the fill step can render @p task with GE2D.
  *
  * Every rejection here is a case the software renderer already handles, so a
  * "no" is a fallback rather than a failure.
  */
-static bool lv_draw_aic_ge2d_accepts(const lv_draw_task_t *task)
+static bool lv_draw_aic_ge2d_accepts_fill(const lv_draw_task_t *task)
 {
     const lv_draw_fill_dsc_t *dsc;
     const lv_layer_t *layer;
@@ -79,8 +80,8 @@ static bool lv_draw_aic_ge2d_accepts(const lv_draw_task_t *task)
         return false;
     }
 
-    /* Phase 3A has no source alpha and no destination read-modify-write, so a
-     * translucent fill would be silently wrong. */
+    /* No source alpha and no destination read-modify-write, so a translucent
+     * fill would be silently wrong. */
     if (dsc->opa != LV_OPA_COVER) {
         return false;
     }
@@ -88,6 +89,73 @@ static bool lv_draw_aic_ge2d_accepts(const lv_draw_task_t *task)
     /* target_layer is the layer the task will actually be drawn into. It is
      * fixed at task creation, unlike layer->_clip_area which may already
      * describe a later task by the time we run. */
+    layer = task->target_layer;
+    if (layer == NULL || layer->draw_buf == NULL) {
+        return false;
+    }
+    draw_buf = layer->draw_buf;
+
+    if (!lv_draw_aic_ge2d_dst_format_supported((lv_color_format_t)draw_buf->header.cf)) {
+        return false;
+    }
+
+    if (!lv_draw_aic_ge2d_buf_address_valid(draw_buf)) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * True when the plain-blit step can render @p task with GE2D.
+ *
+ * The source is deliberately NOT checked here: it only exists after the decode,
+ * which happens in the executor. A source the engine cannot read is handled
+ * there by falling back, not by declining the task up front.
+ */
+static bool lv_draw_aic_ge2d_accepts_image(const lv_draw_task_t *task)
+{
+    const lv_draw_image_dsc_t *dsc;
+    const lv_layer_t *layer;
+    const lv_draw_buf_t *draw_buf;
+
+    dsc = (const lv_draw_image_dsc_t *)task->draw_dsc;
+    if (dsc == NULL || dsc->src == NULL) {
+        return false;
+    }
+
+    /* A plain copy only. Any transform needs the scaler or the rotator. */
+    if (dsc->rotation != 0 ||
+        dsc->scale_x != LV_SCALE_NONE || dsc->scale_y != LV_SCALE_NONE ||
+        dsc->skew_x != 0 || dsc->skew_y != 0) {
+        return false;
+    }
+
+    /* A tiled image is many blits with its own helper; not this step. */
+    if (dsc->tile != 0) {
+        return false;
+    }
+
+    /* Recolor, masking and rounded clipping need a per-pixel step that the
+     * blit descriptor does not carry. */
+    if (dsc->recolor_opa > LV_OPA_MIN) {
+        return false;
+    }
+    if (dsc->bitmap_mask_src != NULL || dsc->clip_radius != 0) {
+        return false;
+    }
+    if (dsc->colorkey != NULL) {
+        return false;
+    }
+    if (dsc->blend_mode != LV_BLEND_MODE_NORMAL) {
+        return false;
+    }
+
+    /* No source alpha and no destination read-modify-write in this step. */
+    if (dsc->opa < LV_OPA_COVER) {
+        return false;
+    }
+
     layer = task->target_layer;
     if (layer == NULL || layer->draw_buf == NULL) {
         return false;
@@ -174,6 +242,10 @@ void lv_draw_aic_ge2d_stats_reset(void)
 
     g_ge2d_stats.fill_accepted = 0U;
     g_ge2d_stats.fill_completed = 0U;
+    g_ge2d_stats.image_accepted = 0U;
+    g_ge2d_stats.image_completed = 0U;
+    g_ge2d_stats.layer_accepted = 0U;
+    g_ge2d_stats.layer_completed = 0U;
     g_ge2d_stats.fallback = 0U;
     g_ge2d_stats.errors = 0U;
     g_ge2d_stats.ready = ready;
@@ -181,13 +253,30 @@ void lv_draw_aic_ge2d_stats_reset(void)
 
 static int32_t lv_draw_aic_ge2d_evaluate(lv_draw_unit_t *unit, lv_draw_task_t *task)
 {
+    bool accepted;
+
     LV_UNUSED(unit);
 
-    if (!g_ge2d_ready || task->type != LV_DRAW_TASK_TYPE_FILL) {
+    if (!g_ge2d_ready) {
         return 0;
     }
 
-    if (!lv_draw_aic_ge2d_accepts(task)) {
+    /* evaluate() runs exactly once per task, at creation time, for EVERY task
+     * type. Returning before the counters below is what makes them an exact
+     * census of the types this unit handles, instead of a count of every draw
+     * task in the frame. */
+    switch (task->type) {
+    case LV_DRAW_TASK_TYPE_FILL:
+        accepted = lv_draw_aic_ge2d_accepts_fill(task);
+        break;
+    case LV_DRAW_TASK_TYPE_IMAGE:
+        accepted = lv_draw_aic_ge2d_accepts_image(task);
+        break;
+    default:
+        return 0;
+    }
+
+    if (!accepted) {
         /* Not ours. The software renderer keeps the task; not an error. */
         g_ge2d_stats.fallback++;
         return 0;
@@ -197,7 +286,13 @@ static int32_t lv_draw_aic_ge2d_evaluate(lv_draw_unit_t *unit, lv_draw_task_t *t
         task->preference_score = AIC_GE2D_PREFERENCE_SCORE;
         task->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
     }
-    g_ge2d_stats.fill_accepted++;
+
+    if (task->type == LV_DRAW_TASK_TYPE_FILL) {
+        g_ge2d_stats.fill_accepted++;
+    }
+    else {
+        g_ge2d_stats.image_accepted++;
+    }
     return 1;
 }
 
@@ -228,11 +323,27 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
     task->draw_unit = unit;
     ge2d->task_act = task;
 
-    result = lv_draw_aic_ge2d_fill(task);
+    switch (task->type) {
+    case LV_DRAW_TASK_TYPE_FILL:
+        result = lv_draw_aic_ge2d_fill(task);
+        break;
+    case LV_DRAW_TASK_TYPE_IMAGE:
+        result = lv_draw_aic_ge2d_image(task);
+        break;
+    default:
+        /* evaluate() claims nothing else, so this is unreachable. */
+        result = LV_RESULT_INVALID;
+        break;
+    }
 
     if (result == LV_RESULT_OK) {
         ge2d->task_act->state = LV_DRAW_TASK_STATE_FINISHED;
-        g_ge2d_stats.fill_completed++;
+        if (task->type == LV_DRAW_TASK_TYPE_FILL) {
+            g_ge2d_stats.fill_completed++;
+        }
+        else {
+            g_ge2d_stats.image_completed++;
+        }
     }
     else {
         ge2d->task_act->state = LV_DRAW_TASK_STATE_FAILED;

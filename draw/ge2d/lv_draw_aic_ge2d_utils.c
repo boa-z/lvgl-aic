@@ -43,8 +43,23 @@ bool lv_draw_aic_ge2d_dst_format_supported(lv_color_format_t cf)
     return lv_aic_pixel_format_is_ge2d_dst(cf);
 }
 
-void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *draw_buf,
-                                        const lv_area_t *rel_area)
+/**
+ * Walk @p rel_area one row at a time and prepare the cache for the region the
+ * GE engine is about to touch.
+ *
+ * @p clean_only selects the direction of the transfer:
+ *   - false (destination): clean AND invalidate. The engine writes; the CPU
+ *     must not keep stale lines of the old contents, and any CPU dirty line
+ *     must not be written back on top of the engine's output.
+ *   - true (source): clean only. The engine reads; the CPU's newest data must
+ *     reach memory, but nothing may be discarded.
+ *
+ * stride is authoritative - it is not necessarily width * bpp - so the row
+ * pitch comes from the header, never from the area width.
+ */
+static void lv_draw_aic_ge2d_prepare_cache(const lv_draw_buf_t *draw_buf,
+                                           const lv_area_t *rel_area,
+                                           bool clean_only)
 {
     const lv_image_header_t *header;
     uint32_t stride;
@@ -69,8 +84,7 @@ void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *draw_buf,
         return;
     }
 
-    /* Row start in bytes. stride is authoritative: it is not necessarily
-     * width * bpp, so the row pitch must come from the header. */
+    /* Row start in bytes. */
     address = draw_buf->data
               + ((uint32_t)rel_area->x1 * bpp)
               + (stride * (uint32_t)rel_area->y1);
@@ -80,11 +94,29 @@ void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *draw_buf,
         /* Widen to the containing cache lines. The first row is usually
          * misaligned, hence the extra head bytes. */
         int32_t head = (int32_t)((ulong)address & (CACHE_LINE_SIZE - 1U));
-        aicos_dcache_clean_invalid_range(
-            (void *)ALIGN_DOWN((ulong)address, CACHE_LINE_SIZE),
-            (u32)ALIGN_UP((u32)(line_bytes + head), CACHE_LINE_SIZE));
+        ulong base = ALIGN_DOWN((ulong)address, CACHE_LINE_SIZE);
+        ulong span = (ulong)ALIGN_UP((u32)(line_bytes + head), CACHE_LINE_SIZE);
+
+        if (clean_only) {
+            aicos_dcache_clean_range((unsigned long *)base, span);
+        }
+        else {
+            aicos_dcache_clean_invalid_range((void *)base, (u32)span);
+        }
         address += stride;
     }
+}
+
+void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *draw_buf,
+                                        const lv_area_t *rel_area)
+{
+    lv_draw_aic_ge2d_prepare_cache(draw_buf, rel_area, false);
+}
+
+void lv_draw_aic_ge2d_prepare_src_cache(const lv_draw_buf_t *draw_buf,
+                                        const lv_area_t *rel_area)
+{
+    lv_draw_aic_ge2d_prepare_cache(draw_buf, rel_area, true);
 }
 
 #endif /* AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP */

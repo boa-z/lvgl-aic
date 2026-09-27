@@ -56,6 +56,16 @@ bool lv_aic_pixel_format_from_mpp(enum mpp_pixel_format mpp_fmt,
  */
 bool lv_aic_pixel_format_is_ge2d_dst(lv_color_format_t lv_fmt);
 
+/**
+ * @brief True when GE2D can read the format as a blit source.
+ *
+ * Phase 3B accepts the same four formats as the destination side. They are
+ * listed separately rather than aliased to is_ge2d_dst() because the two
+ * capabilities are independent: a future phase may allow a source format the
+ * blit cannot write, or vice versa.
+ */
+bool lv_aic_pixel_format_is_ge2d_src(lv_color_format_t lv_fmt);
+
 #endif /* AIC_LVGL_BSP_MPP */
 
 #ifdef __cplusplus
