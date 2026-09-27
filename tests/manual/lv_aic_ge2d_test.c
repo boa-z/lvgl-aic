@@ -145,7 +145,11 @@ static int aic_ge2d_probe_blend(enum ge_pd_rules rules,
     uint8_t *src_mem;
     uint8_t *dst_mem;
     uint32_t alpha;
-    int worst = 0;
+    uint32_t worst_channel = 0U;
+    uint32_t worst_expected = 0U;
+    uint32_t worst_actual = 0U;
+    /* -1 so the first comparison always seeds the diagnostic triple below. */
+    int worst = -1;
 
     if (ge == NULL) {
         LOG_E("FAIL %s: the GE device is not open", label);
@@ -221,13 +225,25 @@ static int aic_ge2d_probe_blend(enum ge_pd_rules rules,
                 uint32_t expected = ((uint32_t)aic_ge2d_probe_src[c] * alpha +
                                      (uint32_t)aic_ge2d_probe_dst[c] * (255U - alpha) +
                                      127U) / 255U;
-                int deviation = (int)px[c] - (int)expected;
+                /* The probe tables are indexed R, G, B while the buffers are
+                 * stored blue first (lv_color32_t is {blue, green, red, alpha}),
+                 * so channel c lives at byte 2 - c. Reading the bytes in index
+                 * order instead turns a channel swap into a reported blend
+                 * error: the first board run of this probe read a correct
+                 * result as 52 counts off, which is exactly the red-versus-blue
+                 * difference. Keep the diagnostic triple below for that reason -
+                 * "expected 108, got 160" names the fault in one line, where a
+                 * bare "52/255 off" does not. */
+                int deviation = (int)px[2U - c] - (int)expected;
 
                 if (deviation < 0) {
                     deviation = -deviation;
                 }
                 if (deviation > worst) {
                     worst = deviation;
+                    worst_channel = c;
+                    worst_expected = expected;
+                    worst_actual = px[2U - c];
                 }
             }
         }
@@ -236,7 +252,9 @@ static int aic_ge2d_probe_blend(enum ge_pd_rules rules,
     aicos_free_align(MEM_CMA, src_mem);
     aicos_free_align(MEM_CMA, dst_mem);
 
-    LOG_I("%s: max deviation %d/255 at alpha=%u", label, worst, (unsigned)alpha);
+    LOG_I("%s: max deviation %d/255 at alpha=%u (%c expected %u, got %u)",
+          label, worst, (unsigned)alpha, "RGB"[worst_channel],
+          (unsigned)worst_expected, (unsigned)worst_actual);
     return worst;
 }
 

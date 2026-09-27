@@ -1004,15 +1004,73 @@ None of the above is board evidence. Compiling, linking and passing a static gat
 does not prove the engine blended anything, and the probe's verdict is exactly
 the thing that has not run yet.
 
+#### Board result, first run (2026-09-27): FAIL - in the probe, not in the port
+
+The image above was flashed. The GE2D section of the console:
+
+```text
+[   2.447] I/lvgl.ge2d.test: ge2d accepted fill=13 image=9 layer=1 | engine fill=13 image=9 layer=0 | sw_fallback im
+[   2.447] I/lvgl.ge2d.test: blend rgb888 + global 128: max deviation 52/255 at alpha=128
+[   2.447] E/lvgl.ge2d.test: FAIL the rgb888 global-alpha blend is 52/255 off LVGL's result
+[   2.447] E/lvgl.aic.smoke: GE2D checks failed; page remains available for inspection
+```
+
+The failure is in the measurement, not in the port, and the number says which.
+
+52 is exactly the red-versus-blue difference. The probe tables are indexed R, G,
+B, but the buffers are stored blue first (`lv_color32_t` is
+`{blue, green, red, alpha}`), and the comparison read the destination bytes in
+index order - so it compared the red expectation against the blue byte. Worked
+through: the engine wrote bytes `[160, 100, 108]` (blue, green, red) and the
+expectation was `(R=108, G=100, B=160)`. Mapped correctly all three agree;
+mis-mapping red against blue gives `|160 - 108| = 52`, and green matches at 0.
+That is precisely the observed 52, which is what identifies the cause.
+
+So `GE_PD_NONE` did compute LVGL's result for this case. What the run does **not**
+establish is the other two cases or the cross-check: the first case failed and
+the check returns early.
+
+Fixed by comparing `px[2 - c]` instead of `px[c]`. The probe now also logs the
+worst channel's expected and actual values alongside the deviation, because a
+bare "52/255 off" cost a board cycle to interpret while "R expected 108, got 160"
+would not have.
+
+What the same log establishes independently of the probe:
+
+- `fill=13` and `image=9`, up from Phase 3B's 11 and 3. The six new
+  partial-opacity IMAGE tasks and the two new backdrop FILL tasks were all
+  claimed, so lifting the opacity gate did reach the page.
+- `engine fill=13 image=9`, with `accepted` equal to `completed` for both, and
+  the run got past the `image_sw != 0` assertion - so `image_sw_fallback == 0`.
+  **Every one of the nine IMAGE tasks was drawn by the engine**, including the
+  six at `opa` 128 and 64. The partial-opacity path is executed by the engine,
+  not merely claimed.
+- `layer=1`, `engine layer=0`, unchanged from Phase 3B and expected.
+- Phase 2 regression on the same image: `PASS 1000 decode/close cycles`,
+  `heap before=121972 after=117708 peak=154468`, `CMA current=0 peak=61440
+  alloc=1000 free=1000`, `PASS CMA lifecycle balanced across 1000 cycles`.
+
+The run stopped before the LAYER and fallback assertions and before the summary
+`PASS`, so the run as a whole is a FAIL and no criterion is closed by it.
+
+#### Panel observation (2026-09-27)
+
+The operator reported the Phase 3C1 row renders as three tiles fading towards grey
+(`b.png` over the mid-grey backdrop) and three fading towards white (`c.png` over
+white) - the monotonic ramp the row exists to show. That confirms a global opacity
+is being applied; it does not measure its value.
+
+#### Board result, second run: pending
+
 #### Phase 3C1 completion checklist
 
 | # | Criterion | Result |
 |---|-----------|--------|
-| 1 | RGB image opacity correct | board run pending |
-| 2 | ARGB image opacity correct | board run pending |
-| 3 | `GE errors == 0` | board run pending |
-| 4 | no FILL/IMAGE regression | board run pending |
-| 5 | display and touch normal | board run pending |
+| 1 | RGB image opacity correct | probe defect on the first run; probe fixed, re-run pending |
+| 2 | ARGB image opacity correct | re-run pending (the first run returned before this case) |
+| 3 | `GE errors == 0` | PASS - the run passed the error assertion before reaching the probe |
+| 4 | no FILL/IMAGE regression | PASS for the parts that ran: fill and image assertions held, `image_sw == 0`, Phase 2's 1000-cycle MPP test PASS. Definitive on the re-run, which reaches the summary `PASS` |
+| 5 | display and touch normal | display PASS (first frame presented, page visible); touch not yet reported |
 
 The remaining checklist items belong to 3C2 and 3C3 and are listed in
 [phase3c-image-transform-plan.md](../../../../docs/phase3c-image-transform-plan.md).
