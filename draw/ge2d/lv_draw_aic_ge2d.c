@@ -178,7 +178,8 @@ static bool lv_draw_aic_ge2d_accepts_image(const lv_draw_task_t *task)
     }
 
     /* Phase 3C2: bounded RGB scale only. LAYER keeps its existing policy. */
-    if (dsc->rotation != 0 || dsc->skew_x != 0 || dsc->skew_y != 0 ||
+    if ((dsc->rotation != 0 && dsc->rotation != 900 && dsc->rotation != 1800 && dsc->rotation != 2700) ||
+        dsc->skew_x != 0 || dsc->skew_y != 0 ||
         dsc->scale_x < LV_SCALE_NONE / 16 || dsc->scale_x > LV_SCALE_NONE * 16 ||
         dsc->scale_y < LV_SCALE_NONE / 16 || dsc->scale_y > LV_SCALE_NONE * 16) {
         return false;

@@ -120,6 +120,7 @@ int main(void)
         d.scale_x = 15; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.scale_x = 4097; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.scale_x = 384; d.rotation = 170; assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        d.rotation = 900; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 0; d.tile = 1; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.tile = 0; d.recolor_opa = 128; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         assert(submits == before);
@@ -143,6 +144,15 @@ int main(void)
         assert(lv_aic_ge2d_rotation_crop(32, 24, &dst, &pivot, 1800, &crop, &flags));
         assert(flags == MPP_ROTATION_180 && crop.x1 == 2 && crop.y1 == 3 && crop.x2 == 12 && crop.y2 == 14);
         assert(!lv_aic_ge2d_rotation_crop(32, 24, &dst, &pivot, 450, &crop, &flags));
+        {
+            int32_t phase_x, phase_y;
+            dst = (lv_area_t){-15, 0, 0, 15};
+            assert(lv_aic_ge2d_rotation_scale_crop(32, 32, &dst, &pivot, 900,
+                                                   128, 128, &crop, &flags,
+                                                   &phase_x, &phase_y));
+            assert(flags == MPP_ROTATION_90 && crop.x1 == 0 && crop.y1 == 0);
+            assert(phase_x == 0 && phase_y == 0);
+        }
     }
     lv_deinit();
     return 0;
