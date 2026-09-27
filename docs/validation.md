@@ -15,6 +15,7 @@ This file is intentionally explicit about unverified work.
 | 2026-09-27 | `a7002a3` | `312ec07a` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS** | Phase 3A board run 2 of image `f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`: `ge2d fill accepted=10 completed=10 fallback=5 errors=0` and `PASS GE2D opaque fill: 10 rectangles accelerated, 5 fell back to software`. Criteria 1, 2, 3, 4, 6, 7 and 8 are board-confirmed. Criteria 5 (no screen corruption) and 9 (touch interaction) still need a human at the panel, so Gate 3 stays open. |
 | 2026-09-27 | `a7002a3` + docs | `bf56a184` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS (closed)** | Phase 3A closeout. The operator confirmed the two panel-only criteria after run 2: no screen corruption (5) and touch interaction still works (9). **All nine completion criteria are board-confirmed** and Phase 3A is closed. Criteria 5 and 9 are operator judgements, not measurements - no pixel diff was captured. Phase 3B (IMAGE + LAYER) is planned separately. |
 | 2026-09-27 | `3efc79d` + docs (see Phase 3B closeout) | `15e67f67` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Phase 3B IMAGE + LAYER: the GE2D unit blits untransformed images and composites layers through the same code path. Host 9/9 CTest PASS (13.56 s); target build plus both static gates PASS on image `ad32c8540a640c71c25bae6ddf06b1835eec773937c4bf9dae997203e0e5f18b`. **No board run.** The IMAGE half is expected to be engine-drawn; the LAYER composite is expected to fall back to software, because LVGL allocates layer buffers from the RT-Thread system heap at `0x30040000`, below the GE address window. See the Phase 3B closeout. |
+| 2026-09-27 | `020d944` | `761015b9` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | partial | Phase 3B board run of image `ad32c8540a640c71c25bae6ddf06b1835eec773937c4bf9dae997203e0e5f18b`: `ge2d accepted fill=11 image=3 layer=1 \| engine fill=11 image=3 layer=0` and `PASS GE2D: 11 fills and 3 images drawn by the engine; 1 layer task(s) claimed, 0 drawn by the engine`. **Criteria 1-9 are board-confirmed**, including criterion 4 - every claimed IMAGE task was drawn by the engine, so the ARGB8888 `GE_PD_SRC_OVER` blend really ran on the GE2D and not merely in software. The single LAYER composite fell back to software exactly as predicted. Criteria 10 and 11 are panel questions and are still open. Both log lines were captured truncated; the PASS verdict implies `errors=0` and `declined>=1`, because the check prints FAIL and returns non-zero otherwise. |
 
 ## Required Phase 1 evidence
 
@@ -762,14 +763,55 @@ Target, built with the project's own entry point
 None of the above is board evidence. Compiling, linking and passing a static gate
 does not prove the engine drew anything.
 
+### Board result (2026-09-27): criteria 1-9 PASS
+
+The image above was flashed to the D50T-2-Lite board. The GE2D section of the
+console:
+
+```text
+[   2.388] I/lvgl.ge2d.test: ge2d accepted fill=11 image=3 layer=1 | engine fill=11 image=3 layer=0 | sw_fallback im[...]
+[   2.388] I/lvgl.ge2d.test: PASS GE2D: 11 fills and 3 images drawn by the engine; 1 layer task(s) claimed, 0 drawn [...]
+```
+
+Both lines were captured truncated at about 110 characters. The truncation does
+not weaken the verdict: the check returns non-zero and prints `FAIL` for every
+assertion, so a printed `PASS` proves `errors=0`, `declined>=1` and every counter
+assertion held. The full lines are still worth capturing for the record.
+
+What the counters decide:
+
+- **Criterion 4 is the result of this run.** `engine image=3` with
+  `accepted image=3` means `image_sw_fallback == 0`: every claimed IMAGE task was
+  drawn by the GE2D, not handed back to software. The ARGB8888
+  `GE_PD_SRC_OVER` blend therefore ran on the engine.
+- `image=3`, not the 2 the new probes alone would give. The third is `a.jpg`,
+  the Phase 2 JPEG fixture at x=24: it is the only image in that row that is
+  **not** scaled 4x (`lv_image_set_scale` is applied for `i != 0`), so it is an
+  untransformed 160x120 blit the unit claims. The engine accelerated a JPEG
+  decode-and-blit as well as the two Phase 3B PNG probes. The Phase 3B probes
+  themselves are `b.png` (RGB888, plain copy) and `c.png` (ARGB8888, blend).
+- `fill=11` is Phase 3A's 10 plus the white 32x32 swatch added under `c.png`,
+  which is opaque, unrounded and therefore claimable. All 11 were engine-drawn.
+- `layer=1`, `engine layer=0`. The single LAYER composite was declined and
+  composited in software, exactly as the address-window analysis predicted. No
+  layer was dropped and no error was reported.
+
+The Phase 2/3A regression check also holds on the same image: `PASS 1000
+decode/close cycles` with `CMA current=0 peak=61440 alloc=1000 free=1000` and
+`PASS CMA lifecycle balanced`, so criterion 9 is satisfied.
+
+Criteria 10 and 11 are panel judgements and are not decided by the serial log.
+
 ### What is claimed for LAYER, and what is not
 
-Claimed: the unit claims a LAYER task, the composite is correct because the
-software path draws it, the layer is never dropped, and the log states which path
-ran.
+Claimed, and now board-confirmed: the unit claims a LAYER task, the composite is
+correct because the software path draws it, the layer is never dropped, and the
+log states which path ran.
 
 **Not** claimed: that a LAYER composite is drawn by the engine on this board. The
-expected board result is `engine layer == 0` with `sw_fallback layer == layer`.
+board result is `engine layer == 0` with `sw_fallback layer == layer`, which is
+the documented buffer-placement outcome and not a failure.
 
-Phase 3B stays **open** until a board run confirms the criteria in
+Phase 3B stays **open** until criteria 10 and 11 are confirmed at the panel. The
+full criteria list is in
 [phase3b-image-layer-plan.md](../../../../docs/phase3b-image-layer-plan.md).
