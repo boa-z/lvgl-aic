@@ -17,6 +17,7 @@ This file is intentionally explicit about unverified work.
 | 2026-09-27 | `3efc79d` + docs (see Phase 3B closeout) | `15e67f67` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Phase 3B IMAGE + LAYER: the GE2D unit blits untransformed images and composites layers through the same code path. Host 9/9 CTest PASS (13.56 s); target build plus both static gates PASS on image `ad32c8540a640c71c25bae6ddf06b1835eec773937c4bf9dae997203e0e5f18b`. **No board run.** The IMAGE half is expected to be engine-drawn; the LAYER composite is expected to fall back to software, because LVGL allocates layer buffers from the RT-Thread system heap at `0x30040000`, below the GE address window. See the Phase 3B closeout. |
 | 2026-09-27 | `020d944` | `761015b9` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | partial | Phase 3B board run of image `ad32c8540a640c71c25bae6ddf06b1835eec773937c4bf9dae997203e0e5f18b`: `ge2d accepted fill=11 image=3 layer=1 \| engine fill=11 image=3 layer=0` and `PASS GE2D: 11 fills and 3 images drawn by the engine; 1 layer task(s) claimed, 0 drawn by the engine`. **Criteria 1-9 are board-confirmed**, including criterion 4 - every claimed IMAGE task was drawn by the engine, so the ARGB8888 `GE_PD_SRC_OVER` blend really ran on the GE2D and not merely in software. The single LAYER composite fell back to software exactly as predicted. Criteria 10 and 11 are panel questions and are still open. Both log lines were captured truncated; the PASS verdict implies `errors=0` and `declined>=1`, because the check prints FAIL and returns non-zero otherwise. |
 | 2026-09-27 | `9483d98` + docs | `089806a5` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS (closed)** | Phase 3B closeout. The operator confirmed the two panel-only criteria after the board run: `c.png`'s alpha ramp shows the white swatch through its transparent corner and blue at the opaque corner, `b.png` has correct channel order, the 50% layer rectangle is a uniform dark slate blue, and touch still works. **All eleven completion criteria are board-confirmed** and Phase 3B is closed. Criteria 10 and 11 are operator judgements, not measurements - no pixel diff was captured. The LAYER composite is board-confirmed as claimed-and-composited-in-software, never as engine-drawn. |
+| 2026-09-27 | `e83758e` | `fb3cbdbf` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS** | Phase 3C1 board run 2 of image `0ebd4b7d6be789befe7103aa469922e25d907a8c7507561a4cd8c44bf48d17ee`: `ge2d accepted fill=13 image=9 layer=1 \| engine fill=13 image=9 layer=0` and `PASS GE2D: 13 fills and 9 images drawn by the engine; 1 layer task(s) claimed, 0 drawn by the engine`. The blend probe matched LVGL's arithmetic at **0/255** on all three straight-alpha cases, and the must-fail premultiplied cross-check missed by **100/255** - exactly the predicted amount, 50x the tolerance. Criteria 1-4 are board-confirmed; criterion 5's display half is confirmed by the log, its touch half still needs the operator. |
 
 ## Required Phase 1 evidence
 
@@ -857,9 +858,15 @@ so each capability lands with its own evidence rather than as one large change.
 
 | Sub-phase | Capability | Status |
 |-----------|------------|--------|
-| 3C1 | IMAGE opacity (`opa < LV_OPA_COVER`) | implemented; board validation pending |
+| 3C1 | IMAGE opacity (`opa < LV_OPA_COVER`) | **closed** - board-confirmed |
 | 3C2 | IMAGE scale (`rotation == 0`, `scale_x`/`scale_y`) | not started |
 | 3C3 | orthogonal rotation (90/180/270) | not started |
+
+Phase 3C1 is closed: the opacity gate is lifted, the Porter/Duff rule is the
+straight-alpha one, and both are board-confirmed - the engine drew all nine IMAGE
+tasks, and its blend arithmetic matches LVGL's within 0/255 on all three accepted
+source shapes. The rule choice is measured rather than argued: the premultiplied
+alternative misses by 100/255 on the same inputs.
 
 The capability definition this phase has to keep accurate:
 
@@ -991,18 +998,23 @@ Target, built with the project's own entry point
   PASS, 9 payload CRCs PASS, 26 packaged MPP fixture/provenance hashes PASS;
 - image
   `output/d13x_d50t-2-lite_rt-thread_lvgl-aic-ge2d/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
-  1,806,848 bytes, SHA256
-  `ed64e858c52f813ed391348a75f293e7e41d0e9c7d1e62ddb0caafb03c03ec80`.
-  Phase 3B's image was 1,804,800 bytes; the 2,048-byte growth is the blend probe,
-  its log strings and the new page objects.
+  1,806,848 bytes. Phase 3B's image was 1,804,800 bytes; the 2,048-byte growth is
+  the blend probe, its log strings and the new page objects.
 
-The image matches the source that produced it: a second build after the source
-was final recompiled nothing and reproduced the same SHA256, and the ELF contains
-the final label string and none of the superseded one.
+Two images were built in this sub-phase. The first, SHA256
+`ed64e858c52f813ed391348a75f293e7e41d0e9c7d1e62ddb0caafb03c03ec80`, carried the
+probe defect described below and is superseded. The second, SHA256
+`0ebd4b7d6be789befe7103aa469922e25d907a8c7507561a4cd8c44bf48d17ee`, is the current
+artifact and is the one flashed for the second board run.
+
+Both images match the source that produced them. For the first, a second build
+after the source was final recompiled nothing and reproduced the same SHA256, and
+the ELF contained the final label string and none of the superseded one. For the
+second, the ELF contains the new probe diagnostic string and not the old one.
 
 None of the above is board evidence. Compiling, linking and passing a static gate
-does not prove the engine blended anything, and the probe's verdict is exactly
-the thing that has not run yet.
+does not prove the engine blended anything; that is what the board runs below
+were for.
 
 #### Board result, first run (2026-09-27): FAIL - in the probe, not in the port
 
@@ -1060,17 +1072,93 @@ The operator reported the Phase 3C1 row renders as three tiles fading towards gr
 white) - the monotonic ramp the row exists to show. That confirms a global opacity
 is being applied; it does not measure its value.
 
-#### Board result, second run: pending
+#### Board result, second run (2026-09-27): PASS
+
+Image `0ebd4b7d6be789befe7103aa469922e25d907a8c7507561a4cd8c44bf48d17ee` was
+flashed. The GE2D section of the console:
+
+```text
+[   2.450] I/lvgl.ge2d.test: ge2d accepted fill=13 image=9 layer=1 | engine fill=13 image=9 layer=0 | sw_fallback im
+[   2.450] I/lvgl.ge2d.test: blend rgb888 + global 128: max deviation 0/255 at alpha=128 (R expected 108, got 108)
+[   2.450] I/lvgl.ge2d.test: blend argb8888 + pixel alpha 128: max deviation 0/255 at alpha=127 (R expected 108, got
+[   2.450] I/lvgl.ge2d.test: blend argb8888 + pixel 200 x global 64: max deviation 0/255 at alpha=50 (R expected 52,
+[   2.450] I/lvgl.ge2d.test: cross-check the premultiplied rule: max deviation 100/255 at alpha=128 (R expected 108,
+[   2.450] I/lvgl.ge2d.test: PASS GE2D blend: rgb888+global, argb8888 per-pixel and pixel x global all match LVGL wi
+[   2.451] I/lvgl.ge2d.test: PASS GE2D: 13 fills and 9 images drawn by the engine; 1 layer task(s) claimed, 0 drawn
+[   2.465] I/lvgl.aic.smoke: LVGL 9.6 smoke page is running
+[   2.471] I/lvgl.aic.smoke: first frame presented; scheduler is still progressing
+```
+
+All three accepted source shapes match LVGL's arithmetic exactly, and the
+must-fail cross-check misses by precisely the amount the coefficient table
+predicts.
+
+| case | rule | effective alpha | expected R | observed R | deviation |
+|------|------|-----------------|-----------|-----------|-----------|
+| rgb888 + global 128 | `GE_PD_NONE` | 128 | 108 | 108 | **0/255** |
+| argb8888 + pixel alpha 128 | `GE_PD_NONE` | 127 | 108 | 108 | **0/255** |
+| argb8888 + pixel 200 x global 64 | `GE_PD_NONE` | 50 | 52 | 52 | **0/255** |
+| cross-check, premultiplied | `GE_PD_SRC_OVER` | 128 | 108 | 208 | **100/255** |
+
+The alpha column is the composition LVGL itself would use. An RGB source has no
+per-pixel alpha, so the effective alpha is the global opacity (`128`). For the
+two ARGB cases it is `LV_OPA_MIX2(pixel, global)`, i.e. `(a1*a2) >> 8`:
+`(128*255)>>8 = 127` and `(200*64)>>8 = 50`. The expected red is
+`(Cs*As + Cd*(1-As) + 127) / 255` with `Cs = 200` and `Cd = 16`.
+
+The cross-check is the row that matters. The premultiplied rule computes
+`Cs + Cd*(1-As)`, which for these inputs is `200 + 16*127/255 = 208`. Against
+LVGL's `108` that is a miss of **exactly 100 counts** - the arithmetic prediction,
+and 50x the tolerance of 2. The probe therefore separates the two rules by a wide
+margin, and the rule the port uses is the one that matches LVGL. A probe that
+passed under both rules would have proved nothing about the choice; this one
+cannot pass under the wrong rule.
+
+What the same run establishes beyond the blend arithmetic:
+
+- the run reached the summary `PASS`, so every assertion after the probe held:
+  `errors == 0`, `fill >= AIC_GE2D_MIN_FILL`, `fill_done == fill`,
+  `image_done == image`, `image_sw == 0`, `layer_done == layer`, and
+  `fallback >= 1`;
+- `fill=13` and `image=9`, up from Phase 3B's 11 and 3 - all eight new page tasks
+  were claimed;
+- `engine image=9` with `image=9` accepted means `image_sw == 0`: **every one of
+  the nine IMAGE tasks was drawn by the engine**, the six partial-opacity ones
+  included. The opacity path is executed on the engine, not merely claimed;
+- `layer=1` with `engine layer=0` is unchanged from Phase 3B and is the documented
+  address-window behaviour, not a regression;
+- Phase 2 regression on the same image: the 1000-cycle decode/close and the CMA
+  lifecycle balance both PASS.
+
+The console truncated several lines at its terminal width. The truncated tails
+are fully determined by the numbers that did survive: `engine image = image -
+image_sw` together with `image_done == image` forces `image_sw = 0`, and
+`engine layer = layer - layer_sw` together with `layer_done == layer` forces
+`layer_sw = 1`.
+
+#### Panel confirmation (2026-09-27)
+
+The operator had already reported, on the first run, that the Phase 3C1 row
+renders as three tiles fading towards grey (`b.png` over the mid-grey backdrop)
+and three fading towards white (`c.png` over white) - the monotonic ramp the row
+exists to show. That confirms a global opacity is being applied; it does not
+measure its value, which is what the probe above is for. The two statements are
+kept apart deliberately.
 
 #### Phase 3C1 completion checklist
 
 | # | Criterion | Result |
 |---|-----------|--------|
-| 1 | RGB image opacity correct | probe defect on the first run; probe fixed, re-run pending |
-| 2 | ARGB image opacity correct | re-run pending (the first run returned before this case) |
-| 3 | `GE errors == 0` | PASS - the run passed the error assertion before reaching the probe |
-| 4 | no FILL/IMAGE regression | PASS for the parts that ran: fill and image assertions held, `image_sw == 0`, Phase 2's 1000-cycle MPP test PASS. Definitive on the re-run, which reaches the summary `PASS` |
-| 5 | display and touch normal | display PASS (first frame presented, page visible); touch not yet reported |
+| 1 | RGB image opacity correct | **PASS** - board run 2, probe deviation 0/255 |
+| 2 | ARGB image opacity correct | **PASS** - board run 2, both ARGB cases at 0/255 |
+| 3 | `GE errors == 0` | **PASS** - board run 2 reached the summary `PASS`, which is printed only after the error assertion |
+| 4 | no FILL/IMAGE regression | **PASS** - 13 fills and 9 images engine-drawn, `image_sw == 0`, Phase 2's 1000-cycle MPP test PASS on the same image |
+| 5 | display and touch normal | display **PASS** (first frame presented, page running); touch **pending operator confirmation** |
+
+Criteria 1 and 2 are decided by the probe, not by the panel: it compares the
+engine's output against LVGL's arithmetic, and a wrong rule misses by 100 counts
+where the tolerance is 2. Criterion 5's display half is read off the log; its
+touch half is an operator judgement and is the one item still open.
 
 The remaining checklist items belong to 3C2 and 3C3 and are listed in
 [phase3c-image-transform-plan.md](../../../../docs/phase3c-image-transform-plan.md).
