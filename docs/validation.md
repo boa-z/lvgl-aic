@@ -16,6 +16,7 @@ This file is intentionally explicit about unverified work.
 | 2026-09-27 | `a7002a3` + docs | `bf56a184` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS (closed)** | Phase 3A closeout. The operator confirmed the two panel-only criteria after run 2: no screen corruption (5) and touch interaction still works (9). **All nine completion criteria are board-confirmed** and Phase 3A is closed. Criteria 5 and 9 are operator judgements, not measurements - no pixel diff was captured. Phase 3B (IMAGE + LAYER) is planned separately. |
 | 2026-09-27 | `3efc79d` + docs (see Phase 3B closeout) | `15e67f67` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Phase 3B IMAGE + LAYER: the GE2D unit blits untransformed images and composites layers through the same code path. Host 9/9 CTest PASS (13.56 s); target build plus both static gates PASS on image `ad32c8540a640c71c25bae6ddf06b1835eec773937c4bf9dae997203e0e5f18b`. **No board run.** The IMAGE half is expected to be engine-drawn; the LAYER composite is expected to fall back to software, because LVGL allocates layer buffers from the RT-Thread system heap at `0x30040000`, below the GE address window. See the Phase 3B closeout. |
 | 2026-09-27 | `020d944` | `761015b9` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | partial | Phase 3B board run of image `ad32c8540a640c71c25bae6ddf06b1835eec773937c4bf9dae997203e0e5f18b`: `ge2d accepted fill=11 image=3 layer=1 \| engine fill=11 image=3 layer=0` and `PASS GE2D: 11 fills and 3 images drawn by the engine; 1 layer task(s) claimed, 0 drawn by the engine`. **Criteria 1-9 are board-confirmed**, including criterion 4 - every claimed IMAGE task was drawn by the engine, so the ARGB8888 `GE_PD_SRC_OVER` blend really ran on the GE2D and not merely in software. The single LAYER composite fell back to software exactly as predicted. Criteria 10 and 11 are panel questions and are still open. Both log lines were captured truncated; the PASS verdict implies `errors=0` and `declined>=1`, because the check prints FAIL and returns non-zero otherwise. |
+| 2026-09-27 | `9483d98` + docs | `089806a5` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS (closed)** | Phase 3B closeout. The operator confirmed the two panel-only criteria after the board run: `c.png`'s alpha ramp shows the white swatch through its transparent corner and blue at the opaque corner, `b.png` has correct channel order, the 50% layer rectangle is a uniform dark slate blue, and touch still works. **All eleven completion criteria are board-confirmed** and Phase 3B is closed. Criteria 10 and 11 are operator judgements, not measurements - no pixel diff was captured. The LAYER composite is board-confirmed as claimed-and-composited-in-software, never as engine-drawn. |
 
 ## Required Phase 1 evidence
 
@@ -631,7 +632,7 @@ touch coordinates were within N units". A machine-checkable version of either
 (framebuffer capture versus a reference image; raw touch coordinates versus the
 panel mapping) is separate work and is not claimed here.
 
-## Phase 3B closeout (in progress: host and target verified, board run pending)
+## Phase 3B closeout (closed: all eleven criteria board-confirmed)
 
 Branch `phase3-ge2d`, continuing from the Phase 3A closeout. Scope is two more
 task types on the draw unit Phase 3A built:
@@ -802,6 +803,30 @@ decode/close cycles` with `CMA current=0 peak=61440 alloc=1000 free=1000` and
 
 Criteria 10 and 11 are panel judgements and are not decided by the serial log.
 
+### Panel confirmation (2026-09-27): PASS
+
+The operator answered the four questions the serial log cannot decide:
+
+- **`c.png` alpha blend** - the transparent top-left corner shows the white
+  swatch through it and the opaque bottom-right corner shows blue, with the ramp
+  between. A missing or ignored alpha channel would have painted the whole tile
+  opaque with no white anywhere, so this is the observation that confirms the
+  blend rather than merely the absence of a crash.
+- **`b.png` colours** - correct, no channel swap.
+- **The 50% layer rectangle** - a uniform dark slate blue, consistent with
+  `0x40a0e0` at `opa_layered = LV_OPA_50` over the `0x202020` page. Had the
+  opacity been ignored the rectangle would have been noticeably brighter and more
+  saturated.
+- **Touch** - still works.
+
+Criteria 10 and 11 are operator judgements, not measurements: they say "the blend
+looked right and the rectangle was uniform", not "every pixel matched a
+reference". A machine-checkable version (framebuffer capture versus a reference
+image) is separate work and is not claimed here.
+
+**All eleven Phase 3B completion criteria are now board-confirmed and Phase 3B is
+closed.**
+
 ### What is claimed for LAYER, and what is not
 
 Claimed, and now board-confirmed: the unit claims a LAYER task, the composite is
@@ -812,6 +837,13 @@ log states which path ran.
 board result is `engine layer == 0` with `sw_fallback layer == layer`, which is
 the documented buffer-placement outcome and not a failure.
 
-Phase 3B stays **open** until criteria 10 and 11 are confirmed at the panel. The
-full criteria list is in
+One qualification is worth keeping in view across the two halves of the phase.
+Criterion 10 confirms the ARGB8888 blend is **visually correct**, and criterion 4
+confirms the blend was **executed by the engine** - so together they establish
+the engine's `GE_PD_SRC_OVER` path. Criterion 11 confirms the 50% layer composite
+is visually correct, but that composite was drawn in **software**, so it
+validates the fallback rather than the engine's layer path. Phase 3B never claims
+the latter.
+
+The full criteria list is in
 [phase3b-image-layer-plan.md](../../../../docs/phase3b-image-layer-plan.md).
