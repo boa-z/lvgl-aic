@@ -13,6 +13,7 @@ This file is intentionally explicit about unverified work.
 | 2026-09-26 | `c151970` + working tree (see Phase 2B closeout) | `3b135eda4eaf91e6d0607d37ca24551b836ca725` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | none | partial | Phase 2B closeout: CMA lifecycle counters and an alpha-observable manual page. Host 9/9 CTest PASS; target build plus both static gates PASS on image `a5e1275b4c23811a0da0bf2c619f29f1adf23c765279b37ba2389d922a122d2c`. Board confirmation of items 1.1/1.2 and the Gate 1 display/touch regression check are still pending, so Gate 2 stays open. |
 | 2026-09-27 | `cce04be` + working tree (see Phase 3A closeout) | `4d065e442de54a011b17208468ebcf6eae348297` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | fail | Phase 3A board run 1 of image `31ae0db5c965c99df9d195adc1d59d7fa664e4d13042eb4265f0e8a1384a630f`: lifecycle, all MPP fixtures, 1000 decode/close cycles and balanced CMA PASS, but the GE2D unit declined every task. Root-caused to a deinit/init bug in `lv_draw_aic_ge2d_init()` (the `g_ge2d_registered` guard skipped `mpp_ge_open()` after the first deinit), not to the driver. Fixed and rebuilt as `f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`; both static gates and the 9/9 host suite pass again. Criteria 6 and 8 confirmed on hardware, 2/3/4/7 pending the re-flash. Gate 3 stays open. |
 | 2026-09-27 | `a7002a3` | `312ec07a` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS** | Phase 3A board run 2 of image `f79f5531c3b4b1c5637773fb4d5130af2d4b2cc60473d03609147125bc657416`: `ge2d fill accepted=10 completed=10 fallback=5 errors=0` and `PASS GE2D opaque fill: 10 rectangles accelerated, 5 fell back to software`. Criteria 1, 2, 3, 4, 6, 7 and 8 are board-confirmed. Criteria 5 (no screen corruption) and 9 (touch interaction) still need a human at the panel, so Gate 3 stays open. |
+| 2026-09-27 | `a7002a3` + docs | `bf56a184` | `80ca777e37a2b176770726a02e07a6fb79ef0b39` | D133ECS / D50T-2-Lite | **PASS (closed)** | Phase 3A closeout. The operator confirmed the two panel-only criteria after run 2: no screen corruption (5) and touch interaction still works (9). **All nine completion criteria are board-confirmed** and Phase 3A is closed. Criteria 5 and 9 are operator judgements, not measurements - no pixel diff was captured. Phase 3B (IMAGE + LAYER) is planned separately. |
 
 ## Required Phase 1 evidence
 
@@ -370,7 +371,7 @@ the host, the link map, or the image CRCs.
 4. Merge `phase2-mpp` into `main` (`origin/main` is at `f90f5e0`) and tag
    `v0.2.0`.
 
-## Phase 3A closeout (code complete, board run 2 PASS)
+## Phase 3A closeout (closed: all nine criteria board-confirmed)
 
 Branch `phase3-ge2d`, cut from the Phase 2 closeout. Scope is exactly one task
 type: `LV_DRAW_TASK_TYPE_FILL`, opaque, `radius == 0`, no gradient, supported
@@ -603,12 +604,27 @@ unit was compiled: `kservice.o` is stamped `01:13:46` while
 `lv_draw_aic_ge2d.o` is stamped `01:52:27`, and the flashed `d13x.elf` and image
 are stamped `01:52`. The banner tracks `kservice.c`, not the image.
 
-Still not claimed:
+### Panel confirmation (2026-09-27): PASS
 
-- criterion 5 (no screen corruption) - run 2 did draw the shapes with GE2D, so
-  the trivially-clean software-only case from run 1 no longer applies. Whether
-  the page looks right needs a person at the panel;
-- criterion 9 (display/touch regression) - the display half is confirmed on both
-  runs, but touch interaction has not been exercised.
+The operator confirmed the two criteria the serial log cannot decide:
 
-Gate 3 stays open until those two are answered.
+- criterion 5 (no screen corruption) - the page renders correctly with GE2D
+  drawing the rectangles; no corruption or tearing;
+- criterion 9 (display/touch regression) - touch interaction still works.
+
+**All nine Phase 3A completion criteria are now board-confirmed and Phase 3A is
+closed.**
+
+What came from where, so the evidence scope stays clear:
+
+| Source | Criteria |
+| --- | --- |
+| Serial log, run 1 | 1, 6, 8 |
+| Serial log, run 2 | 1, 2, 3, 4, 6, 7, 8 |
+| Operator at the panel, after run 2 | 5, 9 |
+
+Criteria 5 and 9 are operator judgements, not measurements: they say "the page
+looked right and touch responded", not "every pixel matched a reference" or "the
+touch coordinates were within N units". A machine-checkable version of either
+(framebuffer capture versus a reference image; raw touch coordinates versus the
+panel mapping) is separate work and is not claimed here.
