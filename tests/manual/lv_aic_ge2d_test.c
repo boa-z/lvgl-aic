@@ -330,6 +330,7 @@ int lv_aic_ge2d_test_run(void)
     uint32_t image, image_done, image_sw;
     uint32_t layer, layer_done, layer_sw;
     uint32_t fallback, errors;
+    unsigned long long refresh_start_us, refresh_elapsed_us;
 
     stats = lv_draw_aic_ge2d_stats();
     if (!stats->ready) {
@@ -343,8 +344,10 @@ int lv_aic_ge2d_test_run(void)
 
     /* Force a full redraw so every shape on the page is re-submitted, then
      * render it synchronously. */
+    refresh_start_us = aic_get_time_us();
     lv_obj_invalidate(lv_screen_active());
     lv_refr_now(lv_display_get_default());
+    refresh_elapsed_us = aic_get_time_us() - refresh_start_us;
 
     fill = stats->fill_accepted - before.fill_accepted;
     fill_done = stats->fill_completed - before.fill_completed;
@@ -365,6 +368,8 @@ int lv_aic_ge2d_test_run(void)
     LOG_I("ge2d sw image=%u layer=%u declined=%u errors=%u",
           (unsigned)image_sw, (unsigned)layer_sw,
           (unsigned)fallback, (unsigned)errors);
+    LOG_I("refresh timing us=%llu ge2d_ready=%u",
+          (unsigned long long)refresh_elapsed_us, stats->ready ? 1U : 0U);
 
     if (errors != 0U) {
         LOG_E("FAIL GE2D reported %u execution errors", (unsigned)errors);
