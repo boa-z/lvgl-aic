@@ -63,6 +63,10 @@ bool lv_aic_pixel_format_is_ge2d_dst(lv_color_format_t lv_fmt);
  * listed separately rather than aliased to is_ge2d_dst() because the two
  * capabilities are independent: a future phase may allow a source format the
  * blit cannot write, or vice versa.
+ *
+ * ARGB8888 is accepted here because the blit blends it with its own per-pixel
+ * alpha rather than copying it; accepting it and then dropping the alpha
+ * channel would paint a transparent image as an opaque one.
  */
 bool lv_aic_pixel_format_is_ge2d_src(lv_color_format_t lv_fmt);
 

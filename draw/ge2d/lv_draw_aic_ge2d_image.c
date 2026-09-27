@@ -7,6 +7,11 @@
  * rotation, no recolor, no tile, no mask. evaluate() rejects everything else,
  * so this function can assume the simple case.
  *
+ * Source alpha is the one thing that is not "the simple case" and is handled
+ * anyway: an ARGB8888 source is blended with its own per-pixel alpha through
+ * GE_PD_SRC_OVER, and a source without an alpha channel is blended by global
+ * alpha when the descriptor carries a partial opacity.
+ *
  * Both IMAGE and LAYER tasks arrive here. A LAYER task carries an lv_layer_t in
  * place of the source, so its draw buffer is wrapped in a temporary image
  * descriptor and the identical blit runs - there is no second code path to keep
@@ -111,21 +116,6 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         return false;
     }
 
-    /* An ARGB source carries per-pixel alpha, and neither path below applies
-     * it: the plain copy would drop the alpha channel outright, and the
-     * global-alpha path multiplies by the layer opacity only. Declining keeps a
-     * transparent image from being painted as an opaque one - the software
-     * renderer blends it correctly instead.
-     *
-     * This is a per-pixel limitation, not an addressing one, so it is checked
-     * before the engine is touched. It is a trace rather than a warning because
-     * an ARGB source is ordinary, not exceptional: a warning here would print
-     * on every refresh of every transparent image on the page. */
-    if (src_cf == LV_COLOR_FORMAT_ARGB8888) {
-        LV_LOG_TRACE("GE2D blit does not honour an ARGB source; falling back");
-        return false;
-    }
-
     /* The GE block reaches memory through a fixed window. A heap source below
      * it cannot be read, and no amount of retrying will change that. */
     if (!lv_draw_aic_ge2d_buf_address_valid(src)) {
@@ -188,16 +178,23 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     blt.dst_buf.crop.width = (uint32_t)blit_w;
     blt.dst_buf.crop.height = (uint32_t)blit_h;
 
-    /* Blending is engaged only when the source carries a partial global
-     * opacity, which is what a LAYER task's own opacity is. An opaque copy
-     * takes the plain path and never enters the Porter/Duff datapath.
+    /* Blending is needed when either side can contribute transparency: the
+     * source may carry a per-pixel alpha channel, and the draw descriptor may
+     * carry a partial global opacity. Only a source with neither takes the
+     * plain-copy path and skips the Porter/Duff datapath entirely.
      *
-     * Note the D13x header comment inverts this field's meaning - the HAL
-     * enables blending when alpha_en != 0, which is what the vendor port relies
-     * on too. src_alpha_mode 2 is the "mixed" mode: pixel alpha times global
-     * alpha. The sources reaching this point have no alpha channel, so their
-     * pixel alpha is opaque and the product reduces to the global value. */
-    if (draw_dsc->opa >= LV_OPA_COVER) {
+     * Note the D13x header comment inverts alpha_en's meaning - the HAL enables
+     * blending when it is non-zero, which is what the vendor port relies on too.
+     * src_alpha_mode 2 is the "mixed" mode, src_alpha = pixel alpha * global
+     * alpha / 255, which is exactly LVGL's own composition rule when both are
+     * present. A source with no alpha channel has an opaque pixel alpha, so the
+     * product reduces to the global value.
+     *
+     * In practice the global-alpha half of this is reached by LAYER tasks:
+     * accepts_image() still declines a partial opa, because driving image
+     * opacity is Phase 3C work. The condition is written for the operation
+     * rather than for the caller, so it stays correct when that lifts. */
+    if (draw_dsc->opa >= LV_OPA_COVER && src_cf != LV_COLOR_FORMAT_ARGB8888) {
         blt.ctrl.alpha_en = 0U;
         blt.ctrl.src_alpha_mode = 0U;
     }

@@ -107,12 +107,13 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task);
  * layer's draw buffer in an image descriptor and runs the identical blit, so
  * there is only one code path for both types.
  *
- * Runs bitblt -> emit -> sync synchronously. Returns LV_RESULT_OK for every
- * outcome that leaves the screen correct, including two that draw nothing
- * through the engine:
- *   - the source turns out to be unusable after the decode (unsupported format,
- *     an address outside the GE window, or a per-pixel alpha the plain blit
- *     cannot apply). The task is then handed to the software renderer.
+ * Runs bitblt -> emit -> sync synchronously, with a GE_PD_SRC_OVER blend when
+ * the source has an alpha channel or the descriptor has a partial opacity, and
+ * a plain copy otherwise. Returns LV_RESULT_OK for every outcome that leaves the
+ * screen correct, including two that draw nothing through the engine:
+ *   - the source turns out to be unusable after the decode (an unsupported
+ *     format, or an address outside the GE window). The task is then handed to
+ *     the software renderer.
  *   - the task is a LAYER whose layer has no buffer, because nothing was drawn
  *     on it. There is nothing to blend.
  * LV_RESULT_INVALID means the task itself is malformed (wrong type, NULL
