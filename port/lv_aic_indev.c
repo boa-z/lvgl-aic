@@ -44,6 +44,11 @@ static const char *lv_aic_touch_device_name(void)
 #define LV_AIC_TOUCH_STACK_SIZE 4096U
 #define LV_AIC_TOUCH_PRIORITY 25U
 #define LV_AIC_TOUCH_POLL_PERIOD_MS 10U
+/* Optional board diagnostic/recovery mode. Other SDK applications retain
+ * interrupt-only behavior unless they explicitly enable this build option. */
+#ifndef AIC_LVGL_TOUCH_POLL_FALLBACK_MS
+#define AIC_LVGL_TOUCH_POLL_FALLBACK_MS 0
+#endif
 
 #if defined(RT_TOUCH_PIN_IRQ)
 #define LV_AIC_TOUCH_USE_IRQ 1
@@ -71,6 +76,7 @@ typedef struct {
     int16_t y;
     lv_indev_state_t state;
     aicos_mutex_t state_lock;
+    volatile uint32_t irqs, reads, events, empty_reads, invalid_reads, deliveries, recovered;
 } lv_aic_touch_ctx_t;
 
 static lv_aic_touch_ctx_t *lv_aic_touch_active_ctx;
@@ -85,6 +91,7 @@ static rt_err_t lv_aic_touch_irq_cb(rt_device_t device, rt_size_t size)
     ctx = lv_aic_touch_active_ctx;
     if ((ctx != NULL) && ctx->is_running) {
         ctx->callback_inflight++;
+        ctx->irqs++;
         rt_hw_interrupt_enable(level);
 
         if ((ctx->previous_rx_indicate != NULL) &&
@@ -158,6 +165,7 @@ static void lv_aic_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     data->point.x = ctx->x;
     data->point.y = ctx->y;
     data->state = ctx->state;
+    ctx->deliveries++;
     (void)aicos_mutex_give(ctx->state_lock);
 }
 
@@ -173,8 +181,10 @@ static void lv_aic_touch_read_once(lv_aic_touch_ctx_t *ctx)
         return;
     }
 
+    ctx->reads++;
     count = rt_device_read(ctx->device, 0, ctx->read_data, ctx->info.point_num);
     if (count > ctx->info.point_num) {
+        ctx->invalid_reads++;
         /* A negative driver error is represented as a large unsigned value
          * by the legacy rt_device_read API. Never interpret that as a full
          * buffer; release a possibly stuck pointer instead. */
@@ -183,6 +193,7 @@ static void lv_aic_touch_read_once(lv_aic_touch_ctx_t *ctx)
         return;
     }
     if (count == 0U) {
+        ctx->empty_reads++;
         return;
     }
 
@@ -208,6 +219,7 @@ static void lv_aic_touch_read_once(lv_aic_touch_ctx_t *ctx)
     }
 
     if (have_event) {
+        ctx->events++;
         lv_indev_state_t state = have_pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
         lv_aic_touch_transform(ctx, &event_x, &event_y);
         lv_aic_touch_set_state(ctx, event_x, event_y, state);
@@ -219,8 +231,13 @@ static void lv_aic_touch_worker(void *parameter)
     lv_aic_touch_ctx_t *ctx = (lv_aic_touch_ctx_t *)parameter;
 
     while (ctx->is_running) {
+        bool timed_out = false;
         if (ctx->irq_sem != NULL) {
+#if AIC_LVGL_TOUCH_POLL_FALLBACK_MS > 0
+            timed_out = aicos_sem_take(ctx->irq_sem, AIC_LVGL_TOUCH_POLL_FALLBACK_MS) != 0;
+#else
             (void)aicos_sem_take(ctx->irq_sem, AICOS_WAIT_FOREVER);
+#endif
         } else {
             aicos_msleep(LV_AIC_TOUCH_POLL_PERIOD_MS);
         }
@@ -229,7 +246,11 @@ static void lv_aic_touch_worker(void *parameter)
             break;
         }
 
+        uint32_t events_before = ctx->events;
         lv_aic_touch_read_once(ctx);
+        if (timed_out && ctx->events != events_before) {
+            ctx->recovered++;
+        }
         if (ctx->is_running && (ctx->irq_sem != NULL)) {
             rt_device_control(ctx->device, RT_TOUCH_CTRL_ENABLE_INT, RT_NULL);
         }
@@ -446,7 +467,41 @@ void lv_aic_indev_deinit(lv_indev_t *indev)
     lv_aic_touch_cleanup((lv_aic_touch_ctx_t *)lv_indev_get_driver_data(indev));
 }
 
+int lv_aic_indev_get_diagnostics(lv_indev_t *indev, lv_aic_touch_diagnostics_t *out)
+{
+    if (indev == NULL || out == NULL) {
+        return LV_AIC_ERR_INVALID_STATE;
+    }
+    lv_aic_touch_ctx_t *ctx = lv_indev_get_driver_data(indev);
+    if (ctx == NULL) {
+        return LV_AIC_ERR_INVALID_STATE;
+    }
+    (void)aicos_mutex_take(ctx->state_lock, AICOS_WAIT_FOREVER);
+    out->x = ctx->x;
+    out->y = ctx->y;
+    out->state = ctx->state;
+    out->range_x = ctx->info.range_x;
+    out->range_y = ctx->info.range_y;
+    /* Independent diagnostic snapshots, not an ISR/worker transaction. */
+    out->irqs = ctx->irqs;
+    out->reads = ctx->reads;
+    out->events = ctx->events;
+    out->empty_reads = ctx->empty_reads;
+    out->invalid_reads = ctx->invalid_reads;
+    out->deliveries = ctx->deliveries;
+    out->recovered = ctx->recovered;
+    (void)aicos_mutex_give(ctx->state_lock);
+    return LV_AIC_OK;
+}
+
 #else /* AIC_LVGL_USE_TOUCH && AIC_LVGL_BSP_RTTHREAD */
+
+int lv_aic_indev_get_diagnostics(lv_indev_t *indev, lv_aic_touch_diagnostics_t *out)
+{
+    (void)indev;
+    (void)out;
+    return LV_AIC_ERR_NO_BSP;
+}
 
 int lv_aic_indev_init(lv_display_t *display, lv_indev_t **indev)
 {

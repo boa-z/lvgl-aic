@@ -16,6 +16,15 @@ extern "C" {
 int lv_aic_indev_init(lv_display_t *display, lv_indev_t **indev);
 void lv_aic_indev_deinit(lv_indev_t *indev);
 
+typedef struct {
+    uint32_t irqs, reads, events, empty_reads, invalid_reads, deliveries, recovered;
+    int32_t range_x, range_y;
+    int16_t x, y;
+    lv_indev_state_t state;
+} lv_aic_touch_diagnostics_t;
+/* Read from the LVGL owner thread, before deinitializing the input device. */
+int lv_aic_indev_get_diagnostics(lv_indev_t *indev, lv_aic_touch_diagnostics_t *out);
+
 #ifdef __cplusplus
 }
 #endif
