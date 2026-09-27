@@ -58,8 +58,8 @@ until the board gate passes; then commit 3C2 independently.
 | 3C2 | invalid ratio/min size/split fallback | PASS on board |
 | 3C2 | scaled scheduler count >0, errors=0 | PASS: engine=10, errors=0 |
 | 3C2 | panel edges, alpha, display/touch | framebuffer PASS; physical photo/touch operator confirmation pending |
-| 3C3 | 90/180/270, pivot/clip/alpha | NEXT |
-| 3C4 | 0.5+90, 1.5+90, 2+180, ARGB | NOT_STARTED until 3C3 passes |
+| 3C3 | 90/180/270, pivot/clip/alpha | **PASS** - operator visually confirmed D50T-2-Lite page and rotation output |
+| 3C4 | 0.5+90, 1.5+90, 2+180, ARGB | **NEXT** - implementation and numeric probes |
 | 3C5 | light counters + GE ON/OFF timing | NOT_STARTED until 3C4 passes |
 
 ### 2026-09-27 board feedback and correction
@@ -88,6 +88,17 @@ edge/alpha/touch inspection and the new UART snapshot remain NOT_RUN.
 See [framebuffer capture](framebuffer-capture.md) for the new manual-test command;
 it copies a presented UI framebuffer, without changing LAYER rendering policy.
 See [UART upgrade](d50t-uart-upgrade.md) for the already-enabled Bootloader route.
+
+### 3C3 board gate (2026-09-27)
+
+The D50T-2-Lite operator confirmed the on-screen Next/Prev controls and
+visually inspected the 0°, 90°, 180° and 270° fixtures; rotation output was
+reported correct. This closes the visual portion of 3C3. Numeric pivot/clip
+comparison is covered by the host contract and remains separate from the
+operator observation. The next implementation must combine the GE rotation
+flags with the existing scaler while preserving source crop, pivot and alpha
+semantics; it must first add host submission contracts before another board
+image is produced.
 
 Each stage needs its own evidence and commit. No arbitrary rotation, CMA layer
 copies, async thread, YUV, tile, recolor or allocator replacement. Stop after

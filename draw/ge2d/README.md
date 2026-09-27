@@ -34,6 +34,8 @@ because the decoder needs it too.
 - If `mpp_ge_open()` fails the unit is still registered and declines everything,
   so software rendering keeps the display alive.
 
-Not in scope for Phase 3A, and not started: IMAGE, LAYER, scale, rotate.
+Phase 3A covered FILL. IMAGE/LAYER, bounded scale, and right-angle rotation
+are implemented in the later 3B/3C stages. Rotation combined with scaling is
+the next gated step (3C4); arbitrary angles remain software fallback.
 
 See `docs/validation.md` for the current verification status.
