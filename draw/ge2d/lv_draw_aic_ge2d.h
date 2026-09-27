@@ -132,11 +132,14 @@ typedef enum {
  * layer's draw buffer in an image descriptor and runs the identical blit, so
  * there is only one code path for both types.
  *
- * Runs bitblt -> emit -> sync synchronously, with a GE_PD_SRC_OVER blend when
- * the source has an alpha channel or the descriptor has a partial opacity, and
- * a plain copy otherwise. @p outcome, when not NULL, reports which of the three
- * cases happened. Returns LV_RESULT_OK for every outcome that leaves the screen
- * correct, including two that draw nothing through the engine:
+ * Runs bitblt -> emit -> sync synchronously, with a Porter/Duff blend when the
+ * source has an alpha channel or the descriptor has a partial opacity, and a
+ * plain copy otherwise. The rule is the straight-alpha source-over pair, which
+ * the GE names GE_PD_NONE - not GE_PD_SRC_OVER, which is the premultiplied
+ * form. See the note in lv_draw_aic_ge2d_image.c for why that distinction
+ * matters and how it is verified. @p outcome, when not NULL, reports which of
+ * the three cases happened. Returns LV_RESULT_OK for every outcome that leaves
+ * the screen correct, including two that draw nothing through the engine:
  *   - the source turns out to be unusable after the decode (an unsupported
  *     format, or an address outside the GE window). The task is then handed to
  *     the software renderer, and @p outcome is OUTCOME_SOFTWARE.

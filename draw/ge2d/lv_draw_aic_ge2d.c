@@ -3,12 +3,13 @@
  * @brief ArtInChip GE2D draw unit: registration, evaluation and dispatch.
  *
  * Scope is deliberately narrow. FILL: opaque, unrounded, non-gradient tasks.
- * IMAGE: untransformed, untiled, unrecolored copies. LAYER: the same blit, fed
- * from a child layer's buffer instead of a decoded image. Everything else is
- * declined, and a declined task simply stays with the software renderer. The
- * unit runs synchronously on the dispatching thread - there is no render
- * thread, no task queue and no saved layer/clip state, which is why it does not
- * reuse lv_draw_sw_unit_t the way the legacy port did.
+ * IMAGE: untransformed, untiled, unrecolored copies at any visible opacity -
+ * the blit blends, so a partial opacity is supported rather than declined.
+ * LAYER: the same blit, fed from a child layer's buffer instead of a decoded
+ * image. Everything else is declined, and a declined task simply stays with the
+ * software renderer. The unit runs synchronously on the dispatching thread -
+ * there is no render thread, no task queue and no saved layer/clip state, which
+ * is why it does not reuse lv_draw_sw_unit_t the way the legacy port did.
  *
  * Two departures from the legacy port are the reason this file exists
  * separately and are easy to regress:
@@ -189,8 +190,13 @@ static bool lv_draw_aic_ge2d_accepts_image(const lv_draw_task_t *task)
         return false;
     }
 
-    /* No source alpha and no destination read-modify-write in this step. */
-    if (dsc->opa < LV_OPA_COVER) {
+    /* Partial opacity is the operation, not a reason to decline: the blit
+     * blends the source's per-pixel alpha with the descriptor's global alpha
+     * through one Porter/Duff rule, which covers RGB + global alpha and
+     * ARGB + per-pixel x global alpha alike. Only an image that is effectively
+     * invisible is left to the software renderer, at the same floor LVGL's own
+     * renderer and the vendor port use. */
+    if (dsc->opa <= LV_OPA_MIN) {
         return false;
     }
 

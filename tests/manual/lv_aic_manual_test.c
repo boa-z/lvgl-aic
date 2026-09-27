@@ -40,9 +40,14 @@ static lv_obj_t *lv_aic_ge2d_b3_label;
 static lv_obj_t *lv_aic_ge2d_layer;
 #endif
 #if LV_AIC_GE2D_IMAGE_TEST
+#define LV_AIC_GE2D_C1_COUNT 6
 static lv_obj_t *lv_aic_ge2d_img_plain;
 static lv_obj_t *lv_aic_ge2d_img_swatch;
 static lv_obj_t *lv_aic_ge2d_img_argb;
+/* Phase 3C1: the same two fixtures, three global opacities each. */
+static lv_obj_t *lv_aic_ge2d_c1_label;
+static lv_obj_t *lv_aic_ge2d_c1_backdrop[2];
+static lv_obj_t *lv_aic_ge2d_c1_img[LV_AIC_GE2D_C1_COUNT];
 #endif
 
 #if AIC_LVGL_USE_GE2D
@@ -322,6 +327,56 @@ int lv_aic_manual_test_create(void)
     if (lv_aic_ge2d_img_argb == NULL) {
         goto fail;
     }
+
+    /* Phase 3C1: image opacity. The Phase 3B row shows both fixtures at full
+     * opacity; this row adds the global-opacity axis, which is the half of the
+     * blend the port used to decline.
+     *
+     * Each trio sits on a backdrop that differs from the image, because that is
+     * what makes a partial opacity visible at all. b.png (RGB, no alpha) over
+     * mid grey shows the global opacity alone; c.png (RGBA) over white shows it
+     * multiplying its own 0..255 alpha ramp, so the two contributions stay
+     * distinguishable instead of one masking the other.
+     *
+     * The row is also the visual counterpart of the numeric blend probe in
+     * lv_aic_ge2d_test.c: the probe says the arithmetic matches LVGL, this says
+     * the result reaches the panel through the real RGB565 draw buffer. It is
+     * placed in the strip above the Phase 2 row, clear of the moving marker, so
+     * no existing probe moves. */
+    lv_aic_ge2d_c1_label = lv_label_create(lv_aic_manual_root);
+    if (lv_aic_ge2d_c1_label == NULL) {
+        goto fail;
+    }
+    lv_label_set_text(lv_aic_ge2d_c1_label, "3c1: rgb 255/128/64 | argb 255/128/64");
+    lv_obj_set_style_text_color(lv_aic_ge2d_c1_label, lv_color_hex(0xffffff), 0);
+    lv_obj_set_pos(lv_aic_ge2d_c1_label, 320, 146);
+
+    lv_aic_ge2d_c1_backdrop[0] = lv_aic_ge2d_make_rect(lv_aic_manual_root,
+                                                       320, 166, 104, 32,
+                                                       0x808080, 0);
+    lv_aic_ge2d_c1_backdrop[1] = lv_aic_ge2d_make_rect(lv_aic_manual_root,
+                                                       428, 166, 104, 32,
+                                                       0xffffff, 0);
+    if ((lv_aic_ge2d_c1_backdrop[0] == NULL) || (lv_aic_ge2d_c1_backdrop[1] == NULL)) {
+        goto fail;
+    }
+
+    {
+        /* The three opacities the phase tests, in the order they appear. */
+        static const lv_opa_t opas[3] = { LV_OPA_COVER, 128, 64 };
+
+        for (int i = 0; i < LV_AIC_GE2D_C1_COUNT; i++) {
+            lv_aic_ge2d_c1_img[i] = lv_aic_ge2d_make_image(lv_aic_manual_root,
+                                                           (i < 3)
+                                                           ? "L:/data/mpp_test/b.png"
+                                                           : "L:/data/mpp_test/c.png",
+                                                           320 + i * 36, 166);
+            if (lv_aic_ge2d_c1_img[i] == NULL) {
+                goto fail;
+            }
+            lv_obj_set_style_image_opa(lv_aic_ge2d_c1_img[i], opas[i % 3], 0);
+        }
+    }
 #endif /* LV_AIC_GE2D_IMAGE_TEST */
 
     lv_aic_ge2d_layer = lv_aic_ge2d_make_rect(lv_aic_manual_root, 600, 312, 88, 40,
@@ -379,6 +434,12 @@ void lv_aic_manual_test_deinit(void)
         lv_aic_ge2d_img_plain = NULL;
         lv_aic_ge2d_img_swatch = NULL;
         lv_aic_ge2d_img_argb = NULL;
+        lv_aic_ge2d_c1_label = NULL;
+        lv_aic_ge2d_c1_backdrop[0] = NULL;
+        lv_aic_ge2d_c1_backdrop[1] = NULL;
+        for (int i = 0; i < LV_AIC_GE2D_C1_COUNT; i++) {
+            lv_aic_ge2d_c1_img[i] = NULL;
+        }
 #endif
     }
     lv_aic_manual_marker_x = 0;

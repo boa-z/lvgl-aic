@@ -847,3 +847,191 @@ the latter.
 
 The full criteria list is in
 [phase3b-image-layer-plan.md](../../../../docs/phase3b-image-layer-plan.md).
+
+---
+
+## Phase 3C - GE2D image transform
+
+Phase 3C adds the image transforms the blit was written to grow into. It is split
+so each capability lands with its own evidence rather than as one large change.
+
+| Sub-phase | Capability | Status |
+|-----------|------------|--------|
+| 3C1 | IMAGE opacity (`opa < LV_OPA_COVER`) | implemented; board validation pending |
+| 3C2 | IMAGE scale (`rotation == 0`, `scale_x`/`scale_y`) | not started |
+| 3C3 | orthogonal rotation (90/180/270) | not started |
+
+The capability definition this phase has to keep accurate:
+
+```text
+FILL        GE2D accelerated
+IMAGE       GE2D accelerated
+ARGB IMAGE  GE2D source-over accelerated
+LAYER       supported, SW fallback on D13x SRAM layer buffers
+```
+
+Three constraints apply to the whole phase and are not negotiable:
+
+- the global LVGL allocator is **not** to be changed to raise the LAYER GE hit
+  rate. The layer buffer sits below the GE address window, and moving it is a
+  memory-policy decision for a later phase, not a tweak to make a counter look
+  better;
+- no async GE thread, no global CMA layer allocator, no temporary layer-to-CMA
+  copy, no recolor, no tile, no arbitrary-angle rotation;
+- the synchronous GE2D dispatch, the existing FILL implementation, the MPP
+  decoder and the software fallback all stay as they are.
+
+### Phase 3C1 - IMAGE opacity
+
+#### What changed
+
+1. `lv_draw_aic_ge2d_accepts_image()` no longer declines a partial opacity. It
+   declines only `opa <= LV_OPA_MIN`, which is the floor LVGL's own renderer and
+   the vendor port use: below it there is nothing visible to draw. Everything
+   above runs on the engine.
+2. The Porter/Duff rule in `lv_draw_aic_ge2d_blit()` changed from
+   `GE_PD_SRC_OVER` to `GE_PD_NONE`.
+3. A numeric blend probe was added to the board test, and an opacity row was
+   added to the manual page.
+
+The second change is a correction to a Phase 3B claim, and it is the substantive
+part of this sub-phase.
+
+#### Why the blend rule changed
+
+Phase 3B recorded that an ARGB8888 source "is blended with its own per-pixel
+alpha through `GE_PD_SRC_OVER`". The rule constant was wrong, and Phase 3B's
+panel check could not see it.
+
+The GE's blend coefficients are documented in `hal_ge_hw.h` as
+`1: 1.0, 2: As, 3: 1-As, 4: Ad, 5: 1-Ad`. The `enum ge_pd_rules` table in
+`hal_ge_normal.c` and `cmdq_ops.c` is the **premultiplied** Porter/Duff table:
+
+| rule | coefficients | meaning |
+|------|--------------|---------|
+| `GE_PD_NONE` | (2, 3) = (As, 1-As) | straight-alpha source-over |
+| `GE_PD_SRC_OVER` | (1, 3) = (1.0, 1-As) | premultiplied source-over |
+| `GE_PD_DST_OUT` | (0, 3) = (0, 1-As) | this is what pins coefficient 3 to `1-As` |
+
+`GE_PD_SRC_OVER` therefore computes `Cs + Cd*(1-As)`: it adds the source colour
+at full strength and expects the source to already carry `As`. The source here
+does not. The MPP decoder returns PNG/JPEG output as it found it, and nothing in
+the pipeline sets `MPP_BUF_IS_PREMULTIPLY`, so the source is straight alpha and
+the premultiplied form over-brightens every partially transparent pixel.
+
+The HAL says the same thing from the other side. `set_premuliply()` rewrites the
+`GE_PD_NONE` pair to the `GE_PD_SRC_OVER` pair, but only after enabling the
+hardware premultiply stage and only when `src_alpha_mode == 0`. The mixed mode
+this blit uses is `src_alpha_mode = 2`, so that rewrite never applies and the
+straight pair has to be chosen explicitly. Two independent ArtInChip
+implementations agree: the vendor GE2D port leaves `alpha_rules` at its zero
+default (which is `GE_PD_NONE`), and the aic_player PNG backend sets
+`GE_PD_NONE` by name for `APNG_BLEND_OP_OVER`.
+
+At `opa = LV_OPA_COVER` with an opaque pixel the two rules coincide, which is why
+Phase 3B's `b.png` probe looked right under either. They diverge only in the
+partially transparent middle of the ramp, and Phase 3B's panel question asked
+about the two ends. **The Phase 3B criterion-10 observation was true and
+insufficient**: it established that a blend happened, not that the arithmetic was
+LVGL's.
+
+The choice is not left as an argument. The probe below measures both rules
+against LVGL's own arithmetic on the board.
+
+#### The numeric blend probe
+
+`tests/manual/lv_aic_ge2d_test.c` gained `aic_ge2d_probe_blend()`. It allocates a
+CMA source and destination, fills them with a source and a destination that
+differ in every channel, runs one `mpp_ge_bitblt` under the configuration
+`lv_draw_aic_ge2d_image.c` uses, and compares every destination byte against
+`Cs*As + Cd*(1-As)` computed the way LVGL computes it.
+
+- The destination is ARGB8888 rather than the display's RGB565, so the comparison
+  is not limited by 5/6-bit quantisation. This measures the blend; the panel
+  check covers the display path.
+- Three cases cover the two source shapes: RGB888 with a global opacity,
+  ARGB8888 with per-pixel alpha, and ARGB8888 with both.
+- A fourth case runs the same inputs under `GE_PD_SRC_OVER` and **must not**
+  match. If both rules matched, the probe could not tell them apart and the
+  choice would be unverified. This is the same anti-vacuity idea as the counter
+  guards around it.
+- The tolerance is 2 counts out of 255. LVGL combines alpha with `>>8` while the
+  GE documents `/255`, so a single blend step can legitimately differ by one
+  count. A wrong rule misses by tens.
+
+#### What is still not measured
+
+The probe measures the blend datapath. It does not measure the display path, and
+it is not a framebuffer comparison: "the engine's arithmetic matches LVGL's"
+and "the panel shows the right colour" remain two different statements. The
+manual page's opacity row is what covers the second one, and it is a panel
+judgement.
+
+#### Verification so far (host and target, no board claim)
+
+Host, `build/lvgl-host` (external LVGL checkout). The manual test file was
+rebuilt in the GE2D-off configuration as well, because it is compiled into two
+host targets:
+
+- `cmake --build`: both `lv_aic_manual_test.c` objects rebuilt, no warning
+  (`-Wall -Wextra -Werror`);
+- `ctest`: 9/9 PASS in 13.81 s. The SDL tests need `/c/msys64/ucrt64/bin` on
+  `PATH` for `SDL2.dll`; without it they fail with `0xc0000135`
+  (STATUS_DLL_NOT_FOUND), which is environmental.
+
+Target, built with the project's own entry point
+`packages/custom/lvgl-aic/tools/sdk/build.sh` (`PHASE=ge2d`,
+`ALLOW_COMPONENT_DIRTY=1`):
+
+- `lv_draw_aic_ge2d.c`, `lv_draw_aic_ge2d_image.c` and both manual test files
+  compile with no warning attributable to them;
+- `ge2d static checks: PASS (not board validation)`: the Phase 3A/3B symbol set
+  resolves to its required objects;
+- `verify_image.py`: application and bootloader ELF32 RISC-V double-float ABI
+  PASS, 9 payload CRCs PASS, 26 packaged MPP fixture/provenance hashes PASS;
+- image
+  `output/d13x_d50t-2-lite_rt-thread_lvgl-aic-ge2d/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+  1,806,848 bytes, SHA256
+  `ed64e858c52f813ed391348a75f293e7e41d0e9c7d1e62ddb0caafb03c03ec80`.
+  Phase 3B's image was 1,804,800 bytes; the 2,048-byte growth is the blend probe,
+  its log strings and the new page objects.
+
+The image matches the source that produced it: a second build after the source
+was final recompiled nothing and reproduced the same SHA256, and the ELF contains
+the final label string and none of the superseded one.
+
+None of the above is board evidence. Compiling, linking and passing a static gate
+does not prove the engine blended anything, and the probe's verdict is exactly
+the thing that has not run yet.
+
+#### Phase 3C1 completion checklist
+
+| # | Criterion | Result |
+|---|-----------|--------|
+| 1 | RGB image opacity correct | board run pending |
+| 2 | ARGB image opacity correct | board run pending |
+| 3 | `GE errors == 0` | board run pending |
+| 4 | no FILL/IMAGE regression | board run pending |
+| 5 | display and touch normal | board run pending |
+
+The remaining checklist items belong to 3C2 and 3C3 and are listed in
+[phase3c-image-transform-plan.md](../../../../docs/phase3c-image-transform-plan.md).
+
+#### What the page looks like now
+
+The Phase 3C1 row sits in the free strip above the Phase 2 row, starting at
+x=320, so nothing that Phase 2, 3A or 3B measured has moved:
+
+- a mid-grey 104x32 swatch at (320, 166) carrying `b.png` (RGB, no alpha) three
+  times at `opa` 255, 128 and 64. The grey backdrop is what makes a partial
+  opacity visible: an RGB source at 50% over mid grey is a visible wash towards
+  grey, and the three tiles form a monotonic ramp;
+- a white 104x32 swatch at (428, 166) carrying `c.png` (RGBA) three times at the
+  same three opacities. `c.png` carries its own 0..255 alpha ramp, so this row
+  shows the two contributions multiplying rather than one replacing the other;
+- a label at (320, 146).
+
+The `opa` values are the ones the phase specifies: 255, 128, 64. The row adds
+six IMAGE tasks and two FILL tasks to the page, all of which the unit should now
+claim, so the board check's `image` count should rise from 3 to 9 and its `fill`
+count from 11 to 13.

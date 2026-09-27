@@ -8,9 +8,10 @@
  * so this function can assume the simple case.
  *
  * Source alpha is the one thing that is not "the simple case" and is handled
- * anyway: an ARGB8888 source is blended with its own per-pixel alpha through
- * GE_PD_SRC_OVER, and a source without an alpha channel is blended by global
- * alpha when the descriptor carries a partial opacity.
+ * anyway: an ARGB8888 source is blended with its own per-pixel alpha, and a
+ * source without an alpha channel is blended by global alpha when the
+ * descriptor carries a partial opacity. Both go through the same Porter/Duff
+ * rule; see the long note on the rule in lv_draw_aic_ge2d_blit().
  *
  * Both IMAGE and LAYER tasks arrive here. A LAYER task carries an lv_layer_t in
  * place of the source, so its draw buffer is wrapped in a temporary image
@@ -203,17 +204,40 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
      * present. A source with no alpha channel has an opaque pixel alpha, so the
      * product reduces to the global value.
      *
-     * In practice the global-alpha half of this is reached by LAYER tasks:
-     * accepts_image() still declines a partial opa, because driving image
-     * opacity is Phase 3C work. The condition is written for the operation
-     * rather than for the caller, so it stays correct when that lifts. */
+     * The rule is GE_PD_NONE, and that name is misleading enough to be worth
+     * spelling out, because the obvious-looking alternative is wrong here.
+     *
+     * The GE's blend coefficients (ge_config_blend in hal_ge_hw.h) are
+     * 1: 1.0, 2: As, 3: 1-As, 4: Ad, 5: 1-Ad - coefficient 3 is 1-As, which the
+     * GE_PD_DST_OUT entry (0, 3) confirms. The enum is therefore the
+     * PREMULTIPLIED Porter/Duff table: GE_PD_SRC_OVER is (1, 1-As), which adds
+     * the source colour at full strength and relies on the source already
+     * carrying As. This source does not: the MPP decoder returns PNG/JPEG
+     * output as it found it and nothing in the pipeline sets
+     * MPP_BUF_IS_PREMULTIPLY, so the source is straight alpha and the
+     * premultiplied form over-brightens every partially transparent pixel.
+     * GE_PD_NONE is the pair that matches a straight source, (As, 1-As), i.e.
+     * Cs*As + Cd*(1-As) - what LVGL's own software blend computes.
+     *
+     * The HAL says the same thing from the other side. set_premuliply()
+     * rewrites the GE_PD_NONE pair to the GE_PD_SRC_OVER pair, but only after
+     * turning on the hardware premultiply stage, and only for src_alpha_mode 0.
+     * The mixed mode used here is src_alpha_mode 2, so that rewrite never
+     * applies and the straight pair has to be chosen here. The vendor GE2D port
+     * (lv_draw_ge2d_img.c) and the aic_player PNG backend (png_backend_ops.c)
+     * both leave alpha_rules at GE_PD_NONE for exactly this reason.
+     *
+     * The choice is written out rather than left to the zero-initialised
+     * descriptor, and it is measured rather than argued: the numeric probe in
+     * tests/manual/lv_aic_ge2d_test.c runs the engine against LVGL's arithmetic
+     * under both rules and reports the deviation of each. */
     if (draw_dsc->opa >= LV_OPA_COVER && src_cf != LV_COLOR_FORMAT_ARGB8888) {
         blt.ctrl.alpha_en = 0U;
         blt.ctrl.src_alpha_mode = 0U;
     }
     else {
         blt.ctrl.alpha_en = 1U;
-        blt.ctrl.alpha_rules = GE_PD_SRC_OVER;
+        blt.ctrl.alpha_rules = GE_PD_NONE;
         blt.ctrl.src_alpha_mode = 2U;
         blt.ctrl.src_global_alpha = draw_dsc->opa;
     }
