@@ -96,9 +96,10 @@ static bool lv_draw_aic_ge2d_accepts_dst(const lv_draw_task_t *task)
  * Shared by IMAGE and LAYER. Both would need the scaler or the rotator to draw
  * anything else, and neither step drives one.
  */
-static bool lv_draw_aic_ge2d_dsc_is_untransformed(const lv_draw_image_dsc_t *dsc)
+static bool lv_draw_aic_ge2d_dsc_is_supported_transform(const lv_draw_image_dsc_t *dsc)
 {
-    return dsc->rotation == 0 &&
+    return (dsc->rotation == 0 || dsc->rotation == 900 ||
+            dsc->rotation == 1800 || dsc->rotation == 2700) &&
            dsc->scale_x == LV_SCALE_NONE && dsc->scale_y == LV_SCALE_NONE &&
            dsc->skew_x == 0 && dsc->skew_y == 0;
 }
@@ -242,7 +243,7 @@ static bool lv_draw_aic_ge2d_accepts_layer(const lv_draw_task_t *task)
     /* A transform needs the scaler or the rotator, which this step does not
      * drive. This is the common case for a transformed widget, and it is
      * deliberately left to the software renderer for now. */
-    if (!lv_draw_aic_ge2d_dsc_is_untransformed(dsc)) {
+        if (!lv_draw_aic_ge2d_dsc_is_supported_transform(dsc)) {
         return false;
     }
 

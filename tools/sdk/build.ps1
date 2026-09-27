@@ -7,7 +7,7 @@ $root=(Resolve-Path $SdkRoot).Path
 if (-not (Test-Path "$root/SConstruct")) { throw "Invalid SDK root: $root" }
 $env:LVGL_AIC_SDK_ROOT=$root
 Set-Location $root
-$evidence=Join-Path $root "build/lvgl-evidence/$Phase"
+$evidence=Join-Path $root "output/lvgl-evidence/$Phase"
 New-Item -ItemType Directory -Force $evidence | Out-Null
 $env:SCONS_LIB_DIR=Join-Path $root 'tools/env/tools/Python27/Lib/site-packages/scons'
 $env:PYTHONUTF8='1'

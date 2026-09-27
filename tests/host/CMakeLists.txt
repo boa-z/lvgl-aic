@@ -75,6 +75,20 @@ endif()
 enable_testing()
 add_test(NAME lvgl_aic_platform_smoke COMMAND lvgl_aic_smoke)
 
+# Exercise both manual pages without requiring the board decoder or GE engine.
+add_executable(lvgl_aic_manual_pages manual_pages.c
+    "${AIC_ROOT}/tests/manual/lv_aic_manual_test.c")
+target_include_directories(lvgl_aic_manual_pages PRIVATE
+    "${AIC_ROOT}/include" "${AIC_ROOT}/tests/manual")
+target_compile_definitions(lvgl_aic_manual_pages PRIVATE
+    AIC_LVGL_BSP_MPP=0 AIC_LVGL_BSP_RTTHREAD=0
+    AIC_LVGL_USE_GE2D=1 AIC_LVGL_USE_MPP_DEC=1)
+target_link_libraries(lvgl_aic_manual_pages PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_manual_pages PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_manual_pages COMMAND lvgl_aic_manual_pages)
+
 if(AIC_BUILD_SDL_SMOKE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
@@ -150,7 +164,8 @@ set(AIC_SDK_ROOT "" CACHE PATH "Luban-Lite SDK for MPP ABI tests")
 if(AIC_SDK_ROOT)
     add_executable(lvgl_aic_ge2d_scale_contract ge2d_scale_contract.c
         "${AIC_ROOT}/common/lv_aic_pixel_format.c"
-        "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_scale.c")
+        "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_scale.c"
+        "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_rotate.c")
     target_include_directories(lvgl_aic_ge2d_scale_contract PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs" "${AIC_ROOT}/include"
         "${AIC_ROOT}/compat" "${AIC_ROOT}/common" "${AIC_ROOT}/draw/ge2d"

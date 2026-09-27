@@ -47,7 +47,7 @@ Run from SDK root:
 
     & packages/custom/lvgl-aic/tools/sdk/build.ps1 -Phase ge2d -Jobs 8 -AllowComponentDirty
 
-Archive: SDK build/lvgl-evidence/ge2d. Attach image SHA256, complete serial log
+Archive: SDK output/lvgl-evidence/ge2d. Attach image SHA256, complete serial log
 and panel/touch observations to the gate. Candidate changes remain uncommitted
 until the board gate passes; then commit 3C2 independently.
 

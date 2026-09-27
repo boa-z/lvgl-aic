@@ -132,6 +132,18 @@ int main(void)
     assert(!lv_aic_ge2d_scale_split_risk(16777216 / 384, 64));
     assert(!lv_aic_ge2d_scale_split_risk(65536, 64));
     assert(!lv_aic_ge2d_scale_split_risk(63488, 31));
+    {
+        lv_area_t dst = {-23, 0, 0, 31}, crop;
+        lv_point_t pivot = {0, 0};
+        unsigned flags = 0;
+        assert(lv_aic_ge2d_rotation_crop(32, 24, &dst, &pivot, 900, &crop, &flags));
+        assert(flags == MPP_ROTATION_90);
+        assert(crop.x1 == 0 && crop.y1 == 0 && crop.x2 == 31 && crop.y2 == 23);
+        dst = (lv_area_t){-12, -14, -2, -3};
+        assert(lv_aic_ge2d_rotation_crop(32, 24, &dst, &pivot, 1800, &crop, &flags));
+        assert(flags == MPP_ROTATION_180 && crop.x1 == 2 && crop.y1 == 3 && crop.x2 == 12 && crop.y2 == 14);
+        assert(!lv_aic_ge2d_rotation_crop(32, 24, &dst, &pivot, 450, &crop, &flags));
+    }
     lv_deinit();
     return 0;
 }

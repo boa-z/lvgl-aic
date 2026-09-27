@@ -14,6 +14,11 @@ static lv_obj_t *lv_aic_manual_status;
 static lv_obj_t *lv_aic_manual_marker;
 static lv_timer_t *lv_aic_manual_timer;
 static int32_t lv_aic_manual_marker_x;
+static volatile int lv_aic_manual_page_pending = -1;
+static int lv_aic_manual_page_active;
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+static lv_obj_t *lv_aic_rotation_root;
+#endif
 #if AIC_LVGL_USE_MPP_DEC
 static lv_obj_t *lv_aic_mpp_label;
 static lv_obj_t *lv_aic_mpp_images[3];
@@ -104,6 +109,7 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
     const int32_t marker_limit = 240;
 
     (void)timer;
+    lv_aic_manual_page_poll();
 #if AIC_LVGL_BSP_RTTHREAD && AIC_LVGL_BSP_MPP
     lv_aic_capture_poll();
 #endif
@@ -117,6 +123,107 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
     }
     lv_obj_set_x(lv_aic_manual_marker, 24 + lv_aic_manual_marker_x);
 }
+
+void lv_aic_manual_page_request(int page)
+{
+    int last_page = 0;
+#if LV_AIC_GE2D_IMAGE_TEST
+    last_page = 1;
+#endif
+    if (page >= 0 && page <= last_page) {
+        lv_aic_manual_page_pending = page;
+    }
+}
+
+void lv_aic_manual_page_poll(void)
+{
+    int page = lv_aic_manual_page_pending;
+    if (page < 0 || lv_aic_manual_root == NULL) return;
+    lv_aic_manual_page_pending = -1;
+    if (page == lv_aic_manual_page_active) return;
+    lv_aic_manual_page_active = page;
+    if (page == 0) {
+        lv_obj_set_hidden(lv_aic_manual_root, false);
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+        lv_obj_set_hidden(lv_aic_rotation_root, true);
+#endif
+    } else {
+        lv_obj_set_hidden(lv_aic_manual_root, true);
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+        lv_obj_set_hidden(lv_aic_rotation_root, false);
+#endif
+    }
+}
+
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+static void lv_aic_page_button_event(lv_event_t *event)
+{
+    (void)event;
+    lv_aic_manual_page_request(1 - lv_aic_manual_page_active);
+    lv_aic_manual_page_poll();
+}
+
+static int lv_aic_page_button_create(lv_obj_t *parent, const char *text)
+{
+    lv_obj_t *button = lv_button_create(parent);
+    lv_obj_t *label;
+    if (button == NULL) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_size(button, 190, 44);
+    lv_obj_align(button, LV_ALIGN_TOP_RIGHT, -16, 8);
+    lv_obj_add_event_cb(button, lv_aic_page_button_event, LV_EVENT_CLICKED, NULL);
+    label = lv_label_create(button);
+    if (label == NULL) return LV_AIC_ERR_NO_MEMORY;
+    lv_label_set_text(label, text);
+    lv_obj_center(label);
+    return LV_AIC_OK;
+}
+
+static int lv_aic_rotation_page_create(lv_display_t *display)
+{
+    static const int32_t angles[4] = {0, 900, 1800, 2700};
+    lv_aic_rotation_root = lv_obj_create(lv_screen_active());
+    if (lv_aic_rotation_root == NULL) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_size(lv_aic_rotation_root, lv_display_get_horizontal_resolution(display),
+                    lv_display_get_vertical_resolution(display));
+    lv_obj_set_style_bg_color(lv_aic_rotation_root, lv_color_hex(0x202020), 0);
+    lv_obj_set_style_bg_opa(lv_aic_rotation_root, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(lv_aic_rotation_root, 0, 0);
+    lv_obj_set_style_border_width(lv_aic_rotation_root, 0, 0);
+    lv_obj_set_style_radius(lv_aic_rotation_root, 0, 0);
+    lv_obj_set_style_text_color(lv_aic_rotation_root, lv_color_hex(0xffffff), 0);
+    lv_obj_set_scrollable(lv_aic_rotation_root, false);
+    lv_obj_center(lv_aic_rotation_root);
+    {
+        lv_obj_t *title = lv_label_create(lv_aic_rotation_root);
+        if (title == NULL) return LV_AIC_ERR_NO_MEMORY;
+        lv_label_set_text(title, "3C3 GE2D rotation: 0 / 90 / 180 / 270");
+        lv_obj_set_pos(title, 24, 24);
+    }
+    for (int i = 0; i < 4; i++) {
+        lv_obj_t *frame = lv_aic_ge2d_make_rect(lv_aic_rotation_root, 24 + i * 190, 100,
+                                                160, 160, 0xffffff, 0);
+        lv_obj_t *image;
+        lv_obj_t *label;
+        if (!frame) return LV_AIC_ERR_NO_MEMORY;
+        image = lv_aic_ge2d_make_image(frame, i & 1 ? "L:/data/mpp_test/c.png" :
+                                       "L:/data/mpp_test/b.png", 64, 64);
+        label = lv_label_create(lv_aic_rotation_root);
+        if (!image || !label) return LV_AIC_ERR_NO_MEMORY;
+        lv_image_set_pivot(image, 16, 16);
+        lv_image_set_rotation(image, angles[i]);
+        lv_obj_set_pos(label, 32 + i * 190, 76);
+        {
+            char text[12];
+            lv_snprintf(text, sizeof(text), "%d deg", (int)(angles[i] / 10));
+            lv_label_set_text(label, text);
+        }
+    }
+    if (lv_aic_page_button_create(lv_aic_rotation_root, "< Prev  (2/2)") != LV_AIC_OK)
+        return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_hidden(lv_aic_rotation_root, true);
+    return LV_AIC_OK;
+}
+#endif
 
 int lv_aic_manual_test_create(void)
 {
@@ -415,6 +522,11 @@ int lv_aic_manual_test_create(void)
     lv_obj_set_style_opa_layered(lv_aic_ge2d_layer, LV_OPA_50, 0);
 #endif /* AIC_LVGL_USE_GE2D */
 
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+    if (lv_aic_rotation_page_create(display) != LV_AIC_OK) goto fail;
+    if (lv_aic_page_button_create(lv_aic_manual_root, "Next >  (1/2)") != LV_AIC_OK) goto fail;
+#endif
+
     return LV_AIC_OK;
 
 fail:
@@ -436,6 +548,12 @@ void lv_aic_manual_test_deinit(void)
         lv_timer_delete(lv_aic_manual_timer);
         lv_aic_manual_timer = NULL;
     }
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+    if (lv_aic_rotation_root != NULL) {
+        lv_obj_delete(lv_aic_rotation_root);
+        lv_aic_rotation_root = NULL;
+    }
+#endif
     if (lv_aic_manual_root != NULL) {
         lv_obj_delete(lv_aic_manual_root);
         lv_aic_manual_root = NULL;
@@ -471,4 +589,6 @@ void lv_aic_manual_test_deinit(void)
 #endif
     }
     lv_aic_manual_marker_x = 0;
+    lv_aic_manual_page_pending = -1;
+    lv_aic_manual_page_active = 0;
 }

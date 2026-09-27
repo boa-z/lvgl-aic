@@ -13,6 +13,8 @@ extern "C" {
 #endif
 
 int lv_aic_manual_test_create(void);
+void lv_aic_manual_page_request(int page);
+void lv_aic_manual_page_poll(void);
 #if AIC_LVGL_BSP_RTTHREAD && AIC_LVGL_BSP_MPP
 void lv_aic_capture_poll(void);
 #endif

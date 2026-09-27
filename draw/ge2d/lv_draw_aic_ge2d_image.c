@@ -54,6 +54,7 @@
 #include "lv_draw_aic_ge2d_utils.h"
 #include "lv_aic_pixel_format.h"
 #include "lv_draw_aic_ge2d_scale.h"
+#include "lv_draw_aic_ge2d_rotate.h"
 
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 
@@ -103,6 +104,7 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     int32_t blit_h;
     int64_t rx, ry, rw, rh;
     bool scaled = draw_dsc->scale_x != LV_SCALE_NONE || draw_dsc->scale_y != LV_SCALE_NONE;
+    unsigned rotation_flags = 0;
 
     if (layer == NULL || layer->draw_buf == NULL) {
         return false;
@@ -157,6 +159,14 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         rx + rw - 1 > INT32_MAX || ry + rh - 1 > INT32_MAX) return false;
     src_area = (lv_area_t){(int32_t)rx, (int32_t)ry,
                            (int32_t)(rx+rw-1), (int32_t)(ry+rh-1)};
+    if (!scaled && draw_dsc->rotation != 0) {
+        if (!lv_aic_ge2d_rotation_crop(src->header.w, src->header.h,
+                                        &src_area, &draw_dsc->pivot,
+                                        draw_dsc->rotation, &src_area,
+                                        &rotation_flags)) {
+            return false;
+        }
+    }
     if (scaled) {
         lv_aic_ge2d_scale_axis_t x, y;
         if (draw_dsc->rotation != 0 || draw_dsc->skew_x != 0 || draw_dsc->skew_y != 0 ||
@@ -278,7 +288,7 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         blt.ctrl.src_alpha_mode = 2U;
         blt.ctrl.src_global_alpha = draw_dsc->opa;
     }
-
+    blt.ctrl.flags = rotation_flags;
     ge = lv_draw_aic_ge2d_device();
     if (ge == NULL) {
         LV_LOG_ERROR("GE2D device is not open");

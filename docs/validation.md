@@ -1196,3 +1196,22 @@ in [capture instructions](framebuffer-capture.md); converter integrity tests
 pass, but actual board capture still needs validation.
 The [UART upgrade audit](d50t-uart-upgrade.md) confirms required existing
 Bootloader/application features and linked entry points, without flashing.
+
+## Phase 3C3 page feedback (2026-09-27)
+
+The D50T-2-Lite operator reports that the Next/Prev controls are visible and
+usable and that the rotation images look correct. The preceding delivered
+candidate is SHA256
+`78bad6d63a0e88a606f5933003cf80d9714ba9d63e47fbbfc68bcf34af21552c`;
+the running firmware hash was not read back from the board. The supplied log
+also repeats 3C2 scale PASS, scheduler engine=10/errors=0, and first-frame
+presentation. These are visual/operator and 3C2 regression results, not
+numeric rotation/pivot/clipping acceptance.
+
+Capture initially failed at the interactive shell: both
+`lv_aic_capture` and `lv_aic_capture dump` report command not found. A subsequent complete board `help` output listed `lv_aic_capture` with its expected description. Registration is therefore present at runtime;
+the failure must not be attributed to a missing export or stale image.
+The operator then confirmed recovery after Ctrl+C, manual input and Tab
+completion, without reflashing. Terminal input/paste state is suspected; exact
+bytes were not captured. No SDK Shell change or extra diagnostic command is
+needed. A new rotation-page dump still needs its END/CRC validation.
