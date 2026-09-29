@@ -41,10 +41,14 @@
 #endif
 #endif
 
-/* v9.6 configuration names. Keep the OS setting aligned with the RT-Thread
- * OSAL; do not maintain a second LVGL mutex/thread abstraction here. */
+/* 应用内适配原厂 RT-Thread，二值通知使用事件，不修改 SDK 内核。 */
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
-#define LV_USE_OS LV_OS_RTTHREAD
+#define LV_USE_OS LV_OS_CUSTOM
+#if defined(LV_USE_VG_LITE_DRIVER) && LV_USE_VG_LITE_DRIVER
+#error "The ArtInChip application port supports GE2D, not the VG Lite HAL"
+#endif
+#define LV_USE_VG_LITE_DRIVER 0
+#define LV_OS_CUSTOM_INCLUDE "lv_aic_rtthread_os.h"
 #else
 #define LV_USE_OS LV_OS_NONE
 #endif

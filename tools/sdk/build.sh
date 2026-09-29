@@ -3,7 +3,8 @@
 # Build a D50T-2-Lite platform-only Gate 1, MPP or GE2D test image.
 set -euo pipefail
 
-ROOT="${LVGL_AIC_SDK_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(python3 "$SCRIPT_DIR/sdk_paths.py")"
 export LVGL_AIC_SDK_ROOT="$ROOT"
 [[ -f "$ROOT/SConstruct" ]] || { echo "Invalid SDK root: $ROOT" >&2; exit 2; }
 cd "$ROOT"
@@ -16,13 +17,13 @@ case "$PHASE" in
     gate1) ;;
     mpp)
         APP_DEFCONFIG="d13x_d50t-2-lite_rt-thread_lvgl-aic-mpp_defconfig"
-        python3 packages/custom/lvgl-aic/tools/sdk/stage_assets.py
+        python3 "$SCRIPT_DIR/stage_assets.py"
         ;;
     ge2d)
         # The GE2D profile is the MPP profile plus the draw unit, so the MPP
         # regression is exercised on the same image.
         APP_DEFCONFIG="d13x_d50t-2-lite_rt-thread_lvgl-aic-ge2d_defconfig"
-        python3 packages/custom/lvgl-aic/tools/sdk/stage_assets.py
+        python3 "$SCRIPT_DIR/stage_assets.py"
         ;;
     *) echo "PHASE must be gate1, mpp or ge2d" >&2; exit 2 ;;
 esac
@@ -38,8 +39,8 @@ scons -n -j"$JOBS"
 scons -j"$JOBS"
 CHECK_ARGS=()
 [[ "${ALLOW_COMPONENT_DIRTY:-0}" == 1 ]] && CHECK_ARGS+=(--allow-component-dirty)
-python3 packages/custom/lvgl-aic/tools/sdk/check_integration.py "${CHECK_ARGS[@]}" \
+python3 "$SCRIPT_DIR/check_integration.py" "${CHECK_ARGS[@]}" \
     --root . \
     --map "$APP_OUTPUT/images/d13x.map" --phase "$PHASE"
-python3 packages/custom/lvgl-aic/tools/sdk/verify_image.py "$APP_OUTPUT/images" \
+python3 "$SCRIPT_DIR/verify_image.py" "$APP_OUTPUT/images" \
     output/d13x_d50t-2-lite_baremetal_bootloader/images "$PHASE"

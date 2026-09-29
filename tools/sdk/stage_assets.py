@@ -5,9 +5,9 @@ import json
 import shutil
 from pathlib import Path
 
-from sdk_paths import sdk_root
+from sdk_paths import sdk_root, component_root
 root = sdk_root()
-source = root / "packages/custom/lvgl-aic/tests/data/mpp"
+source = component_root() / "tests/data/mpp"
 stage = root / "build/lvgl-mpp-data/mpp_test"
 stage.mkdir(parents=True, exist_ok=True)
 files = {p.name: p for p in source.iterdir() if p.is_file() and p.suffix.lower() in (".jpg", ".png", ".license")}

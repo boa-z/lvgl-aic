@@ -73,6 +73,12 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 enable_testing()
+add_executable(lvgl_aic_os_contract os_contract.c "${AIC_ROOT}/compat/lv_aic_rtthread_os.c")
+target_include_directories(lvgl_aic_os_contract PRIVATE "${CMAKE_CURRENT_LIST_DIR}/os_stubs" "${AIC_ROOT}/compat")
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_os_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_os_contract COMMAND lvgl_aic_os_contract)
 add_test(NAME lvgl_aic_platform_smoke COMMAND lvgl_aic_smoke)
 
 # Exercise both manual pages without requiring the board decoder or GE engine.

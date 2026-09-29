@@ -3,7 +3,8 @@ menu "ArtInChip LVGL 9.6 port"
 config AIC_LVGL_PORT
     bool "ArtInChip LVGL 9.6 platform port"
     default y
-    depends on LPKG_USING_LVGL
+    depends on !LPKG_USING_LVGL
+    depends on KERNEL_RTTHREAD
     depends on LPKG_MPP
 
 config AIC_LVGL_USE_DISPLAY

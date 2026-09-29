@@ -2,13 +2,13 @@
 """Record source state and artifacts for a local development image."""
 import hashlib, json, subprocess, sys, zipfile
 from pathlib import Path
-from sdk_paths import sdk_root
+from sdk_paths import sdk_root, component_root, lvgl_root
 root=sdk_root()
 out=Path(sys.argv[1])
 def git(path,*args):
     return subprocess.check_output(["git","-C",str(path),*args])
 manifest={"phase":sys.argv[2],"hardware":"D50T-2-Lite","board_validation":"NOT_RUN","sources":{},"files":{}}
-for name,path in (("sdk",root),("lvgl-aic",root/"packages/custom/lvgl-aic"),("lvgl",root/"packages/third-party/lvgl")):
+for name,path in (("sdk",root),("lvgl-aic",component_root()),("lvgl",lvgl_root())):
     manifest["sources"][name]={"commit":git(path,"rev-parse","HEAD").decode().strip(),"status":git(path,"status","--porcelain").decode()}
     (out/(name+".patch")).write_bytes(git(path,"diff","HEAD","--binary"))
     # git diff does not contain untracked source files. Preserve them separately.

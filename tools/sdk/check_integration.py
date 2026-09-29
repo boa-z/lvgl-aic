@@ -6,12 +6,11 @@ import argparse
 import re
 import subprocess
 from pathlib import Path
+from sdk_paths import component_root, lvgl_root
 
 
 REQUIRED_CONFIG_SYMBOLS = (
-    "LPKG_USING_LVGL",
-    "LVGL_V_9",
-    "LPKG_LVGL_IMPL_AIC",
+    "RT_USING_EVENT",
     "LPKG_MPP",
     "KERNEL_RTTHREAD",
     "RT_TOUCH_PIN_IRQ",
@@ -23,23 +22,23 @@ REQUIRED_CONFIG_SYMBOLS = (
 )
 
 DISABLED_CONFIG_SYMBOLS = (
-    "LPKG_LVGL_IMPL_LEGACY",
+    "LPKG_USING_LVGL",
     "AIC_LVGL_USE_GE2D",
     "AIC_LVGL_USE_MPP_DEC",
     "AIC_LVGL_USE_FT_CACHE",
 )
 
 REQUIRED_MAP_SYMBOLS = {
-    "lv_init": r"third-party[\\/]lvgl[\\/]src",
-    "lv_display_create": r"third-party[\\/]lvgl[\\/]src",
-    "lv_obj_create": r"third-party[\\/]lvgl[\\/]src",
-    "lv_thread_init": r"third-party[\\/]lvgl[\\/]src[\\/]osal[\\/]lv_rtthread\.o",
-    "lv_thread_sync_init": r"third-party[\\/]lvgl[\\/]src[\\/]osal[\\/]lv_rtthread\.o",
-    "lv_malloc_core": r"third-party[\\/]lvgl[\\/]src[\\/]stdlib[\\/]rtthread[\\/]lv_mem_core_rtthread\.o",
-    "lv_draw_sw_init": r"third-party[\\/]lvgl[\\/]src[\\/]draw[\\/]sw[\\/]lv_draw_sw\.o",
-    "lv_aic_init": r"custom[\\/]lvgl-aic[\\/]port[\\/]lv_aic\.o",
-    "lv_aic_display_init": r"custom[\\/]lvgl-aic[\\/]port[\\/]lv_aic_display\.o",
-    "lv_aic_indev_init": r"custom[\\/]lvgl-aic[\\/]port[\\/]lv_aic_indev\.o",
+    "lv_init": r"third_party[\\/]lvgl[\\/]src",
+    "lv_display_create": r"third_party[\\/]lvgl[\\/]src",
+    "lv_obj_create": r"third_party[\\/]lvgl[\\/]src",
+    "lv_thread_init": r"third_party[\\/]lvgl-aic[\\/]compat[\\/]lv_aic_rtthread_os\.o",
+    "lv_thread_sync_init": r"third_party[\\/]lvgl-aic[\\/]compat[\\/]lv_aic_rtthread_os\.o",
+    "lv_malloc_core": r"third_party[\\/]lvgl[\\/]src[\\/]stdlib[\\/]rtthread[\\/]lv_mem_core_rtthread\.o",
+    "lv_draw_sw_init": r"third_party[\\/]lvgl[\\/]src[\\/]draw[\\/]sw[\\/]lv_draw_sw\.o",
+    "lv_aic_init": r"third_party[\\/]lvgl-aic[\\/]port[\\/]lv_aic\.o",
+    "lv_aic_display_init": r"third_party[\\/]lvgl-aic[\\/]port[\\/]lv_aic_display\.o",
+    "lv_aic_indev_init": r"third_party[\\/]lvgl-aic[\\/]port[\\/]lv_aic_indev\.o",
 }
 
 
@@ -100,9 +99,9 @@ def check_map(map_path):
         fail("legacy ArtInChip LVGL object/path appears in link map")
     if re.search(r"env_support[\\/]rt-thread", text, re.IGNORECASE):
         fail("upstream RT-Thread entry-point object appears in link map")
-    if not re.search(r"packages[\\/]third-party[\\/]lvgl[\\/]src", text, re.IGNORECASE):
+    if not re.search(r"application[\\/].*third_party[\\/]lvgl[\\/]src", text, re.IGNORECASE):
         fail("LVGL 9.6 upstream src objects are absent from link map")
-    if not re.search(r"packages[\\/]custom[\\/]lvgl-aic[\\/]port", text, re.IGNORECASE):
+    if not re.search(r"application[\\/].*third_party[\\/]lvgl-aic[\\/]port", text, re.IGNORECASE):
         fail("lvgl-aic port objects are absent from link map")
 
     lines = text.splitlines()
@@ -134,13 +133,17 @@ def main():
     root = args.root.resolve()
     map_path = args.map_path.resolve()
 
-    check_submodule(root, "packages/third-party/lvgl", "80ca777e37a2b176770726a02e07a6fb79ef0b39")
-    check_submodule(root, "packages/custom/lvgl-aic", run_git(root, "rev-parse", "HEAD:packages/custom/lvgl-aic"))
-    if run_git(root / "packages/third-party/lvgl", "status", "--porcelain"):
+    component = component_root()
+    upstream = lvgl_root()
+    component_path = component.relative_to(root).as_posix()
+    check_submodule(root, upstream.relative_to(root).as_posix(), "80ca777e37a2b176770726a02e07a6fb79ef0b39")
+    if not args.allow_component_dirty:
+        check_submodule(root, component_path, run_git(root, "rev-parse", ":" + component_path))
+    if run_git(upstream, "status", "--porcelain"):
         fail("LVGL submodule has local modifications")
-    if not args.allow_component_dirty and run_git(root / "packages/custom/lvgl-aic", "status", "--porcelain"):
+    if not args.allow_component_dirty and run_git(component, "status", "--porcelain"):
         fail("lvgl-aic submodule has local modifications")
-    for submodule in (root / "packages/third-party/lvgl", root / "packages/custom/lvgl-aic"):
+    for submodule in (upstream, component):
         if any(submodule.rglob("*.o")):
             fail("object files leaked into submodule source: %s" % submodule)
     if not map_path.is_file():
@@ -162,16 +165,16 @@ def main():
         text = map_path.read_text(encoding="utf-8", errors="replace")
         required_ge2d = (
             ("lv_draw_aic_ge2d_init",
-             r"custom[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d\.o"),
+             r"third_party[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d\.o"),
             ("lv_draw_aic_ge2d_fill",
-             r"custom[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d_fill\.o"),
+             r"third_party[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d_fill\.o"),
             # Phase 3B. A separate object on purpose: the IMAGE/LAYER blit must
             # not be folded back into the FILL unit, and this proves the linker
             # took it from the new file rather than from the legacy tree.
             ("lv_draw_aic_ge2d_image",
-             r"custom[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d_image\.o"),
+             r"third_party[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d_image\.o"),
             ("lv_aic_ge2d_test_run",
-             r"custom[\\/]lvgl-aic[\\/]tests[\\/]manual[\\/]lv_aic_ge2d_test\.o"),
+             r"third_party[\\/]lvgl-aic[\\/]tests[\\/]manual[\\/]lv_aic_ge2d_test\.o"),
         )
         for symbol, object_pattern in required_ge2d:
             indexes = [index for index, line in enumerate(text.splitlines())

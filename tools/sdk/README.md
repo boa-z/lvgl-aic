@@ -4,22 +4,22 @@ Keep development tools in lvgl-aic; the SDK owns board configuration, minimal
 application glue and submodule pins. Invoke the component tools directly;
 no LVGL-specific wrappers are maintained under SDK tools/.
 Use a dedicated SDK checkout: these builds change its active configuration.
-The component must be installed at packages/custom/lvgl-aic in that checkout.
+The component must be installed at application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic in that checkout.
 The MPP defconfig stays in SDK target/configs because the SDK config loader
 uses that filename to select the project output directory.
 
 Windows (from SDK root):
 
 ```powershell
-& packages/custom/lvgl-aic/tools/sdk/build.ps1 -Phase mpp -Jobs 8 -AllowComponentDirty
+& application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic/tools/sdk/build.ps1 -Phase mpp -Jobs 8 -AllowComponentDirty
 # Explicit integration checkout:
-& packages/custom/lvgl-aic/tools/sdk/build.ps1 -SdkRoot C:/path/to/sdk -Phase gate1
+& application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic/tools/sdk/build.ps1 -SdkRoot C:/path/to/sdk -Phase gate1
 ```
 
 Linux / configured SDK shell:
 
 ```sh
-LVGL_AIC_SDK_ROOT=/path/to/sdk PHASE=mpp ALLOW_COMPONENT_DIRTY=1 bash packages/custom/lvgl-aic/tools/sdk/build.sh
+LVGL_AIC_SDK_ROOT=/path/to/sdk PHASE=mpp ALLOW_COMPONENT_DIRTY=1 bash application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic/tools/sdk/build.sh
 ```
 
 Dirty component builds are opt-in. Windows archives logs, image, ELF, map,
@@ -38,3 +38,17 @@ d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
 For real framebuffer export see [capture instructions](../../docs/framebuffer-capture.md).
 For the existing development UART upgrade route and defconfig requirements see
 [UART upgrade](../../docs/d50t-uart-upgrade.md).
+
+## Application-owned integration (2026-09-30)
+
+Place this repository at the consuming application's third_party/lvgl-aic,
+with LVGL v9.6.0 pinned alongside at third_party/lvgl. Source this component's
+Kconfig and SConscript from the selected application. Disable the vendor
+LPKG_USING_LVGL package and enable RT_USING_EVENT. Board profiles remain in
+SDK target/configs; packages/, kernel/ and global Kconfig are unchanged.
+
+The custom OS adapter uses a native RT event bit for binary notifications;
+duplicate signals coalesce and receive clears the bit atomically. Host contract
+tests cover errors and lifecycle with a fake RT API. The smoke application's
+sync selftest must still run on the board to validate scheduling and wakeup.
+SDK and host builds do not establish hardware acceptance.
