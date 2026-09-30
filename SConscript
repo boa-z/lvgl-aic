@@ -17,7 +17,8 @@ if not GetDepend('RT_USING_EVENT'):
 # 应用固定相邻 third_party/lvgl，不从 SDK packages 寻找可变依赖。
 lvgl_root = os.path.abspath(os.path.join(cwd, '..', 'lvgl'))
 version_header = os.path.join(lvgl_root, 'include', 'lvgl', 'lv_version.h')
-with open(version_header, encoding='utf-8') as stream:
+import io
+with io.open(version_header, encoding='utf-8') as stream:
     version = stream.read()
 if '#define LVGL_VERSION_MAJOR 9' not in version or '#define LVGL_VERSION_MINOR 6' not in version:
     raise RuntimeError('Application third_party/lvgl must pin LVGL 9.6.x')
@@ -64,3 +65,5 @@ if GetDepend('AIC_LVGL_USE_MPP_DEC') and GetDepend('AIC_LVGL_SMOKE_APP'):
     Depends(target, [File(path) for path in assets])
     Depends(target, Value(str([os.path.basename(path) for path in assets])))
 Return('group')
+
+
