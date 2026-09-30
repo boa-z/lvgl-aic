@@ -77,6 +77,14 @@ config AIC_LVGL_FREETYPE_GLYPHS
     range 8 512
     depends on AIC_LVGL_USE_FREETYPE
 
+config AIC_LVGL_USE_GIF
+    bool "Enable native LVGL GIF widget"
+    default n
+    depends on AIC_LVGL_PORT
+    help
+        Use the upstream LVGL 9.6 animated GIF widget. The application owns
+        the source file and the GIF object lifetime; no SDK decoder is linked.
+
 config AIC_LVGL_USE_FT_CACHE
     bool "Enable optional ArtInChip FreeType cache"
     default n

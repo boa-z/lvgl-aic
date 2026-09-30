@@ -73,3 +73,13 @@ output/lvgl-evidence/ge2d-fonts directory records original/effective defconfigs,
 30 font/resource/license assets, live font symbols and image payload checks.
 The shell entry does not yet expose a font variant. See
 [font stage](../../docs/font-stage.md) for ownership and board criteria.
+
+## Native GIF candidate
+
+Add -WithGif to an mpp/ge2d build.ps1 profile; combine -WithFonts for the full
+candidate. It stages bulb.gif and its upstream license, checks the GIF widget
+and shell entry in the live link map, and verifies packaged resource hashes.
+The combined profile writes output/lvgl-evidence/ge2d-fonts-gif. Its board
+command is lv_aic_gif show|pause|resume|restart|status|close; commands are handled
+by the UI thread. The shell build entry does not expose this optional variant.
+See [GIF stage](../../docs/gif-stage.md) for lifecycle and acceptance criteria.

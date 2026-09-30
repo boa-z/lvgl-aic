@@ -114,4 +114,20 @@ licenses remain in the separately pinned LVGL checkout. See
 [font stage](../../docs/font-stage.md) for board and memory limits.
 ## Manual UI layout and navigation contract
 
+Coordinate tests update both screen and top-layer layout before injection. No
+synthetic CLICKED fallback is permitted when hit testing fails. Font modal
+tests require background navigation to remain blocked, and both feature
+configurations check top-layer ownership after teardown.
+
 `lvgl_aic_manual_pages` now exercises the three-page smoke UI with a real pointer indev: the shared top navigation is fixed above every page, previous / next controls wrap in both directions, invalid requests are ignored, and teardown clears pending state. With FreeType enabled it also opens/closes the modal Fonts panel repeatedly and verifies the overlay prevents background navigation. Configure `AIC_BUILD_MANUAL_PREVIEW=ON` with `AIC_BUILD_FREETYPE_TESTS=ON` to emit software reference PPM/PNG frames under the host build's `preview/` directory. These frames validate layout and image placement; GE2D/MPP hardware behavior is not inferred from them.
+
+## Native GIF contract
+
+Add -DAIC_BUILD_GIF_TESTS=ON to exercise the component's AIC_LVGL_USE_GIF
+configuration mapping and real upstream decoder. The bulb fixture is copied
+from the pinned LVGL checkout. Tests cover FILE/RAW sources, RGB565/ARGB8888,
+changing pixels and frame indices, paused stability, resume/restart, invalid
+inputs, 20 widget cycles plus 20 panel cycles and balanced file handles.
+With SDK headers and FreeType enabled the combined suite contains ten CTests.
+This is software rendering/lifecycle evidence, not board or heap-profile proof.
+See [GIF stage](../../docs/gif-stage.md) for the optional firmware and shell gate.

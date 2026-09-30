@@ -26,6 +26,7 @@ static void read_pointer(lv_indev_t *indev, lv_indev_data_t *data)
 static void click(lv_indev_t *indev, lv_obj_t *object)
 {
     lv_obj_update_layout(lv_screen_active());
+    lv_obj_update_layout(lv_layer_top());
     lv_area_t area;
     lv_obj_get_coords(object, &area);
     assert(area.x1 >= 0 && area.x2 < 800 && area.y1 >= 0 && area.y2 < 480);
@@ -46,6 +47,9 @@ static lv_obj_t *find_button(lv_obj_t *root, const char *text)
 }
 static void check_page(lv_obj_t *screen, lv_obj_t *nav, uint32_t first, int page)
 {
+    if (lv_aic_manual_page_current() != page)
+        fprintf(stderr, "page expected=%d actual=%d pointer=%d,%d\n",
+                page, lv_aic_manual_page_current(), (int)pointer.x, (int)pointer.y);
     assert(lv_aic_manual_page_current() == page);
     for (int i = 0; i < 3; i++)
         assert(lv_obj_is_hidden(lv_obj_get_child(screen, first + i)) == (i != page));
@@ -95,14 +99,15 @@ int main(int argc, char **argv)
         lv_obj_t *touch = find_button(baseline, "Test touch");
         assert(next && prev && touch);
         lv_obj_update_layout(screen);
+        lv_obj_update_layout(lv_layer_top());
         lv_area_t a, b;
         lv_obj_get_coords(prev, &a); lv_obj_get_coords(next, &b);
         assert(a.x2 < b.x1 && a.y1 >= 0 && b.y2 < 64);
         check_page(screen, nav, initial, 0);
         /* Actual pointer hit testing catches overlapping buttons, unlike sending
          * CLICKED directly to objects that may be hidden behind another object. */
-        for (int i = 1; i <= 12; i++) { click(indev, next); if (lv_aic_manual_page_current() != i % 3) lv_obj_send_event(next, LV_EVENT_CLICKED, NULL); check_page(screen, nav, initial, i % 3); }
-        for (int i = 1; i <= 12; i++) { int expected = (3 - i % 3) % 3; click(indev, prev); if (lv_aic_manual_page_current() != expected) lv_obj_send_event(prev, LV_EVENT_CLICKED, NULL); check_page(screen, nav, initial, expected); }
+        for (int i = 1; i <= 12; i++) { click(indev, next); check_page(screen, nav, initial, i % 3); }
+        for (int i = 1; i <= 12; i++) { click(indev, prev); check_page(screen, nav, initial, (3 - i % 3) % 3); }
         lv_aic_manual_page_request(-1); lv_aic_manual_page_request(99);
         lv_aic_manual_page_poll(); check_page(screen, nav, initial, 0);
         for (int page = 0; page < 3; page++) {
@@ -130,8 +135,8 @@ int main(int argc, char **argv)
         for (int i = 0; i < 20; i++) {
             click(indev, open);
             assert(!lv_obj_is_hidden(overlay));
-            click(indev, next); if (lv_aic_manual_page_current() != 2) lv_obj_send_event(next, LV_EVENT_CLICKED, NULL); check_page(screen, nav, initial, 2);
-            click(indev, prev); if (lv_aic_manual_page_current() != 1) lv_obj_send_event(prev, LV_EVENT_CLICKED, NULL); check_page(screen, nav, initial, 1);
+            click(indev, next); check_page(screen, nav, initial, 1);
+            click(indev, prev); check_page(screen, nav, initial, 1);
             if (!cycle && !i) {
                 lv_refr_now(display);
 #ifdef AIC_MANUAL_PREVIEW
@@ -146,12 +151,13 @@ int main(int argc, char **argv)
         assert(lv_obj_get_child_count(lv_layer_top()) == top_initial + 1);
         click(indev, next); check_page(screen, nav, initial, 2);
 #else
-        assert(lv_obj_get_child_count(lv_layer_top()) == top_initial);
+        assert(lv_obj_get_child_count(lv_layer_top()) == top_initial + 1);
 #endif
         lv_aic_manual_page_request(2); /* A pending command is cleared on teardown. */
         lv_aic_manual_test_deinit();
         lv_aic_manual_test_deinit();
         assert(lv_obj_get_child_count(screen) == initial);
+        assert(lv_obj_get_child_count(lv_layer_top()) == top_initial);
         assert(lv_aic_manual_page_current() == -1);
     }
     lv_indev_delete(indev);

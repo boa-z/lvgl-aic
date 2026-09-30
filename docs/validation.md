@@ -1,13 +1,20 @@
 # Validation record
 
-## Current status index (2026-09-30)
+## Current status index (2026-10-01)
 
 Earlier paths, kernel patches, scope and pending statements below describe
 historical revisions, not the current integration. Current instructions are in
 [integration-luban-lite.md](integration-luban-lite.md); feature inventory is in
 [capabilities.md](capabilities.md). Historical sections are preserved as evidence.
 
-- Native font-stage implementation 3b7e090: fonts ON 9/9 and OFF 8/8 host
+- Completed history consolidated in d26f0b0 and pushed to
+  codex/sdk-basic-capabilities. The operator accepts the current UI layout and
+  bidirectional page switching. This does not close every numeric board gate.
+- Native GIF candidate: GIF + FreeType + SDK headers 10/10, features OFF 8/8
+  host tests PASS. GE2D + FreeType + GIF build/link/image gates PASS. Board GIF
+  acceptance remains NOT_RUN; see [GIF stage](gif-stage.md). Navigation tests
+  now use actual top-layer coordinates and have no synthetic event bypass.
+- Historical native font-stage implementation 3b7e090: fonts ON 9/9 and OFF 8/8 host
   tests PASS. Clean-source Gate 1, GE2D baseline and GE2D+FreeType firmware
   build/link/image gates PASS. Board validation remains NOT_RUN. The immutable
   font-stage-3b7e090 archive indexes 72 evidence files; see

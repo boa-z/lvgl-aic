@@ -9,6 +9,7 @@
 
 #include <stdbool.h>
 #include "lv_aic_font_test.h"
+#include "lv_aic_gif_test.h"
 
 static lv_obj_t *lv_aic_manual_root;
 static lv_obj_t *lv_aic_manual_status;
@@ -117,6 +118,9 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
 
     (void)timer;
     lv_aic_manual_page_poll();
+#if LV_USE_GIF && AIC_LVGL_BSP_RTTHREAD
+    lv_aic_gif_test_poll();
+#endif
 #if AIC_LVGL_BSP_RTTHREAD && AIC_LVGL_BSP_MPP
     lv_aic_capture_poll();
 #endif
@@ -646,6 +650,9 @@ const char *lv_aic_manual_test_status_text(void)
 
 void lv_aic_manual_test_deinit(void)
 {
+#if LV_USE_GIF && AIC_LVGL_BSP_RTTHREAD
+    lv_aic_gif_test_deinit();
+#endif
 #if LV_USE_FREETYPE && AIC_LVGL_BSP_RTTHREAD
     lv_aic_font_test_delete();
 #endif

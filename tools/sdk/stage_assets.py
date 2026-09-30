@@ -9,6 +9,7 @@ from pathlib import Path
 from sdk_paths import sdk_root, component_root, lvgl_root
 parser = argparse.ArgumentParser()
 parser.add_argument("--fonts", action="store_true")
+parser.add_argument("--gif", action="store_true")
 args = parser.parse_args()
 root = sdk_root()
 source = component_root() / "tests/data/mpp"
@@ -26,6 +27,12 @@ if args.fonts:
         "NotoSansSC-Regular.ttf": upstream / "tests/src/test_files/fonts/noto/NotoSansSC-Regular.ttf",
         "Lato-OFL.txt": upstream / "scripts/generators/built_in_font/font_license/Lato/OFL.txt",
         "NotoSansSC-OFL.txt": upstream / "scripts/generators/built_in_font/font_license/NotoSansSC/OFL.txt",
+    })
+if args.gif:
+    upstream = lvgl_root()
+    files.update({
+        "bulb.gif": upstream / "examples/libs/gif/bulb.gif",
+        "LVGL-LICENCE.txt": upstream / "LICENCE.txt",
     })
 # Remove only previously inventoried generated assets absent from this profile.
 previous = stage / "SHA256.json"

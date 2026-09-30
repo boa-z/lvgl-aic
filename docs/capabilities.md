@@ -1,7 +1,7 @@
 # Current capabilities and SDK gaps
 
-Maintained inventory, 2026-09-30. Application integration baseline:
-2294faf; candidate development branch codex/sdk-basic-capabilities. Comparison: the SDK's ArtInChip LVGL 9.1.0 implementation. Earlier
+Maintained inventory, 2026-10-01. Completed port stage: d26f0b0; subsequent GIF
+development on codex/sdk-basic-capabilities. Comparison: the SDK's ArtInChip LVGL 9.1.0 implementation. Earlier
 phase documents are historical; source presence and switches are not board proof.
 
 | Area | Implementation | Remaining scope |
@@ -17,7 +17,8 @@ phase documents are historical; source presence and switches are not board proof
 | GE LAYER | Plain/right-angle composition, no scale | Ordinary D13x heap source falls back; not general HW layers |
 | Scheduling | Synchronous, error/task counters, bounded refresh timing | Async work and paired GE ON/OFF board timing |
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
-| Optional core | GIF/vector/demo are configuration choices | GIF disabled here, enabled in vendor configuration |
+| GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
+| Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
 | Vendor widgets | Not integrated | Camera/player/video-window/canvas/roller/swipe as separate app dependencies |
 
 Declined drawing normally stays with software. Unsupported compressed resources
@@ -44,8 +45,11 @@ board confirmation remains required. See [font stage](font-stage.md).
    and bounded cache now include ownership, invalidation, pressure/failure, LRU
    and teardown contracts plus file-memory pixel parity and cache-hit probes.
    SDK allocators remain unchanged. Development checks are in validation.md.
-4. Validate the new native FreeType stage on board, including complete probe logs.
-5. Remaining priorities: whole-display GE rotation and required encoder/mouse
+4. The operator confirms the current UI layout and page switching are normal.
+   Retain complete native FreeType/resource probe logs for numeric acceptance.
+5. Validate the optional [native GIF stage](gif-stage.md) on board. Its decoding
+   and lifecycle host coverage does not establish DMA/cache or panel behavior.
+6. Remaining priorities: whole-display GE rotation and required encoder/mouse
    inputs; compressed vendor formats and media/widgets need separate scope.
 
 This sequence supersedes the old instruction to stop after 3C5. It does not

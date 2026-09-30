@@ -55,3 +55,11 @@ glyph cache is count-bounded per cache, not a global byte budget. See
 [font ownership](font-stage.md).
 
 See [capabilities](capabilities.md) and [validation](validation.md).
+
+Native GIF is an optional upstream widget selected by AIC_LVGL_USE_GIF. The
+application owns its objects, source strings/descriptors and borrowed RAW bytes.
+Each live file-backed GIF retains its file until replacement/deletion. Delete
+widgets before closing their filesystem/display. Its software-decoded canvas is
+separate from MPP's compressed-image CMA/cache lifetime; no legacy SDK GIF hooks
+are imported. The manual shell only queues requests for the UI timer to handle.
+See [GIF ownership and board gate](gif-stage.md).

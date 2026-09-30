@@ -8,6 +8,7 @@ if (LVGL_ROOT STREQUAL "")
     message(FATAL_ERROR "Set -DLVGL_ROOT to an external LVGL v9.6.0 checkout")
 endif()
 
+option(AIC_BUILD_GIF_TESTS "Test native LVGL GIF widget" OFF)
 option(AIC_BUILD_MANUAL_PREVIEW "Build native software reference screenshots" OFF)
 option(AIC_BUILD_FREETYPE_TESTS "Test native FreeType and glyph caches" OFF)
 option(AIC_BUILD_SDL_SMOKE "Build the interactive SDL2 smoke window" OFF)
@@ -38,6 +39,9 @@ if(AIC_BUILD_FREETYPE_TESTS)
     target_link_libraries(lvgl PUBLIC Freetype::Freetype)
 endif()
 
+if(AIC_BUILD_GIF_TESTS)
+    target_compile_definitions(lvgl PUBLIC AIC_LVGL_USE_GIF=1)
+endif()
 if(AIC_BUILD_MANUAL_PREVIEW)
     if(NOT AIC_BUILD_FREETYPE_TESTS)
         message(FATAL_ERROR "AIC_BUILD_MANUAL_PREVIEW requires AIC_BUILD_FREETYPE_TESTS")
@@ -272,4 +276,22 @@ if(AIC_BUILD_FREETYPE_TESTS)
         "${LVGL_ROOT}/examples/libs/freetype/Lato-Regular.ttf"
         "${LVGL_ROOT}/tests/src/test_files/fonts/noto/NotoSansSC-Regular.ttf"
         "${AIC_ROOT}/tests/data/mpp/basn2c08.png")
+endif()
+
+if(AIC_BUILD_GIF_TESTS)
+    add_executable(lvgl_aic_gif_contract gif_contract.c
+        "${AIC_ROOT}/tests/manual/lv_aic_gif_test.c")
+    target_include_directories(lvgl_aic_gif_contract PRIVATE
+        "${AIC_ROOT}/include" "${AIC_ROOT}/tests/manual")
+    target_compile_definitions(lvgl_aic_gif_contract PRIVATE AIC_LVGL_BSP_RTTHREAD=0)
+    target_link_libraries(lvgl_aic_gif_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_gif_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    configure_file("${LVGL_ROOT}/examples/libs/gif/bulb.gif"
+                   "${CMAKE_CURRENT_BINARY_DIR}/bulb.gif" COPYONLY)
+    add_test(NAME lvgl_aic_gif_contract COMMAND lvgl_aic_gif_contract
+        "${CMAKE_CURRENT_BINARY_DIR}/bulb.gif")
+    set_tests_properties(lvgl_aic_gif_contract PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 endif()

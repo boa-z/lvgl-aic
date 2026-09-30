@@ -35,6 +35,10 @@
 #undef AIC_LVGL_USE_TOUCH
 #define AIC_LVGL_USE_TOUCH 1
 #endif
+#ifdef AIC_LVGL_USE_GIF
+#undef AIC_LVGL_USE_GIF
+#define AIC_LVGL_USE_GIF 1
+#endif
 #ifdef AIC_LVGL_USE_FREETYPE
 #undef AIC_LVGL_USE_FREETYPE
 #define AIC_LVGL_USE_FREETYPE 1
@@ -228,7 +232,11 @@
 #endif
 #endif
 #ifndef LV_USE_GIF
+#if defined(AIC_LVGL_USE_GIF) && AIC_LVGL_USE_GIF
+#define LV_USE_GIF 1
+#else
 #define LV_USE_GIF 0
+#endif
 #endif
 
 #endif /* LV_CONF_H */
