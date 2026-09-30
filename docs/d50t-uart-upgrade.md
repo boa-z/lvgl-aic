@@ -36,7 +36,7 @@ bsp/artinchip/drv/wri/drv_wri.c 注册，gotobl 写入 BL_UPGRADE 原因并通�
 
 1. 构建完整测试镜像（脚本会先重建并打包本板 Bootloader）：
 
-       & packages/custom/lvgl-aic/tools/sdk/build.ps1 -Phase ge2d -Jobs 8 -AllowComponentDirty
+       & application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic/tools/sdk/build.ps1 -Phase ge2d -Jobs 8 -AllowComponentDirty
 
 2. 若板上应用已有 aicupg，在应用串口 Shell 执行：
 

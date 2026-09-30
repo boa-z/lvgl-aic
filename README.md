@@ -1,110 +1,56 @@
 # lvgl-aic
 
-`lvgl-aic` is an independent ArtInChip platform-adaptation component for LVGL 9.6.x.
+Independent ArtInChip adaptation for LVGL 9.6.x, consumed as an application-owned
+third-party dependency. This repository contains no upstream LVGL source,
+product pages, vehicle protocols or product assets.
 
-It connects the LVGL public API to Luban-Lite/RT-Thread and the ArtInChip display,
-touch, framebuffer, cache, and MPP interfaces.
+## Integration and baselines
 
-## Scope
+The application contains sibling third_party/lvgl and third_party/lvgl-aic
+submodules and invokes this component's Kconfig/SConscript. The application owns
+the UI thread and task loop; the component owns platform adaptation and tools.
+SDK RT-Thread, OSAL, framebuffer/touch and MPP remain platform dependencies.
+Disable LPKG_USING_LVGL; do not register this port under SDK packages/ or patch
+the SDK kernel. See [integration](docs/integration-luban-lite.md).
 
-This repository **does not contain LVGL upstream source** and is not a D50T product
-UI project. It also does not contain product pages, CAN/CANopen, vehicle logic,
-Path2D, PSD tooling, or product assets.
+- LVGL v9.6.0: 80ca777e37a2b176770726a02e07a6fb79ef0b39.
+- SDK v1.3.2 reference: c5807f9e7d18292f920dafaa018b8174635085c4.
+- Primary target: D13x / D133ECS, D50T-2-Lite, RT-Thread.
+- Compile guard accepts 9.6.x; the tested upstream pin remains 9.6.0.
 
-The component is designed to be consumed as:
+## Current implementation
 
-```text
-D50T Application
-        |
-      LVGL
-        |
- packages/custom/lvgl-aic
-        |
- ArtInChip Luban-Lite BSP / MPP
-```
+Framebuffer/PAN/VSync, software display rotation and touch are implemented.
+Optional backends include FILE and RAW/RAW_ALPHA memory JPEG/PNG decoding,
+a bounded decoded-image cache (512 KiB default), and synchronous GE2D
+FILL/IMAGE/LAYER dispatch. FILL includes partial opacity on RGB565/RGB888/XRGB8888
+(12 numeric board probes and operator visual acceptance passed in the resource stage). IMAGE supports bounded scaling, orthogonal
+rotation and combined transforms. Ordinary D13x heap layers fall back to software.
 
-## Fixed baseline
+Target OS integration is LV_OS_CUSTOM with RT event-based binary notifications.
+No semaphore-value-limit kernel backport is required. Encoder, USB mouse and
+the vendor AIC FreeType cache remain placeholders. Optional native FreeType now
+provides dynamic sizes/styles, Chinese fallback and native glyph caching through
+application-owned font lifetimes; see [font stage](docs/font-stage.md).
 
-- LVGL: `v9.6.0`, commit `80ca777e37a2b176770726a02e07a6fb79ef0b39`
-- Luban-Lite reference: `v1.3.2`, commit
-  `c5807f9e7d18292f920dafaa018b8174635085c4`
-- Primary target: ArtInChip D13x / D133ECS, RT-Thread
+The caller first calls lv_init(), then lv_aic_init(), and runs lv_timer_handler()
+in its own serialized UI loop. lv_aic_init() creates display/touch and enables
+configured decoder/draw backends; it does not create product pages. Stop all UI
+use and close decoder readers before lv_aic_deinit(). See the
+[resource stage](docs/resource-stage.md) for cache invalidation and source lifetimes.
 
-The component intentionally rejects LVGL versions other than 9.6.x at compile
-time. This is a platform baseline, not a compatibility layer for every LVGL
-minor release.
+## Capability and evidence references
 
-## Current implementation status
+- [Current capabilities and SDK gaps](docs/capabilities.md)
+- [Architecture](docs/architecture.md)
+- [Compatibility](docs/compatibility.md)
+- [Porting notes](docs/porting-notes.md)
+- [Build tools](tools/sdk/README.md) and [host contracts](tests/host/README.md)
+- [Historical validation](docs/validation.md)
 
-Phase 0/Phase 1 bring-up is under development:
+The resource-stage image has board numeric probes and operator visual acceptance.
+Direct resource/cache logs and explicit timed-running evidence remain incomplete.
+The new font-stage candidate requires its own board acceptance; never transfer
+historical hardware acceptance to a new image.
 
-- repository/build skeleton;
-- LVGL 9.6 version guard and configuration;
-- RT-Thread software-renderer display baseline;
-- ArtInChip framebuffer/VSync/rotation integration;
-- touch input baseline.
-
-Opt-in features, each behind its own `AIC_LVGL_USE_*` Kconfig symbol and each
-off by default until its gate passes:
-
-- `AIC_LVGL_USE_MPP_DEC` — MPP JPEG/PNG image decoder (`image/mpp/`);
-- `AIC_LVGL_USE_GE2D` — GE2D draw unit for opaque, unrounded, non-gradient
-  fills (`draw/ge2d/`). IMAGE and LAYER tasks are not claimed; they stay on the
-  software renderer.
-
-No hardware validation is claimed by the repository until the validation record
-contains board-specific evidence.
-
-## Integration
-
-The intended superproject layout is:
-
-```text
-packages/
-├── artinchip/
-│   └── lvgl-ui/       # legacy reference; do not link with the new path
-├── third-party/
-│   └── lvgl/          # LVGL v9.6.0 upstream submodule
-└── custom/
-    └── lvgl-aic/      # this repository
-```
-
-The host application must choose exactly one of the legacy ArtInChip LVGL path
-or the LVGL 9.6 + `lvgl-aic` path. Both LVGL implementations must never be
-linked into the same image.
-
-See [`docs/integration-luban-lite.md`](docs/integration-luban-lite.md) for the
-Kconfig, SCons, submodule, and legacy/new selection procedure.
-
-## Minimal initialization
-
-The caller owns the LVGL lifecycle and the LVGL task loop:
-
-```c
-lv_init();
-
-if (lv_aic_init() != 0) {
-    /* Stop startup and report the platform initialization error. */
-}
-
-for (;;) {
-    lv_timer_handler();
-    rt_thread_mdelay(10);
-}
-```
-
-`lv_aic_init()` creates only the display and input integration. It does not
-create product pages, start protocol threads, or own the application UI loop.
-
-## Documentation
-
-- [`docs/architecture.md`](docs/architecture.md)
-- [`docs/compatibility.md`](docs/compatibility.md)
-- [`docs/porting-notes.md`](docs/porting-notes.md)
-- [`docs/integration-luban-lite.md`](docs/integration-luban-lite.md)
-- [`docs/validation.md`](docs/validation.md)
-
-## License and source notices
-
-See [`NOTICE.md`](NOTICE.md). Code migrated from ArtInChip sources must retain
-its original copyright, SPDX identifier, and author information.
+See [NOTICE.md](NOTICE.md); retain ArtInChip copyright, SPDX and author notices.

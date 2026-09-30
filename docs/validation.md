@@ -1,6 +1,179 @@
 # Validation record
 
-## Status
+## Current status index (2026-09-30)
+
+Earlier paths, kernel patches, scope and pending statements below describe
+historical revisions, not the current integration. Current instructions are in
+[integration-luban-lite.md](integration-luban-lite.md); feature inventory is in
+[capabilities.md](capabilities.md). Historical sections are preserved as evidence.
+
+- Native font-stage implementation 3b7e090: fonts ON 9/9 and OFF 8/8 host
+  tests PASS. Clean-source Gate 1, GE2D baseline and GE2D+FreeType firmware
+  build/link/image gates PASS. Board validation remains NOT_RUN. The immutable
+  font-stage-3b7e090 archive indexes 72 evidence files; see
+  [font handoff](font-stage.md) for image hash and panel/log acceptance criteria.
+- Resource-stage development is complete at a5b5bd4: 8/8 host contracts and
+  Gate 1 / MPP / GE2D build/link/image gates PASS. Board validation is PARTIAL:
+  supplied serial probes and operator visual confirmation PASS; see the latest
+  board feedback below for missing evidence and logging defects.
+- OS is now LV_OS_CUSTOM with RT events; no SDK semaphore patch is required.
+- Dependencies live under application/rt-thread/<app>/third_party/.
+- IMAGE scale/right-angle/combined transforms are implemented; later
+  [transform records](phase3c-transform.md) supersede earlier NOT_STARTED entries.
+- Board observations apply only to their identified builds.
+- SDK 08b9f5f0 / component 2294faf: six host contracts and three firmware
+  build/link/image gates passed; the current board feedback supersedes the
+  earlier NOT_RUN status for the checks actually observed.
+- Bounded timing code exists. Paired GE ON/OFF board timing remains open.
+
+
+## Resource-stage board feedback (2026-09-30)
+
+The operator reported flashing the delivered image, supplied a serial excerpt,
+and subsequently confirmed: "界面验证正常" (the interface verification is normal).
+The expected candidate is component a5b5bd4, GE2D image SHA256
+ e997674a26c1187c648d03c3c919f8fcd672a080d646552875964622820af3e6.
+The running image hash was not read back; attribution is based on the operator's
+statement, not a device identity measurement. The archived build manifests retain
+their original NOT_RUN values as build-time provenance.
+
+| Check | Observed result | Evidence |
+|---|---|---|
+| Wrapper CMA stress | PASS | current=0, alloc=1000; the free count is interrupted by a logging warning, but the explicit lifecycle PASS requires alloc==free and alloc>=1000 |
+| Solid fill | PASS | All 12 RGB565/RGB888/XRGB8888 opacity probes pass, 90 pixels each, guards=OK; maximum errors are 5/2/2/5 for RGB565 and 0 for the other formats |
+| GE scheduling | PASS for reported refresh | 21 fill and 19 image engine executions, 0 image SW fallbacks, 1 SW layer, 7 declined tasks, errors=0 |
+| Blend probes | PASS in supplied excerpt | Three reported deviations are 0/255; the deliberately wrong premultiplied rule differs by 100/255; some line tails and the PASS summary are truncated |
+| Scale probes | PASS for six supplied cases | RGB/ARGB at 0.5x, 1.5x and 2x; max_error 0/1/0, clip_guard=OK and engine=1 |
+| First frame / scheduler | PASS at startup | first frame presented; scheduler is still progressing |
+| Interface appearance | PASS, operator confirmed | User reports the interface verification is normal following the three-page checklist; no framebuffer measurement was supplied |
+| Memory/cache resource stage | Indirect success; direct log pending | On this candidate the resource test must return success before the 1000-cycle loop can run; its earlier parity/cache PASS lines are absent from the supplied excerpt |
+| Touch-specific and timed endurance checks | Not separately recorded | The brief interface confirmation does not specify down/move/release behavior or a five-minute observation duration |
+
+Two logging issues remain: async log buffer exhaustion can lose/interleave
+records, and the timing line prints "us=%lu ge2d_ready=47437" even though the
+source uses %llu followed by a boolean %u. That line cannot establish elapsed
+time or ready state; format compatibility must be corrected before timing
+acceptance. This is separate from the GE numeric probes that already passed.
+
+The outstanding evidence is the earlier resource-stage serial block, explicit
+touch/timed-running observations, and device/image identification if available.
+The current statement closes visual acceptance, not every hardware gate. No
+firmware change, new build or flashing was performed to record this feedback.
+
+## Resource-stage development complete (2026-09-30)
+
+Branch: codex/sdk-basic-capabilities.
+Tested component: a5b5bd41ab0f5c5efe5a4149a0ceda9b195cc780 (clean).
+SDK: 08b9f5f09bab4dea199f36b2bfefec3f773e2b6a.
+LVGL: 80ca777e37a2b176770726a02e07a6fb79ef0b39 (v9.6.0, clean).
+Remote main was rechecked at 2294fafdbe36916d60ac311f49a1e32283cefbb8,
+and is an ancestor of the tested component. This follow-up record is docs-only.
+
+The [resource stage](resource-stage.md) adds borrowed RAW/RAW_ALPHA JPEG/PNG
+sources and a component-owned 512 KiB / 16-entry decoded-image LRU. Keys include
+source and decode options. Invalidation defers frees for active readers, cache
+pressure evicts idle entries, no_cache bypasses retention, and pending readers
+refuse platform teardown until closed. No SDK source, upstream LVGL core or
+global allocator/cache handler changes are required. It includes the earlier
+partial-opacity FILL candidate, but does not claim its board gate is closed.
+
+| Gate | Result | Evidence boundary |
+|---|---|---|
+| Host build / CTest | PASS, 8/8 | GCC 16.1 UCRT64 Debug; production code with mocked BSP/MPP/GE |
+| Memory/cache contract | PASS | Header/CRC/stream bounds; decode-option keys; FILE key ownership; byte/entry limits and LRU; active invalidation; allocation/decode failure; pressure retry; reset and reinit |
+| Gate 1 target | PASS | Build, live symbols, ELF ABI, packaging and nine payload CRCs |
+| MPP target | PASS | Same gates; resource/cache live symbols; 26 fixture/provenance hashes |
+| GE2D target | PASS | Integrated resource and fill/transform probes; all static/image gates |
+| Archived manifests | PASS | 18/19/19 referenced files rehashed; 65 archived files indexed with SHA256 |
+| Board resource/fill probes | NOT_RUN | Actual pixels, cache coherency, CMA lifetime and engine behavior need the exact candidate on D50T-2-Lite |
+| App/OS display/touch regression | NOT_RUN | Prior builds do not certify this application-owned integration |
+
+The build commands are the same as the preceding candidate, with all three
+profiles run sequentially in the isolated SDK checkout: gate1, mpp, ge2d.
+Host commands are documented in tests/host/README.md. The SDK active config now
+selects the GE2D smoke profile. Existing short-argument/pywin32 environment
+warnings remain; no new component compiler warnings were found.
+
+The immutable local handoff is in:
+
+    C:/Users/JCSH/.codex/worktrees/d50t-lvgl-port/luban-lite-jc-d50t-rev/output/lvgl-evidence/resource-stage-a5b5bd4/
+
+It contains gate1/, mpp/, ge2d/, host/ and stage-index.json. Each target folder
+contains its manifest, exact config/headers, logs, source provenance, ELF/map
+and image. The host folder preserves CTest LastTest.log and its CMake metadata.
+Each image has the filename d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img:
+
+| Profile | Bytes | SHA256 |
+|---|---:|---|
+| Gate 1 | 1550848 | 0416180742741369d8edc55b4b0c327ea1c6293a9500a77e79ac3e42f1b1ac2e |
+| MPP | 1794560 | 8b152ea44b88178b7a12d6331a7ac25f38365aad27d5fbf3cc236203759c9af9 |
+| GE2D | 1825280 | e997674a26c1187c648d03c3c919f8fcd672a080d646552875964622820af3e6 |
+
+Use the archived GE2D image for integrated board validation; MPP is the
+software-rendering control and Gate 1 is the display/touch baseline. Confirm
+the image hash and retain the full serial log. Required resource evidence:
+three file-memory parity PASS lines, two 100-cache-hit PASS lines, resource-stage
+PASS, and the existing 1000 uncached cycles/CMA balance. GE2D must also pass the
+12 solid-fill numerical probes and existing image/transform checks. Inspect
+all three pages and touch down/move/release; panel acceptance is separate from
+file-memory hash equality. Detailed serial signatures are in resource-stage.md.
+
+The Hangcha checkout was checked clean on codex/hangcha-zc-202620085 with
+CONFIG_PRJ_APP="forklift-meter-platform". The parent port checkout differs only
+in the local component gitlink; it is not promoted to an unpublished commit.
+No flashing or push was performed. Development is complete for this scope;
+board acceptance remains open. Other SDK gaps (YUV/AICP/BMP, GE display rotation,
+font/input/media integrations and paired timing) are not part of this stage.
+
+## Solid-fill capability candidate (2026-09-30)
+
+Branch: codex/sdk-basic-capabilities. Documentation alignment: 832322e.
+Tested component: 1623ddafa1fb9efa099d1c7d3ede6dd25cf996f2 (clean).
+SDK: 08b9f5f09bab4dea199f36b2bfefec3f773e2b6a.
+LVGL: 80ca777e37a2b176770726a02e07a6fb79ef0b39 (v9.6.0, clean).
+Remote main was checked at 2294fafdbe36916d60ac311f49a1e32283cefbb8.
+
+This increment adds partial-opacity solid FILL on RGB565/RGB888/XRGB8888,
+with task/clip/layer intersection, buffer-size/stride/address guards and
+checked fillrect/emit/sync. Opaque ARGB8888 is retained; partial ARGB8888,
+rounded fills and gradients remain software tasks. It changes no SDK source
+or upstream LVGL core. Two existing manual-test type/format warnings were fixed.
+
+| Check | Result | Boundary |
+|---|---|---|
+| Host configure/build + CTest | PASS, 7/7 | GCC 16.1 UCRT64, Debug; real LVGL and real evaluator/executors, mocked hardware |
+| New fill contract | PASS | Opacity thresholds, all four RGB-family formats, alpha rules, padded stride, origin/clip, invalid buffers, three engine failure stages |
+| GE2D target build/link/image | PASS | RISC-V ELF ABI, component object provenance including the new fill probe, nine payload CRCs, 26 fixture/provenance hashes |
+| Gate 1 software-only build/link/image | PASS | GE-disabled profile still compiles, links and packages |
+| New board pixel probes | NOT_RUN | 12 cases: three formats x four opacities; no flashing performed |
+| App/OS refactor panel/touch regression | NOT_RUN | Earlier hardware observations do not certify these images |
+
+Commands from the isolated SDK worktree:
+
+    cmake --build output/lvgl-host-app -j8
+    ctest --test-dir output/lvgl-host-app --output-on-failure
+    & ./application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic/tools/sdk/build.ps1 -Phase ge2d -Jobs 8 -AllowComponentDirty
+    & ./application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic/tools/sdk/build.ps1 -Phase gate1 -Jobs 8 -AllowComponentDirty
+
+The candidate component commit differs from the SDK's committed submodule pin;
+AllowComponentDirty is explicit for this local development integration. Both
+manifests record a clean component at 1623dda. The SDK gitlink is not promoted
+to an unpublished component commit. No Hangcha checkout/config changes occurred.
+
+Evidence is under output/lvgl-evidence/ge2d and output/lvgl-evidence/gate1:
+manifest.json, source patches, configuration, build logs, ELF/map and images.
+Each image has the standard d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img name.
+
+- GE2D, 1823232 bytes: SHA256 3c872f8566608049862c8aae2188308273146196d2f4878c7f6e23274b857b52.
+- Gate 1, 1550848 bytes: SHA256 872b1ba9eef05e35823f6e7fd360dbb6ad952ca8e9a53e3ec4d61ac68ccab460.
+
+Builds still print existing tool-environment warnings (short argument and missing
+pywin32); both complete successfully. No new component compiler warnings remain.
+The host contract validates descriptors/failure behavior, not real blend pixels
+or cache coherency. Partial ARGB destination composition and paired performance
+remain open; subsequent priority is decoded-image cache and memory inputs.
+
+## Historical status
 
 This file is intentionally explicit about unverified work.
 

@@ -9,7 +9,7 @@
 #include <rtthread.h>
 #define LOG_TAG "lvgl.ge2d.test"
 #define LOG_LVL LOG_LVL_INFO
-#include <ulog.h>
+#include "lv_aic_test_log.h"
 
 /* The manual page owns the shapes; this only measures the counters around one
  * forced full refresh. Counts are deltas, so the verdict is independent of how
@@ -152,14 +152,16 @@ static int aic_ge2d_probe_blend(enum ge_pd_rules rules,
     int worst = -1;
 
     if (ge == NULL) {
-        LOG_E("FAIL %s: the GE device is not open", label);
+        AIC_TEST_E("FAIL GE device not open");
+        AIC_TEST_E("probe: %s", label);
         return -1;
     }
 
     src_mem = aicos_malloc_align(MEM_CMA, src_bytes, CACHE_LINE_SIZE);
     dst_mem = aicos_malloc_align(MEM_CMA, dst_bytes, CACHE_LINE_SIZE);
     if (src_mem == NULL || dst_mem == NULL) {
-        LOG_E("FAIL %s: cannot allocate the CMA probe buffers", label);
+        AIC_TEST_E("FAIL CMA probe allocation");
+        AIC_TEST_E("probe: %s", label);
         aicos_free_align(MEM_CMA, src_mem);
         aicos_free_align(MEM_CMA, dst_mem);
         return -1;
@@ -201,7 +203,8 @@ static int aic_ge2d_probe_blend(enum ge_pd_rules rules,
     blt.ctrl.src_global_alpha = global_opa;
 
     if (mpp_ge_bitblt(ge, &blt) < 0 || mpp_ge_emit(ge) < 0 || mpp_ge_sync(ge) < 0) {
-        LOG_E("FAIL %s: the engine rejected the probe blit", label);
+        AIC_TEST_E("FAIL engine rejected probe blit");
+        AIC_TEST_E("probe: %s", label);
         aicos_free_align(MEM_CMA, src_mem);
         aicos_free_align(MEM_CMA, dst_mem);
         return -1;
@@ -252,8 +255,9 @@ static int aic_ge2d_probe_blend(enum ge_pd_rules rules,
     aicos_free_align(MEM_CMA, src_mem);
     aicos_free_align(MEM_CMA, dst_mem);
 
-    LOG_I("%s: max deviation %d/255 at alpha=%u (%c expected %u, got %u)",
-          label, worst, (unsigned)alpha, "RGB"[worst_channel],
+    AIC_TEST_I("probe: %s", label);
+    AIC_TEST_I("deviation=%d/255 alpha=%u %c expected=%u got=%u",
+          worst, (unsigned)alpha, "RGB"[worst_channel],
           (unsigned)worst_expected, (unsigned)worst_actual);
     return worst;
 }
@@ -279,7 +283,7 @@ static int aic_ge2d_blend_checks(void)
         return -1;
     }
     if (worst > AIC_GE2D_PROBE_TOLERANCE) {
-        LOG_E("FAIL the rgb888 global-alpha blend is %d/255 off LVGL's result", worst);
+        AIC_TEST_E("FAIL the rgb888 global-alpha blend is %d/255 off LVGL's result", worst);
         return -1;
     }
 
@@ -289,7 +293,7 @@ static int aic_ge2d_blend_checks(void)
         return -1;
     }
     if (worst > AIC_GE2D_PROBE_TOLERANCE) {
-        LOG_E("FAIL the argb8888 per-pixel blend is %d/255 off LVGL's result", worst);
+        AIC_TEST_E("FAIL the argb8888 per-pixel blend is %d/255 off LVGL's result", worst);
         return -1;
     }
 
@@ -299,7 +303,7 @@ static int aic_ge2d_blend_checks(void)
         return -1;
     }
     if (worst > AIC_GE2D_PROBE_TOLERANCE) {
-        LOG_E("FAIL the combined pixel x global blend is %d/255 off LVGL's result", worst);
+        AIC_TEST_E("FAIL the combined pixel x global blend is %d/255 off LVGL's result", worst);
         return -1;
     }
 
@@ -309,13 +313,11 @@ static int aic_ge2d_blend_checks(void)
         return -1;
     }
     if (cross <= AIC_GE2D_PROBE_TOLERANCE) {
-        LOG_E("FAIL the premultiplied rule matches too (%d/255); the probe cannot "
-              "tell the two rules apart", cross);
+        AIC_TEST_E("FAIL cross-check=%d/255; alpha rules are indistinguishable", cross);
         return -1;
     }
 
-    LOG_I("PASS GE2D blend: rgb888+global, argb8888 per-pixel and pixel x global "
-          "all match LVGL within %d/255; the premultiplied rule is %d/255 off",
+    AIC_TEST_I("PASS GE2D blend: three cases within %d/255; cross-check=%d/255",
           (int)AIC_GE2D_PROBE_TOLERANCE, cross);
     return 0;
 }
@@ -336,9 +338,11 @@ int lv_aic_ge2d_test_run(void)
     if (!stats->ready) {
         /* Not a code failure: the GE block is not open, so the unit declines
          * every task. Without the driver there is nothing to validate. */
-        LOG_E("FAIL GE2D device unavailable: mpp_ge_open() failed; check the GE driver");
+        AIC_TEST_E("FAIL GE2D device unavailable: mpp_ge_open() failed; check the GE driver");
         return -1;
     }
+
+    if (lv_aic_ge2d_fill_test_run() != 0) return -1;
 
     before = *stats;
 
@@ -360,31 +364,35 @@ int lv_aic_ge2d_test_run(void)
     fallback = stats->fallback - before.fallback;
     errors = stats->errors - before.errors;
 
-    LOG_I("ge2d accepted fill=%u image=%u layer=%u",
+    AIC_TEST_I("ge2d accepted fill=%u image=%u layer=%u",
           (unsigned)fill, (unsigned)image, (unsigned)layer);
-    LOG_I("ge2d engine fill=%u image=%u layer=%u",
+    AIC_TEST_I("ge2d engine fill=%u image=%u layer=%u",
           (unsigned)fill_done, (unsigned)(image_done - image_sw),
           (unsigned)(layer_done - layer_sw));
-    LOG_I("ge2d sw image=%u layer=%u declined=%u errors=%u",
+    AIC_TEST_I("ge2d sw image=%u layer=%u declined=%u errors=%u",
           (unsigned)image_sw, (unsigned)layer_sw,
           (unsigned)fallback, (unsigned)errors);
-    LOG_I("refresh timing us=%llu ge2d_ready=%u",
-          (unsigned long long)refresh_elapsed_us, stats->ready ? 1U : 0U);
+    /* RT-Thread's small printf does not necessarily implement %llu. Split
+     * into seconds and a bounded microsecond remainder without truncating it. */
+    AIC_TEST_I("refresh timing s=%u us_part=%06u",
+          (unsigned)(refresh_elapsed_us / 1000000U),
+          (unsigned)(refresh_elapsed_us % 1000000U));
+    AIC_TEST_I("ge2d_ready=%u", stats->ready ? 1U : 0U);
 
     if (errors != 0U) {
-        LOG_E("FAIL GE2D reported %u execution errors", (unsigned)errors);
+        AIC_TEST_E("FAIL GE2D reported %u execution errors", (unsigned)errors);
         return -1;
     }
 
-    /* Phase 3A: the opaque, square-cornered rectangles. The fill path has no
+    /* Solid, square-cornered rectangles. The fill path has no
      * fallback, so completed implies the engine drew it. */
     if (fill < AIC_GE2D_MIN_FILL) {
-        LOG_E("FAIL only %u opaque FILL tasks reached GE2D, expected >= %u",
+        AIC_TEST_E("FAIL only %u solid FILL tasks reached GE2D, expected >= %u",
               (unsigned)fill, (unsigned)AIC_GE2D_MIN_FILL);
         return -1;
     }
     if (fill_done != fill) {
-        LOG_E("FAIL fill accepted=%u but completed=%u", (unsigned)fill,
+        AIC_TEST_E("FAIL fill accepted=%u but completed=%u", (unsigned)fill,
               (unsigned)fill_done);
         return -1;
     }
@@ -394,16 +402,16 @@ int lv_aic_ge2d_test_run(void)
      * allocates from CMA, which is inside the GE address window, so these must
      * be drawn by the engine and not merely claimed. */
     if (image == 0U) {
-        LOG_E("FAIL no IMAGE task reached GE2D; expected the unscaled b.png/c.png probes");
+        AIC_TEST_E("FAIL no IMAGE task reached GE2D; expected the unscaled b.png/c.png probes");
         return -1;
     }
     if (image_done != image) {
-        LOG_E("FAIL image accepted=%u but completed=%u", (unsigned)image,
+        AIC_TEST_E("FAIL image accepted=%u but completed=%u", (unsigned)image,
               (unsigned)image_done);
         return -1;
     }
     if (image_sw != 0U) {
-        LOG_E("FAIL %u of %u accepted IMAGE tasks were drawn in software, not by the engine",
+        AIC_TEST_E("FAIL %u of %u accepted IMAGE tasks were drawn in software, not by the engine",
               (unsigned)image_sw, (unsigned)image);
         return -1;
     }
@@ -418,10 +426,10 @@ int lv_aic_ge2d_test_run(void)
         return -1;
     }
     if (stats->scaled_image_engine == before.scaled_image_engine) {
-        LOG_E("FAIL no scaled IMAGE task was engine-drawn by the scheduler");
+        AIC_TEST_E("FAIL no scaled IMAGE task was engine-drawn by the scheduler");
         return -1;
     }
-    LOG_I("scale scheduler engine=%u errors=%u",
+    AIC_TEST_I("scale scheduler engine=%u errors=%u",
           (unsigned)(stats->scaled_image_engine - before.scaled_image_engine), (unsigned)errors);
 #endif /* AIC_GE2D_IMAGE_PROBES */
 
@@ -437,11 +445,11 @@ int lv_aic_ge2d_test_run(void)
      * unnoticed. Claimed-and-completed, with the split reported, is what is
      * actually true on this board. */
     if (layer == 0U) {
-        LOG_E("FAIL no LAYER task reached GE2D; expected the opa_layered probe");
+        AIC_TEST_E("FAIL no LAYER task reached GE2D; expected the opa_layered probe");
         return -1;
     }
     if (layer_done != layer) {
-        LOG_E("FAIL layer accepted=%u but completed=%u", (unsigned)layer,
+        AIC_TEST_E("FAIL layer accepted=%u but completed=%u", (unsigned)layer,
               (unsigned)layer_done);
         return -1;
     }
@@ -449,13 +457,11 @@ int lv_aic_ge2d_test_run(void)
     /* Still declining the rounded rectangle. The Phase 2 row now also
      * exercises the scaler through its 4x PNG images. */
     if (fallback < 1U) {
-        LOG_E("FAIL nothing fell back to software; the fallback probes are missing");
+        AIC_TEST_E("FAIL nothing fell back to software; the fallback probes are missing");
         return -1;
     }
 
-    LOG_I("PASS GE2D: %u fills and %u images drawn by the engine; "
-          "%u layer task(s) claimed, %u drawn by the engine and %u composited in software; "
-          "%u declined up front",
+    AIC_TEST_I("PASS GE2D fill=%u image=%u layer=%u hw_layer=%u sw_layer=%u declined=%u",
           (unsigned)fill_done, (unsigned)(image_done - image_sw),
           (unsigned)layer, (unsigned)(layer_done - layer_sw), (unsigned)layer_sw,
           (unsigned)fallback);

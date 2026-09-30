@@ -2,8 +2,8 @@
  * @file lv_draw_aic_ge2d.c
  * @brief ArtInChip GE2D draw unit: registration, evaluation and dispatch.
  *
- * Scope is deliberately narrow. FILL: opaque, unrounded, non-gradient tasks.
- * IMAGE: unrotated, untiled, unrecolored RGB copies/scales at visible opacity -
+ * Scope is deliberately narrow. FILL: solid, unrounded, non-gradient tasks.
+ * IMAGE: right-angle rotated, untiled, unrecolored RGB copies/scales -
  * the blit blends, so a partial opacity is supported rather than declined.
  * LAYER: the same blit, fed from a child layer's buffer instead of a decoded
  * image. Everything else is declined, and a declined task simply stays with the
@@ -91,10 +91,9 @@ static bool lv_draw_aic_ge2d_accepts_dst(const lv_draw_task_t *task)
 }
 
 /**
- * True when @p dsc carries no transform.
+ * True when @p dsc carries a supported LAYER transform.
  *
- * Shared by IMAGE and LAYER. Both would need the scaler or the rotator to draw
- * anything else, and neither step drives one.
+ * LAYER accepts right-angle rotation but leaves scaling to software.
  */
 static bool lv_draw_aic_ge2d_dsc_is_supported_transform(const lv_draw_image_dsc_t *dsc)
 {
@@ -152,13 +151,14 @@ static bool lv_draw_aic_ge2d_accepts_fill(const lv_draw_task_t *task)
         return false;
     }
 
-    /* No source alpha and no destination read-modify-write, so a translucent
-     * fill would be silently wrong. */
-    if (dsc->opa != LV_OPA_COVER) {
+    if (dsc->opa <= LV_OPA_MIN || !lv_draw_aic_ge2d_accepts_dst(task)) {
         return false;
     }
 
-    return lv_draw_aic_ge2d_accepts_dst(task);
+    /* Partial fills on alpha-bearing destinations need separate composition
+     * validation. Opaque destinations use straight-alpha source-over. */
+    return dsc->opa >= LV_OPA_MAX ||
+           task->target_layer->draw_buf->header.cf != LV_COLOR_FORMAT_ARGB8888;
 }
 
 /**

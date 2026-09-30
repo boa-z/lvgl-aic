@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
@@ -12,7 +12,10 @@ $root=(Resolve-Path $SdkRoot).Path
 if (-not (Test-Path "$root/SConstruct")) { throw "Invalid SDK root: $root" }
 $env:LVGL_AIC_SDK_ROOT=$root
 Set-Location $root
-$evidence=Join-Path $root "output/lvgl-evidence/$Phase"
+if ($WithFonts -and $Phase -eq 'gate1') { throw '-WithFonts requires the mpp or ge2d resource profile' }
+$variant=$Phase
+if ($WithFonts) { $variant += '-fonts' }
+$evidence=Join-Path $root "output/lvgl-evidence/$variant"
 New-Item -ItemType Directory -Force $evidence | Out-Null
 $env:SCONS_LIB_DIR=Join-Path $root 'tools/env/tools/Python27/Lib/site-packages/scons'
 $env:PYTHONUTF8='1'
@@ -42,22 +45,42 @@ if (Test-Path .config) { Copy-Item .config "$evidence/config-before" }
 Run-Step 'boot-config' @($scons,'--apply-def=d13x_d50t-2-lite_baremetal_bootloader_defconfig')
 Run-Step 'boot-build' @($scons,"-j$Jobs")
 Copy-Item output/d13x_d50t-2-lite_baremetal_bootloader/images/d13x.bin target/d13x/d50t-2-lite/pack/bootloader.bin
+$assetArgs=@("$PSScriptRoot/stage_assets.py")
+if ($WithFonts) { $assetArgs += '--fonts' }
 $def='d13x_d50t-2-lite_rt-thread_lvgl-aic-smoke_defconfig'
 if ($Phase -eq 'mpp') {
-    Run-Step 'assets' @("$PSScriptRoot/stage_assets.py")
+    Run-Step 'assets' $assetArgs
     $def='d13x_d50t-2-lite_rt-thread_lvgl-aic-mpp_defconfig'
 }
 if ($Phase -eq 'ge2d') {
     # The GE2D profile is the MPP profile plus the draw unit, so the MPP
     # regression is exercised on the same image.
-    Run-Step 'assets' @("$PSScriptRoot/stage_assets.py")
+    Run-Step 'assets' $assetArgs
     $def='d13x_d50t-2-lite_rt-thread_lvgl-aic-ge2d_defconfig'
 }
-Run-Step 'app-config' @($scons,"--apply-def=$def")
-Run-Step 'app-build' @($scons,"-j$Jobs")
+# SCons reloads defconfig on every invocation. Restore this isolated smoke
+# profile's exact bytes on both success and failure.
+$defPath=Join-Path $root "target/configs/$def"
+$originalDef=[IO.File]::ReadAllBytes($defPath)
+try {
+    if ($WithFonts) {
+        [IO.File]::WriteAllBytes("$evidence/defconfig-original", $originalDef)
+        $settings=@('CONFIG_AIC_LVGL_USE_FREETYPE=y', 'CONFIG_LPKG_USING_FREETYPE=y', 'CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64')
+        $content=[IO.File]::ReadAllText($defPath)
+        $content=[regex]::Replace($content, '(?m)^(?:# )?CONFIG_(?:AIC_LVGL_USE_FREETYPE|LPKG_USING_FREETYPE|AIC_LVGL_FREETYPE_GLYPHS)(?:=.*| is not set)\r?\n?', '')
+        $content=$content.TrimEnd()+[Environment]::NewLine+($settings -join [Environment]::NewLine)+[Environment]::NewLine
+        [IO.File]::WriteAllText($defPath, $content, (New-Object Text.UTF8Encoding($false)))
+        Copy-Item $defPath "$evidence/defconfig-effective"
+    }
+    Run-Step 'app-config' @($scons,"--apply-def=$def")
+    Run-Step 'app-build' @($scons,"-j$Jobs")
+} finally {
+    if ($WithFonts) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
+}
 $app='output/'+($def -replace '_defconfig$','')+'/images'
 $checkArgs=@("$PSScriptRoot/check_integration.py",'--root','.', '--map',"$app/d13x.map",'--phase',$Phase)
 if ($AllowComponentDirty) { $checkArgs += '--allow-component-dirty' }
+if ($WithFonts) { $checkArgs += '--with-fonts' }
 Run-Step 'static-check' $checkArgs
 Run-Step 'image-check' @("$PSScriptRoot/verify_image.py",$app,'output/d13x_d50t-2-lite_baremetal_bootloader/images',$Phase)
 New-Item -ItemType Directory -Force "$evidence/images" | Out-Null
@@ -65,5 +88,5 @@ Get-ChildItem "$app/*.img" | Copy-Item -Destination "$evidence/images"
 Copy-Item .config,rtconfig.h "$evidence/"
 Copy-Item "$app/d13x.elf","$app/d13x.map" "$evidence/images/"
 $env:PATH="$root/tools/env/tools/Python38;$env:PATH"
-Run-Step 'manifest' @("$PSScriptRoot/write_manifest.py",$evidence,$Phase)
+Run-Step 'manifest' @("$PSScriptRoot/write_manifest.py",$evidence,$variant)
 Write-Host "Verified test image and provenance: $evidence"

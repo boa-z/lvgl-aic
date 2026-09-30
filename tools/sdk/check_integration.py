@@ -61,7 +61,7 @@ def check_submodule(root, path, expected):
         fail("%s is %s, expected %s" % (path, actual, expected))
 
 
-def check_config(root, phase="gate1"):
+def check_config(root, phase="gate1", with_fonts=False):
     config = (root / ".config").read_text(encoding="utf-8")
     header = (root / "rtconfig.h").read_text(encoding="utf-8")
     for symbol in REQUIRED_CONFIG_SYMBOLS:
@@ -71,6 +71,13 @@ def check_config(root, phase="gate1"):
             fail("rtconfig.h does not define %s" % symbol)
     if '#define AIC_LVGL_TOUCH_DEVICE "gt911"' not in header:
         fail("rtconfig.h does not select AIC_LVGL_TOUCH_DEVICE=gt911")
+    for symbol in ("AIC_LVGL_USE_FREETYPE", "LPKG_USING_FREETYPE"):
+        enabled = bool(re.search(r"^CONFIG_%s=y$" % symbol, config, re.MULTILINE))
+        defined = bool(re.search(r"^#define %s(?:\s|$)" % symbol, header, re.MULTILINE))
+        if enabled != with_fonts or defined != with_fonts:
+            fail("font profile mismatch: " + symbol)
+    if with_fonts and "CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64" not in config:
+        fail("font probe profile requires the 64-glyph cache")
     disabled = list(DISABLED_CONFIG_SYMBOLS)
     if phase in ("mpp", "ge2d"):
         disabled.remove("AIC_LVGL_USE_MPP_DEC")
@@ -126,6 +133,7 @@ def main():
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--map", dest="map_path", type=Path, required=True)
     parser.add_argument("--phase", choices=("gate1", "mpp", "ge2d"), default="gate1")
+    parser.add_argument("--with-fonts", action="store_true")
     parser.add_argument("--allow-component-dirty", action="store_true",
                         help="Development builds only; preserve the component diff with evidence")
     args = parser.parse_args()
@@ -152,11 +160,13 @@ def main():
         map_path.relative_to(root)
     except ValueError:
         fail("link map is outside the integration checkout: %s" % map_path)
-    check_config(root, args.phase)
+    check_config(root, args.phase, args.with_fonts)
     check_map(map_path)
     if args.phase in ("mpp", "ge2d"):
         text = map_path.read_text(encoding="utf-8", errors="replace")
-        for symbol in ("lv_aic_mpp_decoder_init", "mpp_decoder_decode", "lv_aic_mpp_test_run"):
+        for symbol in ("lv_aic_mpp_decoder_init", "mpp_decoder_decode", "lv_aic_mpp_test_run",
+                       "lv_aic_mpp_resource_test_run", "lv_aic_mpp_cache_drop",
+                       "lv_aic_mpp_cache_set_limit"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("MPP live symbol absent: " + symbol)
     if args.phase == "ge2d":
@@ -175,6 +185,8 @@ def main():
              r"third_party[\\/]lvgl-aic[\\/]draw[\\/]ge2d[\\/]lv_draw_aic_ge2d_image\.o"),
             ("lv_aic_ge2d_test_run",
              r"third_party[\\/]lvgl-aic[\\/]tests[\\/]manual[\\/]lv_aic_ge2d_test\.o"),
+            ("lv_aic_ge2d_fill_test_run",
+             r"third_party[\\/]lvgl-aic[\\/]tests[\\/]manual[\\/]lv_aic_ge2d_fill_test\.o"),
         )
         for symbol, object_pattern in required_ge2d:
             indexes = [index for index, line in enumerate(text.splitlines())
@@ -197,6 +209,13 @@ def main():
                        "mpp_ge_emit", "mpp_ge_sync"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("GE2D engine symbol absent: " + symbol)
+    if args.with_fonts:
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_freetype_font_create", "lv_freetype_font_delete",
+                       "lv_aic_font_probe", "lv_aic_font_test_create", "FT_Init_FreeType"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("native font live symbol absent: " + symbol)
+        print("native font live symbols: PASS")
     print(args.phase + " static checks: PASS (not board validation)")
 
 

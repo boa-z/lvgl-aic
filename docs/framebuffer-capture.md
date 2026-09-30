@@ -27,7 +27,7 @@ UART 日志若穿插破坏一行，序号/CRC 检查会失败，不会悄悄生�
 
 在 PC 的 SDK 根目录执行：
 
-    python packages/custom/lvgl-aic/tools/sdk/capture_to_png.py capture.log capture.png
+    python application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic/tools/sdk/capture_to_png.py capture.log capture.png
 
 脚本只使用 Python 标准库，支持 UTF-8/带 BOM 的 UTF-16 日志；校验完整长度、
 连续序号、RLE 边界及 CRC32 后才输出 PNG。可把日志或 PNG 交给 agent 做像素检查。

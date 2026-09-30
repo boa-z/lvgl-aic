@@ -44,7 +44,9 @@ int lv_aic_init(void);
 /**
  * @brief Deinitialize the ArtInChip integration.
  *
- * Call this only after the LVGL task/flush callbacks have been stopped.
+ * Call this only after the LVGL task/flush callbacks have been stopped and
+ * all image-decoder descriptors closed. Pending MPP readers refuse teardown;
+ * close them and call again.
  */
 void lv_aic_deinit(void);
 
@@ -55,6 +57,21 @@ lv_display_t *lv_aic_get_display(void);
 lv_indev_t *lv_aic_get_pointer_indev(void);
 
 #if AIC_LVGL_USE_MPP_DEC
+/** Component-owned decoded-image cache; call only from the serialized LVGL owner.
+ * Drop a source BEFORE replacing/freeing its encoded bytes or descriptor, or
+ * rewriting its file. NULL drops all entries. Active readers stay alive until
+ * close. This also drops LVGL header metadata; lv_image_cache_drop alone does
+ * not invalidate this cache. The limit bounds retained buffers + metadata,
+ * with at most 16 entries. In-flight uncached decoding is outside that budget.
+ */
+typedef struct {
+    uint32_t hits, misses, evictions;
+    uint32_t entries, bytes, limit_bytes;
+} lv_aic_mpp_cache_stats_t;
+void lv_aic_mpp_cache_set_limit(uint32_t bytes);
+void lv_aic_mpp_cache_drop(const void *src);
+const lv_aic_mpp_cache_stats_t *lv_aic_mpp_cache_stats(void);
+
 /** @brief Return the MPP image decoder owned by the port, or NULL. */
 lv_image_decoder_t *lv_aic_get_mpp_decoder(void);
 #endif

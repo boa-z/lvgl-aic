@@ -1,61 +1,27 @@
 # Compatibility
 
-## Supported baseline
+Fixed baseline: LVGL v9.6.0 (80ca777e37a2b176770726a02e07a6fb79ef0b39),
+Luban-Lite v1.3.2 reference (c5807f9e7d18292f920dafaa018b8174635085c4),
+D13x/D133ECS with RT-Thread. Other SoCs are not certified. The guard accepts
+9.6.x; upgrading the upstream pin still requires validation.
 
-| Item | Fixed value |
-|---|---|
-| LVGL tag | `v9.6.0` |
-| LVGL commit | `80ca777e37a2b176770726a02e07a6fb79ef0b39` |
-| Luban-Lite reference | `c5807f9e7d18292f920dafaa018b8174635085c4` |
-| Primary SoC | ArtInChip D13x / D133ECS |
-| Kernel | RT-Thread |
-| Renderer in Phase 1 | LVGL software renderer |
+Display/touch use public LVGL entry points. Decoder and GE2D require private
+decoder/task/unit definitions through compat/lvgl_aic_private.h. Do not describe
+them as private-API independent. Run production-source contracts and target
+builds on upgrades, followed by relevant board regression.
 
-The compile-time guard in `compat/lvgl_aic_compat.h` intentionally rejects
-LVGL versions other than 9.6.x.
+Targets select LV_OS_CUSTOM with compat/lv_aic_rtthread_os.h; host builds use
+LV_OS_NONE except isolated OS contracts. The RT event adapter avoids SDK kernel
+patches. Touch uses OSAL and the RT device interface. RT_USING_EVENT, RT-Thread
+and MPP interfaces are required; disable LPKG_USING_LVGL in the application.
 
-## Public/private API policy
-
-Display and touch code use public LVGL APIs. The GE2D implementation lives in
-`draw/ge2d/` and, like the MPP decoder, isolates the private headers it needs
-behind `compat/lvgl_aic_private.h`.
-
-MPP decoder depends on LVGL 9.6 image decoder private API.
-`image/mpp/lv_aic_mpp_decoder.c` and the three
-`draw/ge2d/lv_draw_aic_ge2d*.c` files are the only translation units that
-enable `AIC_LVGL_USE_PRIVATE_API` and include
-`compat/lvgl_aic_private.h`; format and stream helpers stay public-only.
-
-The GE2D unit needs the private header for the `lv_draw_task_t` and
-`lv_draw_unit_t` definitions it reads (`state`, `type`, `draw_dsc`,
-`preference_score`, `preferred_draw_unit_id`, `target_layer`, `clip_area`) and
-for the `lv_draw_aic_ge2d_unit_t` base member. The create/dispatch entry points
-it calls (`lv_draw_create_unit`, `lv_draw_get_available_task`,
-`lv_draw_layer_alloc_buf`, `lv_draw_dispatch_request`) are all public. It does
-not depend on any other private structure.
-
-## OS integration decision
-
-The configuration selects LVGL 9.6's `LV_OS_RTTHREAD` backend and sets the
-software draw-thread priority explicitly. The Phase 1 touch producer uses the
-ArtInChip OSAL (`aicos_thread_t`, `aicos_sem_t`, `aicos_mutex_t`) rather than
-LVGL 9.6 private `lv_thread_*` types, because those types are no longer public.
-This is a BSP event-source integration and does not duplicate LVGL's core
-object/timer implementation.
-
-The touch callback runs in the RT-Thread device callback/worker path and only
-copies state. It does not call LVGL from an ISR.
-
-## Validation status
-
-| Area | Status |
-|---|---|
-| Repository skeleton | complete |
-| LVGL 9.6 host compile | PASS |
-| D13x software display | hardware validation pending |
-| GT911 touch | hardware validation pending |
-| VSync/PAN/rotation board test | hardware validation pending |
-| MPP decoder | code complete, board validation pending |
-| GE2D draw unit (opaque FILL) | code complete, board validation pending |
-
-A missing board test must be reported as `Hardware validation pending`.
+Earlier D50T images have software-display/touch, MPP and incremental GE2D
+observations. The 2026-09-30 application-owned integration passed six host
+contracts and software/MPP/GE2D build/image gates; its board regression is
+pending. Mocks do not prove GE pixels, cache coherency, IRQ wakeups or speed.
+The solid-fill candidate adds a seventh production-source host contract and
+board numeric probes. The resource stage adds an eighth contract covering
+compressed memory inputs and cache lifetime, plus board parity/cache probes.
+Hardware acceptance for both new capabilities is still pending.
+See [capabilities](capabilities.md), [validation](validation.md) and
+[transform gates](phase3c-transform.md).

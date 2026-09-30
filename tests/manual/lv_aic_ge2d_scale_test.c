@@ -11,7 +11,7 @@
 #include "lv_draw_aic_ge2d.h"
 #include <aic_core.h>
 #include <aic_osal.h>
-#include <ulog.h>
+#include "lv_aic_test_log.h"
 
 #define SRC_W 32
 #define DST_W 96
@@ -65,12 +65,12 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
     if (lv_draw_aic_ge2d_image(&task, &outcome) != LV_RESULT_OK) goto done;
     if (!expect_engine) {
         if (outcome != LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE) goto done;
-        LOG_I("PASS scale fallback sx=%u sy=%u", (unsigned)sx, (unsigned)sy);
+        AIC_TEST_I("PASS scale fallback sx=%u sy=%u", (unsigned)sx, (unsigned)sy);
         result = 0;
         goto done;
     }
     if (outcome != LV_DRAW_AIC_GE2D_OUTCOME_ENGINE) {
-        LOG_E("FAIL expected engine, got outcome=%d", (int)outcome);
+        AIC_TEST_E("FAIL expected engine, got outcome=%d", (int)outcome);
         goto done;
     }
     aicos_dcache_invalid_range((unsigned long *)output, DST_STRIDE * DST_W);
@@ -86,7 +86,7 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
             const int background[3] = {240,160,16};
             if (ax < drawn.x1 || ax > drawn.x2 || ay < drawn.y1 || ay > drawn.y2) {
                 if (p[0] != 240 || p[1] != 160 || p[2] != 16 || p[3] != 255) {
-                    LOG_E("FAIL clip guard x=%d y=%d", x, y);
+                    AIC_TEST_E("FAIL clip guard x=%d y=%d", x, y);
                     goto done;
                 }
                 continue;
@@ -109,16 +109,16 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
         }
     }
     if (checked < 16 || worst > 3) {
-        LOG_E("FAIL scale pixels checked=%d max_error=%d", checked, worst);
+        AIC_TEST_E("FAIL scale pixels checked=%d max_error=%d", checked, worst);
         goto done;
     }
-    LOG_I("PASS pixels=%d max_error=%d clip_guard=OK engine=1", checked, worst);
+    AIC_TEST_I("PASS pixels=%d max_error=%d clip_guard=OK engine=1", checked, worst);
     result = 0;
 done:
     if (submitted) lv_image_cache_drop(&src);
     if (source) aicos_free_align(MEM_CMA, source);
     if (output) aicos_free_align(MEM_CMA, output);
-    if (result != 0) LOG_E("FAIL scale sx=%u sy=%u argb=%d clip=%d pivot=%d",
+    if (result != 0) AIC_TEST_E("FAIL scale sx=%u sy=%u argb=%d clip=%d pivot=%d",
                           (unsigned)sx, (unsigned)sy, argb, clipped, pivoted);
     return result;
 }
@@ -128,20 +128,20 @@ int lv_aic_ge2d_scale_test_run(void)
     const uint16_t ratios[] = {128,384,512};
     for (int argb = 0; argb < 2; argb++) {
         for (unsigned i = 0; i < 3; i++) {
-            LOG_I("BEGIN sx=%u sy=%u argb=%d", (unsigned)ratios[i], (unsigned)ratios[i], argb);
+            AIC_TEST_I("BEGIN sx=%u sy=%u argb=%d", (unsigned)ratios[i], (unsigned)ratios[i], argb);
             if (scale_probe(ratios[i], ratios[i], argb, false, false, true)) return -1;
         }
     }
-    LOG_I("BEGIN nonuniform sx=384 sy=192 RGB");
+    AIC_TEST_I("BEGIN nonuniform sx=384 sy=192 RGB");
     if (scale_probe(384,192,false,false,false,true)) return -1;
-    LOG_I("BEGIN nonuniform clipped pivot RGB");
+    AIC_TEST_I("BEGIN nonuniform clipped pivot RGB");
     if (scale_probe(384,192,false,true,true,true)) return -1;
-    LOG_I("BEGIN nonuniform clipped pivot ARGB");
+    AIC_TEST_I("BEGIN nonuniform clipped pivot ARGB");
     if (scale_probe(384,192,true,true,true,true)) return -1;
     if (scale_probe(15,256,false,false,false,false)) return -1;
     if (scale_probe(4097,256,false,true,false,false)) return -1;
     if (scale_probe(264,256,false,false,false,false)) return -1;
-    LOG_I("PASS 3C2 numeric probes; panel edges/touch still require confirmation");
+    AIC_TEST_I("PASS 3C2 numeric probes; panel edges/touch still require confirmation");
     return 0;
 }
 #endif

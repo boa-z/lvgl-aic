@@ -103,7 +103,7 @@ const lv_draw_aic_ge2d_stats_t *lv_draw_aic_ge2d_stats(void);
 void lv_draw_aic_ge2d_stats_reset(void);
 
 /**
- * @brief Execute an opaque solid fill for @p task through GE2D.
+ * @brief Execute a solid fill for @p task through GE2D.
  *
  * Runs fillrect -> emit -> sync synchronously. Returns LV_RESULT_INVALID if any
  * step fails, so the dispatcher can mark the task FAILED rather than FINISHED.

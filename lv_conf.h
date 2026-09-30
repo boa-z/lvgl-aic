@@ -35,6 +35,10 @@
 #undef AIC_LVGL_USE_TOUCH
 #define AIC_LVGL_USE_TOUCH 1
 #endif
+#ifdef AIC_LVGL_USE_FREETYPE
+#undef AIC_LVGL_USE_FREETYPE
+#define AIC_LVGL_USE_FREETYPE 1
+#endif
 #ifdef AIC_LVGL_USE_DISPLAY
 #undef AIC_LVGL_USE_DISPLAY
 #define AIC_LVGL_USE_DISPLAY 1
@@ -99,9 +103,6 @@
 #endif
 #ifndef LV_DRAW_THREAD_PRIO
 #define LV_DRAW_THREAD_PRIO 20
-#endif
-#ifndef LV_DRAW_THREAD_STACK_SIZE
-#define LV_DRAW_THREAD_STACK_SIZE 4096
 #endif
 
 /* Phase 1 deliberately enables only the software renderer. */
@@ -196,7 +197,35 @@
 #define LV_USE_DEMO_MUSIC 0
 #endif
 #ifndef LV_USE_FREETYPE
+#if defined(AIC_LVGL_USE_FREETYPE) && AIC_LVGL_USE_FREETYPE
+#define LV_USE_FREETYPE 1
+#else
 #define LV_USE_FREETYPE 0
+#endif
+#endif
+#if LV_USE_FREETYPE
+/* Use the general glyph LRU; avoid the extra power-of-two L1 cache. */
+#ifndef LV_FREETYPE_CACHE_FT_GLYPH_L1
+#define LV_FREETYPE_CACHE_FT_GLYPH_L1 0
+#endif
+/* Native FreeType uses stdio paths (e.g. /data/font.ttf), not LVGL L: paths. */
+#ifndef LV_FREETYPE_USE_LVGL_PORT
+#define LV_FREETYPE_USE_LVGL_PORT 0
+#endif
+#ifndef LV_FREETYPE_CACHE_FT_GLYPH_CNT
+#ifdef AIC_LVGL_FREETYPE_GLYPHS
+#define LV_FREETYPE_CACHE_FT_GLYPH_CNT AIC_LVGL_FREETYPE_GLYPHS
+#else
+#define LV_FREETYPE_CACHE_FT_GLYPH_CNT 64
+#endif
+#endif
+#endif
+#ifndef LV_DRAW_THREAD_STACK_SIZE
+#if LV_USE_FREETYPE
+#define LV_DRAW_THREAD_STACK_SIZE (32 * 1024)
+#else
+#define LV_DRAW_THREAD_STACK_SIZE 4096
+#endif
 #endif
 #ifndef LV_USE_GIF
 #define LV_USE_GIF 0

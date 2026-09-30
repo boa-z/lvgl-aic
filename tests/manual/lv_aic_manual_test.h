@@ -13,6 +13,9 @@ extern "C" {
 #endif
 
 int lv_aic_manual_test_create(void);
+/* Zero-based pages; current returns -1 while the test UI is not created. */
+int lv_aic_manual_page_count(void);
+int lv_aic_manual_page_current(void);
 void lv_aic_manual_page_request(int page);
 void lv_aic_manual_page_poll(void);
 #if AIC_LVGL_BSP_RTTHREAD && AIC_LVGL_BSP_MPP
@@ -20,9 +23,11 @@ void lv_aic_capture_poll(void);
 #endif
 #if AIC_LVGL_USE_MPP_DEC
 int lv_aic_mpp_test_run(void);
+int lv_aic_mpp_resource_test_run(void);
 #endif
 #if AIC_LVGL_USE_GE2D
 int lv_aic_ge2d_test_run(void);
+int lv_aic_ge2d_fill_test_run(void);
 int lv_aic_ge2d_scale_test_run(void);
 #endif
 void lv_aic_manual_test_deinit(void);

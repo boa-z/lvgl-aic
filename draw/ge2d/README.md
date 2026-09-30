@@ -1,41 +1,30 @@
 # GE2D draw unit
 
-Phase 3A implements this backend for exactly one task type:
-`LV_DRAW_TASK_TYPE_FILL`, opaque, `radius == 0`, no gradient, a supported
-destination format and a GE-addressable buffer.
+The synchronous backend evaluates FILL, IMAGE and LAYER, not only Phase 3A fills.
 
-It uses an independent `lv_draw_aic_ge2d_unit_t` (`base_unit` + `task_act`), not
-`lv_draw_sw_unit_t`, and routes every unsupported task back to the LVGL software
-renderer by declining it in `evaluate()`.
+- FILL: solid, unrounded, non-gradient, supported/addressable destination.
+  Partial opacity supports RGB565/RGB888/XRGB8888; partial ARGB8888 stays with
+  software pending alpha-destination validation. Opaque ARGB8888 remains supported.
+  The executor checks buffer size/stride and clips to task, clip and layer bounds.
+- IMAGE: RGB565/RGB888/ARGB8888/XRGB8888, global/per-pixel alpha, bounded scales,
+  right-angle rotation and combined transforms.
+- LAYER: plain/right-angle composition, no scaling. Ordinary D13x heap buffers
+  fall back because GE cannot address them.
+- Arbitrary angles, YUV, masks, recolor and tiling stay software work. Small or
+  unsafe scale regions and D13x split-risk cases fall back.
 
-## Files
+No owned render thread or buffers. Submit/emit/sync are synchronous and checked.
+Engine failures are never retried as software blends over possibly modified
+pixels. Cache prep is region-local; no global allocator/handler replacement.
 
-| File | Responsibility |
-| --- | --- |
-| `lv_draw_aic_ge2d.{c,h}` | Registration, `evaluate`, `dispatch`, `delete`, counters |
-| `lv_draw_aic_ge2d_fill.c` | One opaque `ge_fillrect` -> `mpp_ge_emit` -> `mpp_ge_sync` |
-| `lv_draw_aic_ge2d_utils.{c,h}` | GE address window, destination format, destination cache prep |
+Core evaluation/dispatch is in lv_draw_aic_ge2d.c; fill/image executors have
+namesake files. Scale/rotation helpers are separate, address/cache helpers live
+in lv_draw_aic_ge2d_utils.c, format mapping in common/lv_aic_pixel_format.c.
 
-The LVGL <-> MPP format translation lives in `common/lv_aic_pixel_format.{c,h}`,
-because the decoder needs it too.
+See [capabilities](../../docs/capabilities.md), [validation](../../docs/validation.md)
+and [transform gates](../../docs/phase3c-transform.md).
 
-## Contract
-
-- Execution is synchronous on the dispatching thread. There is no render thread,
-  no task queue and no saved layer/clip state; `task_act` only enforces "one task
-  in flight".
-- `evaluate()` returns 1 on acceptance and claims at preference score 70. The
-  software unit claims at `>= 100`, so 70 wins, and a declined task still reaches
-  software.
-- `dispatch()` keeps an explicit `preferred_draw_unit_id != AIC_GE2D_DRAW_UNIT_ID`
-  check: `lv_draw_get_available_task()` also returns tasks whose
-  `preferred_draw_unit_id` is `LV_DRAW_UNIT_NONE`.
-- A GE failure marks the task `LV_DRAW_TASK_STATE_FAILED`, never `FINISHED`.
-- If `mpp_ge_open()` fails the unit is still registered and declines everything,
-  so software rendering keeps the display alive.
-
-Phase 3A covered FILL. IMAGE/LAYER, bounded scale, and right-angle rotation
-are implemented in the later 3B/3C stages. Rotation combined with scaling is
-the next gated step (3C4); arbitrary angles remain software fallback.
-
-See `docs/validation.md` for the current verification status.
+The new fill path is a development candidate. Host contracts exercise the real
+evaluator/executor with SDK ABI headers and mocked hardware. The optional manual
+check adds 12 offscreen CMA pixel probes (three formats, four opacities), including
+nonzero origins, clipping and padded-stride guards. Board execution is NOT_RUN.

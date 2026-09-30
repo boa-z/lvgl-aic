@@ -8,20 +8,20 @@ refresh, cache coherency, and frame timing can be observed without product UI.
 The smoke application also repeats `lv_aic_init()`/`lv_aic_deinit()` before
 entering its long-running page; watch the serial log for lifecycle results.
 
-Coverage that exists today: solid fill (software, and GE2D when
-`AIC_LVGL_USE_GE2D=1`), rounded-rectangle software fallback, the moving marker,
-JPEG/RGB-PNG/RGBA-PNG decoding, and touch down/move/release.
+Current pages include solid/rounded/translucent fills, text, JPEG/PNG,
+scaled and right-angle images, combined transforms, layer composition and
+pointer interaction. These are probes; not every path is hardware accelerated.
+Ordinary D13x heap layers use software. See the maintained
+[capability inventory](../../docs/capabilities.md) for limitations.
 
-Still missing and expected from later phases:
-
-- small and large images through the GE2D IMAGE path;
-- scaling and rotation;
-- text;
-- layer composition.
-
-With `AIC_LVGL_USE_MPP_DEC=1`, the SDK smoke owner calls
+With `AIC_LVGL_USE_MPP_DEC=1`, the application smoke owner calls
 `lv_aic_mpp_test_run()` before the final page: accepted JPEG/PNG fixtures,
-unsupported/corrupt/missing inputs, then 1000 uncached decode/close cycles.
+unsupported/corrupt/missing inputs, the resource-stage checks, then 1000
+uncached decode/close cycles. Resource checks compare FILE and memory pixel
+hashes for the padded JPEG and both PNG formats, verify multiple-reader
+invalidation, and repeat 100 cached opens per PNG without new CMA allocation.
+They temporarily use a 4 MiB cache limit, drop all entries and restore the
+configured limit (512 KiB default). See the [stage checklist](../../docs/resource-stage.md).
 Failure skips stress but still leaves the page available. Watch `lvgl.mpp.test`
 logs; a successful open must belong to the MPP decoder, not a software fallback.
 
@@ -47,9 +47,9 @@ back to the software renderer. The smoke owner then calls
 `lv_aic_ge2d_test_run()` once, which invalidates the screen, forces a full
 refresh and reads the draw unit's own counters as deltas:
 
-- `fill accepted` — opaque FILL tasks the unit claimed;
-- `fill completed` — the subset that reached FINISHED;
-- `fallback` — FILL tasks the unit declined (not an error counter);
+- `fill accepted` — solid FILL tasks the unit claimed;
+- `fill completed` — the tasks completed successfully;
+- `fallback` — tasks the unit declined (not an error counter);
 - `errors` — GE2D execution failures.
 
 The check requires `errors == 0`, at least 8 accepted, `completed == accepted`
@@ -58,3 +58,35 @@ check with `GE2D device unavailable` rather than passing vacuously. Counters
 cover only the wrapper's own calls; GE work done inside the SDK MPP engine is
 not visible here. Visible pixel correctness on the panel is still a board
 acceptance requirement, and a host or link-map PASS proves nothing about it.
+
+## Translucent fill candidate
+
+lv_aic_ge2d_test_run() now starts with lv_aic_ge2d_fill_test_run(): 12 offscreen
+CMA probes for RGB565/RGB888/XRGB8888 at opacity 64/128/192/255. They call the
+production executor and compare pixels against independent source-over math,
+with RGB565 quantization tolerance (R/B 9, G 5; RGB888/XRGB8888 2 per channel).
+All 90 touched pixels per case are checked; outside pixels and stride padding
+must remain unchanged. The layer origin is nonzero and task/clip extend outside
+its bounds. Partial ARGB8888 remains a software task.
+
+Expected serial evidence: twelve PASS fill lines followed by
+PASS 12 solid-fill numeric probes. If a GE operation fails, the test retains
+its 1536-byte CMA allocation and blocks further fill probes until reboot:
+a failed sync does not establish DMA completion, so freeing would be unsafe.
+Successful probes free their allocations normally. This test is NOT_RUN on
+board for the new candidate; a firmware build or host PASS does not close it.
+
+Existing IMAGE probes check blend/scale arithmetic. Refresh logs distinguish
+accepted tasks, engine-completed work, software composition and errors.
+Panel rendering/touch and paired GE ON/OFF timing remain separate checks.
+
+## Native FreeType and reliable probe logs
+
+The -WithFonts build variant adds a Fonts button without replacing the three
+GE pages. It runs native bitmap/size/style/fallback/cache probes and exposes a
+Latin/Chinese panel; see [font acceptance](../../docs/font-stage.md). Remove
+font users before deleting fonts. Firmware/host PASS leaves the new panel
+NOT_RUN on board. Finite manual logs now drain the async queue after each
+record and split long lines; refresh timing uses seconds plus microseconds
+instead of unsupported 64-bit formatting. The next board log must confirm
+complete records and no probe-generated async overflow.

@@ -1,10 +1,10 @@
 /**
  * @file lv_draw_aic_ge2d_fill.c
- * @brief Opaque solid fill through the ArtInChip GE2D engine.
+ * @brief Solid fill through the ArtInChip GE2D engine.
  *
- * Phase 3A supports exactly one shape of work: no radius, no gradient, fully
- * opaque, supported destination format, GE-addressable buffer. evaluate()
- * rejects everything else, so this function can assume the simple case.
+ * Partial opacity is supported on RGB565/RGB888/XRGB8888 destinations.
+ * Rounded/gradient fills and partial ARGB8888 fills remain software tasks.
+ * Validate direct callers as well as scheduler-selected tasks before DMA.
  *
  * Unlike the legacy port, every GE step is checked and a failure is returned
  * to the caller. A dropped rectangle must not be reported to the scheduler as
@@ -36,6 +36,8 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
     enum mpp_pixel_format fmt;
     int32_t dst_width;
     int32_t dst_height;
+    uint32_t bpp;
+    lv_color_format_t cf;
 
     if (task == NULL || task->type != LV_DRAW_TASK_TYPE_FILL) {
         return LV_RESULT_INVALID;
@@ -47,10 +49,33 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
         return LV_RESULT_INVALID;
     }
     draw_buf = layer->draw_buf;
+    if (dsc->radius != 0 || dsc->grad.dir != LV_GRAD_DIR_NONE) {
+        return LV_RESULT_INVALID;
+    }
+    if (dsc->opa <= LV_OPA_MIN) {
+        return LV_RESULT_OK;
+    }
+    cf = (lv_color_format_t)draw_buf->header.cf;
+    if (!lv_draw_aic_ge2d_dst_format_supported(cf) ||
+        !lv_draw_aic_ge2d_buf_address_valid(draw_buf) ||
+        (dsc->opa < LV_OPA_MAX && cf == LV_COLOR_FORMAT_ARGB8888)) {
+        return LV_RESULT_INVALID;
+    }
+    dst_width = lv_area_get_width(&layer->buf_area);
+    dst_height = lv_area_get_height(&layer->buf_area);
+    bpp = lv_color_format_get_size(cf);
+    if (dst_width <= 0 || dst_height <= 0 || bpp == 0 ||
+        (uint32_t)dst_width > draw_buf->header.w ||
+        (uint32_t)dst_height > draw_buf->header.h ||
+        (uint64_t)dst_width * bpp > draw_buf->header.stride ||
+        (uint64_t)draw_buf->header.stride * dst_height > draw_buf->data_size) {
+        return LV_RESULT_INVALID;
+    }
 
     /* Use the clip area saved in the task. layer->_clip_area belongs to task
      * creation and may already describe a later task. */
-    if (!lv_area_intersect(&blend_area, &task->area, &task->clip_area)) {
+    if (!lv_area_intersect(&blend_area, &task->area, &task->clip_area) ||
+        !lv_area_intersect(&blend_area, &blend_area, &layer->buf_area)) {
         /* Fully clipped: nothing to draw, and that is not a failure. */
         return LV_RESULT_OK;
     }
@@ -58,22 +83,24 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
     /* GE addresses the destination buffer, so crop in buffer-relative space. */
     lv_area_move(&blend_area, -layer->buf_area.x1, -layer->buf_area.y1);
 
-    dst_width = lv_area_get_width(&layer->buf_area);
-    dst_height = lv_area_get_height(&layer->buf_area);
-    if (dst_width <= 0 || dst_height <= 0) {
+    if (!lv_aic_pixel_format_to_mpp(cf, &fmt)) {
+        return LV_RESULT_INVALID;
+    }
+    ge = lv_draw_aic_ge2d_device();
+    if (ge == NULL) {
+        LV_LOG_ERROR("GE2D device is not open");
         return LV_RESULT_INVALID;
     }
 
-    if (!lv_aic_pixel_format_to_mpp((lv_color_format_t)draw_buf->header.cf, &fmt)) {
-        return LV_RESULT_INVALID;
-    }
-
-    /* Settle the cache before the engine writes, for the touched region only. */
+    /* Preserve the background before GE reads it for a partial-alpha blend. */
     lv_draw_aic_ge2d_prepare_dst_cache(draw_buf, &blend_area);
 
     fill.type = GE_NO_GRADIENT;
-    /* Opaque fill: GE ignores the alpha byte when ctrl.alpha_en is 0. */
     fill.start_color = lv_color_to_u32(dsc->color);
+    if (dsc->opa < LV_OPA_MAX) {
+        fill.start_color = (fill.start_color & 0x00ffffffU) |
+                           ((uint32_t)dsc->opa << 24);
+    }
     fill.end_color = 0U;
 
     fill.dst_buf.buf_type = MPP_PHY_ADDR;
@@ -89,15 +116,10 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
     fill.dst_buf.crop.width = lv_area_get_width(&blend_area);
     fill.dst_buf.crop.height = lv_area_get_height(&blend_area);
 
-    /* No source alpha and no destination read-modify-write in Phase 3A. */
-    fill.ctrl.alpha_en = 0U;
+    /* GE_PD_NONE is straight alpha (sa, 1-sa); SRC_OVER is premultiplied. */
+    fill.ctrl.alpha_en = dsc->opa < LV_OPA_MAX;
+    fill.ctrl.alpha_rules = GE_PD_NONE;
     fill.ctrl.src_alpha_mode = 0U;
-
-    ge = lv_draw_aic_ge2d_device();
-    if (ge == NULL) {
-        LV_LOG_ERROR("GE2D device is not open");
-        return LV_RESULT_INVALID;
-    }
 
     if (mpp_ge_fillrect(ge, &fill) < 0) {
         LV_LOG_ERROR("GE2D fillrect failed");

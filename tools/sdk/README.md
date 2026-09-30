@@ -32,7 +32,8 @@ No entry flashes hardware. All board testing uses D50T-2-Lite.
 
 GE2D profile: build.ps1 -Phase ge2d -Jobs 8 -AllowComponentDirty.
 The GE2D manual screen has a top-right Next / Prev button to switch between
-the baseline (1/2) and rotation (2/2) pages without a shell command.
+the baseline (1/3), rotation (2/3) and combined-transform (3/3) pages
+without a shell command.
 Windows flash image: output/lvgl-evidence/ge2d/images/
 d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
 For real framebuffer export see [capture instructions](../../docs/framebuffer-capture.md).
@@ -52,3 +53,23 @@ duplicate signals coalesce and receive clears the bit atomically. Host contract
 tests cover errors and lifecycle with a fake RT API. The smoke application's
 sync selftest must still run on the board to validate scheduling and wakeup.
 SDK and host builds do not establish hardware acceptance.
+
+## Resource-stage candidate
+
+MPP and GE2D builds link the memory/cache board probes and cache-control APIs.
+AIC_LVGL_MPP_CACHE_BYTES defaults to 524288; zero disables retained images.
+The automatic pre-page checks include file-memory JPEG/PNG pixel parity,
+active-reader invalidation, 100 cache hits per PNG without new CMA allocation,
+and the existing 1000 uncached decode cycles. See the
+[resource-stage board gate](../../docs/resource-stage.md). Firmware build and
+link success leave board acceptance NOT_RUN.
+
+## Native font candidate
+
+Use build.ps1 -Phase ge2d -WithFonts -AllowComponentDirty -Jobs 8. This Windows
+entry overlays only the isolated smoke defconfig and restores its exact bytes
+on success/failure; generated .config retains the effective build. The new
+output/lvgl-evidence/ge2d-fonts directory records original/effective defconfigs,
+30 font/resource/license assets, live font symbols and image payload checks.
+The shell entry does not yet expose a font variant. See
+[font stage](../../docs/font-stage.md) for ownership and board criteria.

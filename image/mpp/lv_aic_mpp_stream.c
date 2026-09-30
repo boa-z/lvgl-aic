@@ -1,11 +1,23 @@
 /**
  * @file lv_aic_mpp_stream.c
- * @brief LVGL-FS stream helpers (FILE only).
+ * @brief LVGL-FS and borrowed memory stream helpers.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "lv_aic_mpp_stream.h"
+#include <string.h>
+
+lv_fs_res_t lv_aic_mpp_stream_open_memory(lv_aic_mpp_stream_t *stream,
+                                          const void *data, uint32_t size)
+{
+    if (!stream || !data || !size) return LV_FS_RES_INV_PARAM;
+    memset(stream, 0, sizeof(*stream));
+    stream->memory = data;
+    stream->size = size;
+    stream->opened = true;
+    return LV_FS_RES_OK;
+}
 
 lv_fs_res_t lv_aic_mpp_stream_open_file(lv_aic_mpp_stream_t *stream, const char *path)
 {
@@ -16,6 +28,7 @@ lv_fs_res_t lv_aic_mpp_stream_open_file(lv_aic_mpp_stream_t *stream, const char 
         return LV_FS_RES_INV_PARAM;
     }
 
+    stream->memory = NULL;
     stream->opened = false;
     stream->size = 0U;
     stream->cursor = 0U;
@@ -56,6 +69,14 @@ lv_fs_res_t lv_aic_mpp_stream_read(lv_aic_mpp_stream_t *stream, void *buf, uint3
         return LV_FS_RES_OK;
     }
 
+    if (stream->memory != NULL) {
+        if (stream->cursor > stream->size) return LV_FS_RES_FS_ERR;
+        done = LV_MIN(bytes, stream->size - stream->cursor);
+        if (done) memcpy(buf, stream->memory + stream->cursor, done);
+        stream->cursor += done;
+        if (read_bytes) *read_bytes = done;
+        return LV_FS_RES_OK;
+    }
     res = lv_fs_read(&stream->file, buf, bytes, &done);
     if (res != LV_FS_RES_OK) {
         return res;
@@ -74,6 +95,11 @@ lv_fs_res_t lv_aic_mpp_stream_seek(lv_aic_mpp_stream_t *stream, uint32_t offset)
     if ((stream == NULL) || !stream->opened) {
         return LV_FS_RES_INV_PARAM;
     }
+    if (stream->memory != NULL) {
+        if (offset > stream->size) return LV_FS_RES_INV_PARAM;
+        stream->cursor = offset;
+        return LV_FS_RES_OK;
+    }
     res = lv_fs_seek(&stream->file, offset, LV_FS_SEEK_SET);
     if (res != LV_FS_RES_OK) {
         return res;
@@ -87,7 +113,8 @@ void lv_aic_mpp_stream_close(lv_aic_mpp_stream_t *stream)
     if ((stream == NULL) || !stream->opened) {
         return;
     }
-    lv_fs_close(&stream->file);
+    if (stream->memory == NULL) lv_fs_close(&stream->file);
+    stream->memory = NULL;
     stream->opened = false;
 }
 

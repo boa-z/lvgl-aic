@@ -9,7 +9,7 @@
 #include <rtthread.h>
 #define LOG_TAG "lvgl.mpp.test"
 #define LOG_LVL LOG_LVL_INFO
-#include <ulog.h>
+#include "lv_aic_test_log.h"
 
 static bool fs_readable(const char *path)
 {
@@ -33,7 +33,7 @@ static int check_image(const char *path, bool expected, bool report)
     if (opened) {
         if (report && ours) {
             const lv_aic_mpp_decode_stats_t *stats = lv_aic_mpp_decoder_last_stats();
-            LOG_I("%s: %ux%u stride=%u ms=%u CMA=%u", path,
+            AIC_TEST_I("%s: %ux%u stride=%u ms=%u CMA=%u", path,
                   (unsigned)dsc.header.w, (unsigned)dsc.header.h,
                   (unsigned)dsc.decoded->header.stride,
                   (unsigned)stats->decode_time_ms, (unsigned)stats->cma_bytes);
@@ -43,10 +43,10 @@ static int check_image(const char *path, bool expected, bool report)
     if (opened != expected || (expected && !ours)) {
         /* fs=0 means the file never reached the decoder: /data is not mounted
          * or the asset was not packed, so no decoder verdict can be drawn. */
-        LOG_E("FAIL %s open=%d expected=%d mpp=%d", path, opened, expected, ours);
+        AIC_TEST_E("FAIL %s open=%d expected=%d mpp=%d", path, opened, expected, ours);
         return -1;
     }
-    if (report) LOG_I("PASS %s", path);
+    if (report) AIC_TEST_I("PASS %s", path);
     return 0;
 }
 
@@ -76,11 +76,12 @@ int lv_aic_mpp_test_run(void)
         {"L:/data/mpp_test/s37n3p04.png", true, false}
     };
     int failures = 0;
-    rt_uint32_t total, used_before, used_after, peak;
-    LOG_I("BEGIN MPP checks; visual/CMA acceptance is separate");
+    rt_size_t total, used_before, used_after, peak;
+    AIC_TEST_I("BEGIN MPP checks; visual/CMA acceptance is separate");
+    lv_aic_mpp_cache_drop(NULL);
     for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         if (fs_readable(cases[i].path) != cases[i].present) {
-            LOG_E("BLOCKED fixture presence: %s", cases[i].path);
+            AIC_TEST_E("BLOCKED fixture presence: %s", cases[i].path);
             return -2;
         }
     }
@@ -88,40 +89,42 @@ int lv_aic_mpp_test_run(void)
         failures += check_image(cases[i].path, cases[i].opens, true) != 0;
     }
     if (failures) {
-        LOG_E("FAIL acceptance cases=%d; stress skipped", failures);
+        AIC_TEST_E("FAIL acceptance cases=%d; stress skipped", failures);
         return -1;
     }
+    if (lv_aic_mpp_resource_test_run() != 0) return -1;
+
     /* Measure exactly the stress loop: the acceptance cases above already
      * balanced their own CMA, so this yields a clean 1000-cycle verdict. */
     lv_aic_mpp_cma_stats_reset();
     rt_memory_info(&total, &used_before, &peak);
     for (unsigned i = 0; i < 1000; i++) {
         if (check_image(cases[i % 3].path, true, false) != 0) return -1;
-        if ((i + 1) % 100 == 0) LOG_I("stress %u/1000", i + 1);
+        if ((i + 1) % 100 == 0) AIC_TEST_I("stress %u/1000", i + 1);
         rt_thread_mdelay(1);
     }
     rt_memory_info(&total, &used_after, &peak);
-    LOG_I("PASS 1000 decode/close cycles");
-    LOG_I("heap before=%u after=%u peak=%u",
+    AIC_TEST_I("PASS 1000 decode/close cycles");
+    AIC_TEST_I("heap before=%u after=%u peak=%u",
           (unsigned)used_before, (unsigned)used_after, (unsigned)peak);
     {
         const lv_aic_mpp_cma_stats_t *cma = lv_aic_mpp_cma_stats();
-        LOG_I("CMA current=%u peak=%u alloc=%u free=%u",
+        AIC_TEST_I("CMA current=%u peak=%u alloc=%u free=%u",
               (unsigned)cma->current_cma_bytes, (unsigned)cma->peak_cma_bytes,
               (unsigned)cma->alloc_count, (unsigned)cma->free_count);
         if (cma->current_cma_bytes != 0U || cma->alloc_count != cma->free_count) {
-            LOG_E("FAIL CMA lifecycle unbalanced current=%u alloc=%u free=%u",
+            AIC_TEST_E("FAIL CMA lifecycle unbalanced current=%u alloc=%u free=%u",
                   (unsigned)cma->current_cma_bytes,
                   (unsigned)cma->alloc_count, (unsigned)cma->free_count);
             return -1;
         }
         if (cma->alloc_count < 1000U) {
             /* A bypassed allocator would make the balance check vacuous. */
-            LOG_E("FAIL MPP allocator exercised only %u times", (unsigned)cma->alloc_count);
+            AIC_TEST_E("FAIL MPP allocator exercised only %u times", (unsigned)cma->alloc_count);
             return -1;
         }
     }
-    LOG_I("PASS CMA lifecycle balanced across 1000 cycles");
+    AIC_TEST_I("PASS CMA lifecycle balanced across 1000 cycles");
     return 0;
 }
 #endif

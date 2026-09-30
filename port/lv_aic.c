@@ -96,6 +96,14 @@ void lv_aic_deinit(void)
         return;
     }
 
+#if AIC_LVGL_USE_MPP_DEC
+    if (!lv_aic_mpp_decoder_can_deinit()) {
+        /* Keep the entire platform owned so callers can close descriptors and
+         * retry teardown; never forget a decoder retained by active readers. */
+        lv_aic_mpp_decoder_deinit(lv_aic_mpp_decoder);
+        return;
+    }
+#endif
     if (lv_aic_pointer_indev != NULL) {
         lv_aic_indev_deinit(lv_aic_pointer_indev);
         lv_aic_pointer_indev = NULL;

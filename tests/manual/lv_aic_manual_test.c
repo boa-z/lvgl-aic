@@ -8,6 +8,7 @@
 #include "lv_aic_manual_test.h"
 
 #include <stdbool.h>
+#include "lv_aic_font_test.h"
 
 static lv_obj_t *lv_aic_manual_root;
 static lv_obj_t *lv_aic_manual_status;
@@ -16,6 +17,11 @@ static lv_timer_t *lv_aic_manual_timer;
 static int32_t lv_aic_manual_marker_x;
 static volatile int lv_aic_manual_page_pending = -1;
 static int lv_aic_manual_page_active;
+static lv_obj_t *lv_aic_nav_root;
+static lv_obj_t *lv_aic_nav_title;
+static lv_obj_t *lv_aic_nav_position;
+static lv_obj_t *lv_aic_nav_prev;
+static lv_obj_t *lv_aic_nav_next;
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
 static lv_obj_t *lv_aic_rotation_root;
 static lv_obj_t *lv_aic_combo_root;
@@ -114,7 +120,7 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
 #if AIC_LVGL_BSP_RTTHREAD && AIC_LVGL_BSP_MPP
     lv_aic_capture_poll();
 #endif
-    if (lv_aic_manual_marker == NULL) {
+    if (lv_aic_manual_marker == NULL || lv_aic_manual_page_active != 0) {
         return;
     }
 
@@ -125,15 +131,33 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
     lv_obj_set_x(lv_aic_manual_marker, 24 + lv_aic_manual_marker_x);
 }
 
+int lv_aic_manual_page_count(void)
+{
+#if LV_AIC_GE2D_IMAGE_TEST
+    return 3;
+#else
+    return 1;
+#endif
+}
+
+int lv_aic_manual_page_current(void)
+{
+    return lv_aic_manual_root ? lv_aic_manual_page_active : -1;
+}
+
+static void lv_aic_nav_update(void)
+{
+    static const char *const titles[] = {"Overview", "Image rotation", "Rotation + scale"};
+    if (!lv_aic_nav_title) return;
+    lv_label_set_text(lv_aic_nav_title, titles[lv_aic_manual_page_active]);
+    lv_label_set_text_fmt(lv_aic_nav_position, "%d / %d",
+                         lv_aic_manual_page_active + 1, lv_aic_manual_page_count());
+}
+
 void lv_aic_manual_page_request(int page)
 {
-    int last_page = 0;
-#if LV_AIC_GE2D_IMAGE_TEST
-    last_page = 2;
-#endif
-    if (page >= 0 && page <= last_page) {
+    if (lv_aic_manual_root && page >= 0 && page < lv_aic_manual_page_count())
         lv_aic_manual_page_pending = page;
-    }
 }
 
 void lv_aic_manual_page_poll(void)
@@ -141,61 +165,86 @@ void lv_aic_manual_page_poll(void)
     int page = lv_aic_manual_page_pending;
     if (page < 0 || lv_aic_manual_root == NULL) return;
     lv_aic_manual_page_pending = -1;
-    if (page == lv_aic_manual_page_active) return;
+    if (page >= lv_aic_manual_page_count()) return;
     lv_aic_manual_page_active = page;
-    if (page == 0) {
-        lv_obj_set_hidden(lv_aic_manual_root, false);
-#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
-        lv_obj_set_hidden(lv_aic_rotation_root, true);
-        lv_obj_set_hidden(lv_aic_combo_root, true);
+    lv_obj_set_hidden(lv_aic_manual_root, page != 0);
+#if LV_AIC_GE2D_IMAGE_TEST
+    lv_obj_set_hidden(lv_aic_rotation_root, page != 1);
+    lv_obj_set_hidden(lv_aic_combo_root, page != 2);
 #endif
-    } else if (page == 1) {
-        lv_obj_set_hidden(lv_aic_manual_root, true);
-#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
-        lv_obj_set_hidden(lv_aic_rotation_root, false);
-        lv_obj_set_hidden(lv_aic_combo_root, true);
-#endif
-    } else {
-        lv_obj_set_hidden(lv_aic_manual_root, true);
-#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
-        lv_obj_set_hidden(lv_aic_rotation_root, true);
-        lv_obj_set_hidden(lv_aic_combo_root, false);
-#endif
-    }
+    lv_aic_nav_update();
 }
 
-#if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
 static void lv_aic_page_button_event(lv_event_t *event)
 {
     int direction = (int)(intptr_t)lv_event_get_user_data(event);
-    (void)event;
-    lv_aic_manual_page_request((lv_aic_manual_page_active + direction + 3) % 3);
+    int count = lv_aic_manual_page_count();
+    lv_aic_manual_page_request((lv_aic_manual_page_active + direction + count) % count);
     lv_aic_manual_page_poll();
 }
 
-static int lv_aic_page_button_create(lv_obj_t *parent, const char *text, int direction)
+static lv_obj_t *lv_aic_nav_button(const char *text, int32_t x, int direction)
 {
-    lv_obj_t *button = lv_button_create(parent);
-    lv_obj_t *label;
-    if (button == NULL) return LV_AIC_ERR_NO_MEMORY;
-    lv_obj_set_size(button, 190, 44);
-    lv_obj_align(button, LV_ALIGN_TOP_RIGHT, -16, 8);
+    lv_obj_t *button = lv_button_create(lv_aic_nav_root);
+    if (!button) return NULL;
+    lv_obj_set_size(button, 88, 44);
+    lv_obj_set_pos(button, x, 10);
+    lv_obj_set_style_radius(button, 8, 0);
+    lv_obj_set_style_shadow_width(button, 0, 0);
     lv_obj_add_event_cb(button, lv_aic_page_button_event, LV_EVENT_CLICKED,
                         (void *)(intptr_t)direction);
-    label = lv_label_create(button);
-    if (label == NULL) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_t *label = lv_label_create(button);
+    if (!label) return NULL;
     lv_label_set_text(label, text);
     lv_obj_center(label);
+    if (lv_aic_manual_page_count() == 1) lv_obj_add_state(button, LV_STATE_DISABLED);
+    return button;
+}
+
+static int lv_aic_nav_create(lv_display_t *display)
+{
+    int32_t width = lv_display_get_horizontal_resolution(display);
+    /* Reserve the rightmost 104 px for the optional top-layer Fonts launcher.
+     * One shared header stays visible on every page; controls never overlap. */
+    lv_aic_nav_root = lv_obj_create(lv_layer_top());
+    if (!lv_aic_nav_root) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_remove_style_all(lv_aic_nav_root);
+    lv_obj_set_size(lv_aic_nav_root, width, 64);
+    lv_obj_set_style_bg_opa(lv_aic_nav_root, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(lv_aic_nav_root, lv_color_hex(0x132438), 0);
+    lv_obj_set_style_text_color(lv_aic_nav_root, lv_color_white(), 0);
+    lv_obj_set_scrollable(lv_aic_nav_root, false);
+    lv_aic_nav_title = lv_label_create(lv_aic_nav_root);
+    lv_aic_nav_position = lv_label_create(lv_aic_nav_root);
+    lv_obj_t *subtitle = lv_label_create(lv_aic_nav_root);
+    if (!lv_aic_nav_title || !lv_aic_nav_position || !subtitle) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_pos(lv_aic_nav_title, 24, 10);
+    lv_obj_set_width(lv_aic_nav_title, width - 424);
+    lv_label_set_long_mode(lv_aic_nav_title, LV_LABEL_LONG_CLIP);
+    lv_obj_set_pos(subtitle, 24, 34);
+    lv_label_set_text(subtitle, "LVGL 9.6 | ArtInChip platform tests");
+    lv_obj_set_style_text_color(subtitle, lv_color_hex(0xa9bfd5), 0);
+    lv_obj_set_width(subtitle, width - 424);
+    lv_label_set_long_mode(subtitle, LV_LABEL_LONG_CLIP);
+    lv_aic_nav_prev = lv_aic_nav_button("< Prev", width - 384, -1);
+    lv_aic_nav_next = lv_aic_nav_button("Next >", width - 208, 1);
+    if (!lv_aic_nav_prev || !lv_aic_nav_next) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_pos(lv_aic_nav_position, width - 288, 25);
+    lv_obj_set_width(lv_aic_nav_position, 72);
+    lv_obj_set_style_text_align(lv_aic_nav_position, LV_TEXT_ALIGN_CENTER, 0);
+    lv_aic_nav_update();
     return LV_AIC_OK;
 }
 
+#if LV_AIC_GE2D_IMAGE_TEST
 static int lv_aic_rotation_page_create(lv_display_t *display)
 {
     static const int32_t angles[4] = {0, 900, 1800, 2700};
     lv_aic_rotation_root = lv_obj_create(lv_screen_active());
     if (lv_aic_rotation_root == NULL) return LV_AIC_ERR_NO_MEMORY;
     lv_obj_set_size(lv_aic_rotation_root, lv_display_get_horizontal_resolution(display),
-                    lv_display_get_vertical_resolution(display));
+                    lv_display_get_vertical_resolution(display) - 64);
+    lv_obj_set_pos(lv_aic_rotation_root, 0, 64);
     lv_obj_set_style_bg_color(lv_aic_rotation_root, lv_color_hex(0x202020), 0);
     lv_obj_set_style_bg_opa(lv_aic_rotation_root, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(lv_aic_rotation_root, 0, 0);
@@ -204,12 +253,6 @@ static int lv_aic_rotation_page_create(lv_display_t *display)
     lv_obj_set_style_text_color(lv_aic_rotation_root, lv_color_hex(0xffffff), 0);
     lv_obj_set_scrollable(lv_aic_rotation_root, false);
     lv_obj_center(lv_aic_rotation_root);
-    {
-        lv_obj_t *title = lv_label_create(lv_aic_rotation_root);
-        if (title == NULL) return LV_AIC_ERR_NO_MEMORY;
-        lv_label_set_text(title, "3C3 GE2D rotation: 0 / 90 / 180 / 270");
-        lv_obj_set_pos(title, 24, 24);
-    }
     for (int i = 0; i < 4; i++) {
         lv_obj_t *frame = lv_aic_ge2d_make_rect(lv_aic_rotation_root, 24 + i * 190, 100,
                                                 160, 160, 0xffffff, 0);
@@ -229,8 +272,6 @@ static int lv_aic_rotation_page_create(lv_display_t *display)
             lv_label_set_text(label, text);
         }
     }
-    if (lv_aic_page_button_create(lv_aic_rotation_root, "< Prev  (2/3)", -1) != LV_AIC_OK)
-        return LV_AIC_ERR_NO_MEMORY;
     lv_obj_set_hidden(lv_aic_rotation_root, true);
     return LV_AIC_OK;
 }
@@ -239,23 +280,20 @@ static int lv_aic_combo_page_create(lv_display_t *display)
 {
     static const int32_t rotations[4] = {900, 900, 1800, 1800};
     static const uint32_t scales[4] = {128, 384, 512, 512};
+    static const char *const scale_text[4] = {"0.5x", "1.5x", "2.0x", "2.0x"};
     lv_aic_combo_root = lv_obj_create(lv_screen_active());
     if (lv_aic_combo_root == NULL) return LV_AIC_ERR_NO_MEMORY;
     lv_obj_set_size(lv_aic_combo_root, lv_display_get_horizontal_resolution(display),
-                    lv_display_get_vertical_resolution(display));
+                    lv_display_get_vertical_resolution(display) - 64);
+    lv_obj_set_pos(lv_aic_combo_root, 0, 64);
     lv_obj_set_style_bg_color(lv_aic_combo_root, lv_color_hex(0x202020), 0);
     lv_obj_set_style_bg_opa(lv_aic_combo_root, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(lv_aic_combo_root, 0, 0);
     lv_obj_set_style_border_width(lv_aic_combo_root, 0, 0);
     lv_obj_set_style_radius(lv_aic_combo_root, 0, 0);
     lv_obj_set_scrollable(lv_aic_combo_root, false);
+    lv_obj_set_style_text_color(lv_aic_combo_root, lv_color_white(), 0);
     lv_obj_center(lv_aic_combo_root);
-    {
-        lv_obj_t *title = lv_label_create(lv_aic_combo_root);
-        if (!title) return LV_AIC_ERR_NO_MEMORY;
-        lv_label_set_text(title, "3C4 GE2D rotation + scale: RGB / ARGB");
-        lv_obj_set_pos(title, 24, 24);
-    }
     for (int i = 0; i < 4; i++) {
         int32_t x = 24 + i * 190;
         lv_obj_t *frame = lv_aic_ge2d_make_rect(lv_aic_combo_root, x, 112, 160, 160,
@@ -272,12 +310,11 @@ static int lv_aic_combo_page_create(lv_display_t *display)
         lv_image_set_scale_y(image, scales[i]);
         lv_image_set_rotation(image, rotations[i]);
         if (i & 1) lv_obj_set_style_image_opa(image, 128, 0);
-        lv_obj_set_pos(label, x + 12, 88);
-        lv_label_set_text_fmt(label, "%s %dx + %d deg", (i & 1) ? "ARGB" : "RGB",
-                              scales[i] / 256, (int)(rotations[i] / 10));
+        lv_obj_set_pos(label, x, 78);
+        lv_obj_set_width(label, 170);
+        lv_label_set_text_fmt(label, "%s | %s / %d deg", (i & 1) ? "ARGB" : "RGB",
+                              scale_text[i], (int)(rotations[i] / 10));
     }
-    if (lv_aic_page_button_create(lv_aic_combo_root, "< Prev  (3/3)", -1) != LV_AIC_OK)
-        return LV_AIC_ERR_NO_MEMORY;
     lv_obj_set_hidden(lv_aic_combo_root, true);
     return LV_AIC_OK;
 }
@@ -309,14 +346,15 @@ int lv_aic_manual_test_create(void)
     lv_obj_set_style_border_width(lv_aic_manual_root, 0, 0);
     lv_obj_set_style_pad_all(lv_aic_manual_root, 0, 0);
     lv_obj_set_style_radius(lv_aic_manual_root, 0, 0);
+    lv_obj_set_scrollable(lv_aic_manual_root, false);
 
     lv_aic_manual_status = lv_label_create(lv_aic_manual_root);
     if (lv_aic_manual_status == NULL) {
         goto fail;
     }
-    lv_label_set_text(lv_aic_manual_status, "lvgl-aic LVGL 9.6 software baseline");
+    lv_label_set_text(lv_aic_manual_status, "Touch: ready");
     lv_obj_set_style_text_color(lv_aic_manual_status, lv_color_hex(0xffffff), 0);
-    lv_obj_set_pos(lv_aic_manual_status, 24, 24);
+    lv_obj_set_pos(lv_aic_manual_status, 24, 140);
 
     button = lv_button_create(lv_aic_manual_root);
     if (button == NULL) {
@@ -330,11 +368,11 @@ int lv_aic_manual_test_create(void)
     if (button_label == NULL) {
         goto fail;
     }
-    lv_label_set_text(button_label, "platform smoke test");
+    lv_label_set_text(button_label, "Test touch");
     lv_obj_center(button_label);
 
     lv_aic_manual_marker = lv_obj_create(lv_aic_manual_root);
-    if (lv_aic_manual_marker == NULL) {
+    if (lv_aic_manual_marker == NULL || lv_aic_manual_page_active != 0) {
         goto fail;
     }
     lv_obj_set_size(lv_aic_manual_marker, 32, 32);
@@ -357,7 +395,7 @@ int lv_aic_manual_test_create(void)
         goto fail;
     }
     lv_label_set_text(lv_aic_mpp_label,
-                      "mpp: a.jpg JPEG | b.png RGB | c.png RGBA on white");
+                      "MPP decode: JPEG | RGB | RGBA on white");
     lv_obj_set_style_text_color(lv_aic_mpp_label, lv_color_hex(0xffffff), 0);
     lv_obj_set_pos(lv_aic_mpp_label, 24, 210);
 
@@ -413,7 +451,7 @@ int lv_aic_manual_test_create(void)
         goto fail;
     }
     lv_label_set_text(lv_aic_ge2d_label,
-                      "ge2d: opaque squares accelerated | rounded -> software");
+                      "GE2D fill: square = hardware | rounded = software");
     lv_obj_set_style_text_color(lv_aic_ge2d_label, lv_color_hex(0xffffff), 0);
     lv_obj_set_pos(lv_aic_ge2d_label, 16, 372);
 
@@ -514,7 +552,7 @@ int lv_aic_manual_test_create(void)
     if (lv_aic_ge2d_c1_label == NULL) {
         goto fail;
     }
-    lv_label_set_text(lv_aic_ge2d_c1_label, "3c1: rgb 255/128/64 | argb 255/128/64");
+    lv_label_set_text(lv_aic_ge2d_c1_label, "Opacity: RGB / ARGB 255,128,64");
     lv_obj_set_style_text_color(lv_aic_ge2d_c1_label, lv_color_hex(0xffffff), 0);
     lv_obj_set_pos(lv_aic_ge2d_c1_label, 320, 146);
 
@@ -583,10 +621,14 @@ int lv_aic_manual_test_create(void)
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
     if (lv_aic_rotation_page_create(display) != LV_AIC_OK) goto fail;
     if (lv_aic_combo_page_create(display) != LV_AIC_OK) goto fail;
-    if (lv_aic_page_button_create(lv_aic_manual_root, "Next >  (1/3)", 1) != LV_AIC_OK) goto fail;
-    if (lv_aic_page_button_create(lv_aic_rotation_root, "Next >  (2/3)", 1) != LV_AIC_OK) goto fail;
 #endif
 
+    if (lv_aic_nav_create(display) != LV_AIC_OK) goto fail;
+
+#if LV_USE_FREETYPE && AIC_LVGL_BSP_RTTHREAD
+    if (lv_aic_font_test_create("/data/mpp_test/Lato-Regular.ttf",
+                               "/data/mpp_test/NotoSansSC-Regular.ttf") != LV_AIC_OK) goto fail;
+#endif
     return LV_AIC_OK;
 
 fail:
@@ -604,6 +646,12 @@ const char *lv_aic_manual_test_status_text(void)
 
 void lv_aic_manual_test_deinit(void)
 {
+#if LV_USE_FREETYPE && AIC_LVGL_BSP_RTTHREAD
+    lv_aic_font_test_delete();
+#endif
+    if (lv_aic_nav_root) lv_obj_delete(lv_aic_nav_root);
+    lv_aic_nav_root = lv_aic_nav_title = lv_aic_nav_position = NULL;
+    lv_aic_nav_prev = lv_aic_nav_next = NULL;
     if (lv_aic_manual_timer != NULL) {
         lv_timer_delete(lv_aic_manual_timer);
         lv_aic_manual_timer = NULL;

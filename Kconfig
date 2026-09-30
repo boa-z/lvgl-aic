@@ -53,6 +53,30 @@ config AIC_LVGL_USE_MPP_DEC
     depends on AIC_LVGL_PORT
     depends on LPKG_MPP
 
+config AIC_LVGL_MPP_CACHE_BYTES
+    int "MPP decoded-image cache budget (bytes; zero disables)"
+    default 524288
+    range 0 8388608
+    depends on AIC_LVGL_USE_MPP_DEC
+    help
+        Application-owned LRU cache, at most 16 entries. Active decoder users
+        are never evicted. Explicitly invalidate mutable sources before reuse.
+
+config AIC_LVGL_USE_FREETYPE
+    bool "Enable native LVGL FreeType bitmap fonts"
+    default n
+    depends on AIC_LVGL_PORT
+    select LPKG_USING_FREETYPE
+    help
+        Use upstream LVGL 9.6 fonts and its glyph cache. The SDK supplies only
+        the FreeType library; no legacy lvgl-ui font adapter is linked.
+
+config AIC_LVGL_FREETYPE_GLYPHS
+    int "FreeType cached glyph count per font cache"
+    default 64
+    range 8 512
+    depends on AIC_LVGL_USE_FREETYPE
+
 config AIC_LVGL_USE_FT_CACHE
     bool "Enable optional ArtInChip FreeType cache"
     default n

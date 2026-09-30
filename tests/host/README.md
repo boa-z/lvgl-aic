@@ -2,7 +2,7 @@
 
 This test is intentionally separate from the D50T product application. It
 builds the pinned LVGL checkout supplied by the caller, compiles the
-`lvgl-aic` public API and Phase 1 sources, and runs a small platform-only UI
+`lvgl-aic` public API and platform sources, and runs a small platform-only UI
 smoke page. It does not emulate the ArtInChip framebuffer or touch hardware.
 
 ```sh
@@ -12,7 +12,8 @@ cmake --build build/host
 ctest --test-dir build/host --output-on-failure
 ```
 
-The expected result is a successful build and `lvgl_aic_platform_smoke`.
+Without AIC_SDK_ROOT, four tests cover OS notifications, platform lifecycle,
+manual pages and disabled features. With SDK ABI headers, eight tests run.
 AIC BSP/board validation remains a separate pending step.
 
 ## Interactive SDL2 smoke window
@@ -74,3 +75,43 @@ callback address, allocation failure and decode-failure cleanup are exercised.
 It does not decode image pixels or prove CMA/cache hardware behavior.
 `lvgl_aic_disabled_features` exercises the real lifecycle with MPP and touch
 explicitly set to zero; no disabled backend may be called.
+
+## GE2D production-source contracts
+
+Set -DAIC_SDK_ROOT=/path/to/luban-lite to additionally build the real draw-unit
+and executor contracts. No SDK libraries or physical hardware are required.
+
+- lvgl_aic_ge2d_fill_contract: RGB565/RGB888/XRGB8888 partial opacity; opaque
+  ARGB8888; opacity thresholds; partial ARGB/rounded/gradient fallback; color
+  and alpha-rule descriptors; nonzero origin and layer clipping; padded stride;
+  address/buffer guards; fillrect/emit/sync failure propagation.
+- lvgl_aic_ge2d_scale_contract: real image evaluator/executor, LVGL decoder,
+  scale/rotation helpers, clipping, supported formats and injected failures.
+
+Hardware calls and cache operations are mocked. These tests do not prove pixel
+arithmetic, real cache coherency, DMA completion, panel output or performance.
+The board probes in tests/manual exercise those separate acceptance paths.
+
+## Memory and decoded-cache stage
+
+lvgl_aic_mpp_memory_cache_contract runs the production decoder through real
+LVGL open/close APIs with FILE and RAW memory JPEG/PNG fixtures. It covers
+multiple readers, all option keys, no_cache/zero/oversize budgets, byte/entry
+limits, LRU promotion, explicit invalidation, copied file keys, allocation-pressure
+eviction, failure cleanup, stream bounds, bad memory CRC and teardown/reinit.
+MPP is mocked; this contract does not decode real pixels. The matching board
+probe is described in [resource stage](../../docs/resource-stage.md).
+
+## Real native FreeType contract
+
+Configure with -DAIC_BUILD_FREETYPE_TESTS=ON and a host FreeType development
+package discoverable by CMake (MSYS2 UCRT64: -DCMAKE_PREFIX_PATH=C:/msys64/ucrt64).
+With AIC_SDK_ROOT this yields nine CTests. Native LVGL/FreeType render Latin and
+Chinese glyphs; no font rasterizer mocks are used. The contract covers missing /
+corrupt files, 18/28/42 px styles, fallback, cache churn, repeated lifecycle,
+Fonts/Close events and actual glyph pixels in all four rows. The font files and
+licenses remain in the separately pinned LVGL checkout. See
+[font stage](../../docs/font-stage.md) for board and memory limits.
+## Manual UI layout and navigation contract
+
+`lvgl_aic_manual_pages` now exercises the three-page smoke UI with a real pointer indev: the shared top navigation is fixed above every page, previous / next controls wrap in both directions, invalid requests are ignored, and teardown clears pending state. With FreeType enabled it also opens/closes the modal Fonts panel repeatedly and verifies the overlay prevents background navigation. Configure `AIC_BUILD_MANUAL_PREVIEW=ON` with `AIC_BUILD_FREETYPE_TESTS=ON` to emit software reference PPM/PNG frames under the host build's `preview/` directory. These frames validate layout and image placement; GE2D/MPP hardware behavior is not inferred from them.
