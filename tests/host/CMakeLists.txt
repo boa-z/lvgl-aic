@@ -10,6 +10,7 @@ endif()
 option(AIC_BUILD_GIF_TESTS "Test native LVGL GIF widget" OFF)
 option(AIC_BUILD_INPUT_TESTS "Test application-owned encoder and mouse providers" OFF)
 option(AIC_BUILD_WIDGET_TESTS "Test native LVGL widget surface" OFF)
+option(AIC_BUILD_CONTROL_WIDGET_TESTS "Test common native LVGL control widgets" OFF)
 option(AIC_BUILD_MANUAL_PREVIEW "Build native software reference screenshots" OFF)
 option(AIC_BUILD_FREETYPE_TESTS "Test native FreeType and glyph caches" OFF)
 option(AIC_BUILD_SDL_SMOKE "Build the interactive SDL2 smoke window" OFF)
@@ -336,4 +337,29 @@ if(AIC_BUILD_WIDGET_TESTS)
         target_compile_options(lvgl_aic_widget_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     endif()
     add_test(NAME lvgl_aic_widget_contract COMMAND lvgl_aic_widget_contract)
+endif()
+
+if(AIC_BUILD_CONTROL_WIDGET_TESTS)
+    target_compile_definitions(lvgl PUBLIC
+        LV_USE_ARC=1
+        LV_USE_BUTTON=1
+        LV_USE_BUTTONMATRIX=1
+        LV_USE_CALENDAR=1
+        LV_USE_CHECKBOX=1
+        LV_USE_KEYBOARD=1
+        LV_USE_LED=1
+        LV_USE_LINE=1
+        LV_USE_MSGBOX=1
+        LV_USE_SPINBOX=1
+        LV_USE_SWITCH=1)
+    add_executable(lvgl_aic_control_widget_contract control_widget_contract.c)
+    target_compile_definitions(lvgl_aic_control_widget_contract PRIVATE
+        LV_USE_ARC=1 LV_USE_BUTTON=1 LV_USE_BUTTONMATRIX=1 LV_USE_CALENDAR=1
+        LV_USE_CHECKBOX=1 LV_USE_KEYBOARD=1 LV_USE_LED=1 LV_USE_LINE=1
+        LV_USE_MSGBOX=1 LV_USE_SPINBOX=1 LV_USE_SWITCH=1)
+    target_link_libraries(lvgl_aic_control_widget_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_control_widget_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_control_widget_contract COMMAND lvgl_aic_control_widget_contract)
 endif()

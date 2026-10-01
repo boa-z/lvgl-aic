@@ -69,7 +69,10 @@ are imported. The manual shell only queues requests for the UI timer to handle.
 See [GIF ownership and board gate](gif-stage.md).
 
 The common upstream widget surface remains application-owned. The host widget
-contract enables canvas, chart, dropdown, roller, slider, table, tabview,
-textarea and tileview together and checks construction, basic state mutation,
-lookup and teardown. Vendor camera/player/video-window controls remain outside
-this component and should be supplied by the application.
+contracts enable canvas, chart, dropdown, roller, slider, table, tabview,
+textarea and tileview, plus the modern control set of arc, button, buttonmatrix,
+calendar, checkbox, keyboard, led, line, msgbox, spinbox and switch. They check
+construction, basic state mutation, lookup and teardown. LVGL 9.6 marks list and
+menu deprecated, so they are intentionally excluded. Vendor camera/player/
+video-window controls remain outside this component and should be supplied by
+the application.

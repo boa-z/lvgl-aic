@@ -19,7 +19,7 @@ phase documents are historical; source presence and switches are not board proof
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
 | Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
-| Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview surface with host lifecycle/state contract | Board rendering/input acceptance still pending; vendor camera/player/video-window remain app-owned adapters |
+| Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu and vendor camera/player/video-window remain outside this profile |
 
 Declined drawing normally stays with software. Unsupported compressed resources
 do not imply another decoder can read them. Whole-screen rotation and IMAGE

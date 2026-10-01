@@ -149,3 +149,12 @@ basic state setters/getters, selection, text storage and teardown. This proves
 the application-owned third-party build can expose the native widget surface;
 it does not claim board rendering/input acceptance or provide vendor
 camera/player/video-window adapters.
+
+## Common control widget contract
+
+Add -DAIC_BUILD_CONTROL_WIDGET_TESTS=ON to build
+lvgl_aic_control_widget_contract. The profile covers arc, button,
+buttonmatrix, calendar, checkbox, keyboard, led, line, msgbox, spinbox and
+switch with constructor, state, lookup and teardown checks. LVGL 9.6 list and
+menu are deprecated and are excluded from this profile; vendor media controls
+remain application-owned adapters.
