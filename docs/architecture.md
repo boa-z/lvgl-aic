@@ -47,9 +47,11 @@ partial ARGB8888 targets to software. Its executor rechecks address/geometry
 and intersects the saved task clip with the layer buffer before cache/DMA work.
 
 IMAGE handles RGB/ARGB/XRGB, alpha, bounded scaling and right-angle rotation
-plus scale. LAYER reuses the same bounded scaler/rotator when the child layer
-buffer is accessible; ordinary D13x heap sources use software. No global layer
-allocator or LVGL cache handler is replaced. Cache maintenance is region-local.
+plus scale. Unscaled arbitrary angles use the SDK's mpp_ge_rotate path with
+the same source/global alpha rules and clipped destination crop. LAYER reuses
+the same bounded scaler/rotator when the child layer buffer is accessible;
+ordinary D13x heap sources use software. No global layer allocator or LVGL
+cache handler is replaced. Cache maintenance is region-local.
 
 Native FreeType is owned by upstream lv_init/lv_deinit. Applications own font
 instances, fallback chains and all objects/styles referring to them. The optional

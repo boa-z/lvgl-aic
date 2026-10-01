@@ -3,11 +3,12 @@
  * @brief ArtInChip GE2D draw unit: registration, evaluation and dispatch.
  *
  * Scope is deliberately narrow. FILL: solid, unrounded, non-gradient tasks.
- * IMAGE: right-angle rotated, untiled, unrecolored RGB copies/scales -
+ * IMAGE: rotated, untiled, unrecolored RGB copies/scales -
  * the blit blends, so a partial opacity is supported rather than declined.
  * LAYER: the same blit, fed from a child layer's buffer instead of a decoded
- * image, including bounded scaling and right-angle rotation. Everything else
- * is declined, and a declined task simply stays with the software renderer.
+ * image, including bounded scaling, right-angle rotation and unscaled
+ * arbitrary-angle rotation. Everything else is declined, and a declined task
+ * simply stays with the software renderer.
  * The unit runs synchronously on the dispatching thread -
  * there is no render thread, no task queue and no saved layer/clip state, which
  * is why it does not reuse lv_draw_sw_unit_t the way the legacy port did.
@@ -94,7 +95,9 @@ static bool lv_draw_aic_ge2d_accepts_dst(const lv_draw_task_t *task)
 /**
  * True when @p dsc carries a supported LAYER transform.
  *
- * LAYER accepts the same bounded scale and right-angle rotation as IMAGE.
+ * LAYER accepts bounded scale and right-angle rotation. Arbitrary-angle IMAGE
+ * rotation is intentionally kept out of the child-layer path until it has its
+ * own layer-buffer acceptance contract.
  */
 static bool lv_draw_aic_ge2d_dsc_is_supported_transform(const lv_draw_image_dsc_t *dsc)
 {
@@ -181,12 +184,18 @@ static bool lv_draw_aic_ge2d_accepts_image(const lv_draw_task_t *task)
         return false;
     }
 
-    /* Phase 3C2: bounded RGB scale only. LAYER keeps its existing policy. */
-    if ((dsc->rotation != 0 && dsc->rotation != 900 && dsc->rotation != 1800 && dsc->rotation != 2700) ||
-        dsc->skew_x != 0 || dsc->skew_y != 0 ||
-        dsc->scale_x < LV_SCALE_NONE / 16 || dsc->scale_x > LV_SCALE_NONE * 16 ||
-        dsc->scale_y < LV_SCALE_NONE / 16 || dsc->scale_y > LV_SCALE_NONE * 16) {
-        return false;
+    /* Phase 3C2/3C6: bounded RGB scale, plus arbitrary-angle IMAGE rotation
+     * when no scaler is requested. AIC_GE_ROTATE has no combined scaler path. */
+    {
+        int32_t rotation = dsc->rotation % 3600;
+        if (rotation < 0) rotation += 3600;
+        if ((rotation % 900 != 0 &&
+             (dsc->scale_x != LV_SCALE_NONE || dsc->scale_y != LV_SCALE_NONE)) ||
+            dsc->skew_x != 0 || dsc->skew_y != 0 ||
+            dsc->scale_x < LV_SCALE_NONE / 16 || dsc->scale_x > LV_SCALE_NONE * 16 ||
+            dsc->scale_y < LV_SCALE_NONE / 16 || dsc->scale_y > LV_SCALE_NONE * 16) {
+            return false;
+        }
     }
 
     /* A tiled image is many blits with its own helper; not this step. */

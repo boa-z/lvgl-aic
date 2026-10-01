@@ -107,7 +107,8 @@ image is produced.
 
 ### 3C4 implementation candidate (2026-09-27)
 
-The executor now accepts right-angle rotation together with bounded scaling.
+The executor now accepts right-angle rotation together with bounded scaling and
+unscaled arbitrary-angle IMAGE rotation through the SDK GE rotate primitive.
 The combined crop helper maps the clipped destination corners back through the
 scaled pivot, swaps the scaler axes for 90°/270°, preserves the GE rotation
 flag, and keeps unsupported angles and unsafe geometry on the software path.
@@ -127,6 +128,7 @@ report frame time and engine task counters together, without treating a single
 board timing sample as a performance guarantee. No allocator, scheduler or
 display-buffer policy changes are part of this stage.
 
-Each stage needs its own evidence and commit. No arbitrary rotation, CMA layer
-copies, async thread, YUV, tile, recolor or allocator replacement. Stop after
-3C5; subsequent work is real D50T UI integration and workload profiling.
+Each stage needs its own evidence and commit. Arbitrary-angle plus scale, CMA
+layer copies, async thread, YUV, tile, recolor and allocator replacement remain
+outside this stage. Board validation is intentionally deferred until the current
+GE/widget development batch is complete.

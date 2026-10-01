@@ -2,9 +2,10 @@
  * @file lv_draw_aic_ge2d_image.c
  * @brief RGB copy/scale through the ArtInChip GE2D engine.
  *
- * Supports unrotated copies and bounded RGB scaling with explicit inverse-map
- * phases. Unsupported geometry falls back before submission; a hardware
- * failure never retries blending on a potentially partly written target.
+ * Supports unrotated copies, bounded RGB scaling with explicit inverse-map
+ * phases, and unscaled arbitrary-angle IMAGE rotation through mpp_ge_rotate.
+ * Unsupported geometry falls back before submission; a hardware failure never
+ * retries blending on a potentially partly written target.
  *
  * Source alpha is the one thing that is not "the simple case" and is handled
  * anyway: an ARGB8888 source is blended with its own per-pixel alpha, and a
@@ -78,6 +79,115 @@ static bool s_blit_called;
 static bool s_blit_ok;
 static bool s_blit_failed;
 
+static int lv_draw_aic_ge2d_angle_2_12(int32_t angle, bool cosine)
+{
+    int32_t degrees = (angle + 5) / 10;
+    int32_t value = cosine ? lv_trigo_cos((int16_t)degrees) :
+                            lv_trigo_sin((int16_t)degrees);
+
+    return (value * 4096) / 32767;
+}
+
+static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
+                                    const lv_draw_buf_t *src,
+                                    const lv_draw_buf_t *dst,
+                                    lv_color_format_t src_cf,
+                                    enum mpp_pixel_format src_fmt,
+                                    enum mpp_pixel_format dst_fmt,
+                                    const lv_draw_image_dsc_t *draw_dsc,
+                                    const lv_area_t *img_coords,
+                                    const lv_area_t *dst_area_abs)
+{
+    struct ge_rotation rot = { 0 };
+    lv_area_t src_area = { 0, 0, (int32_t)src->header.w - 1,
+                           (int32_t)src->header.h - 1 };
+    lv_area_t dst_area = {
+        dst_area_abs->x1 - layer->buf_area.x1,
+        dst_area_abs->y1 - layer->buf_area.y1,
+        dst_area_abs->x2 - layer->buf_area.x1,
+        dst_area_abs->y2 - layer->buf_area.y1,
+    };
+    struct mpp_ge *ge;
+    int32_t angle;
+
+    if (src_area.x2 < 0 || src_area.y2 < 0 ||
+        dst_area.x1 < 0 || dst_area.y1 < 0 ||
+        dst_area.x2 >= (int32_t)dst->header.w ||
+        dst_area.y2 >= (int32_t)dst->header.h ||
+        lv_area_get_width(&dst_area) <= 0 || lv_area_get_height(&dst_area) <= 0) {
+        return false;
+    }
+
+    lv_draw_aic_ge2d_prepare_src_cache(src, &src_area);
+    lv_draw_aic_ge2d_prepare_dst_cache(dst, &dst_area);
+
+    rot.src_buf.buf_type = MPP_PHY_ADDR;
+    rot.src_buf.phy_addr[0] = (uint32_t)(ulong)src->data;
+    rot.src_buf.stride[0] = src->header.stride;
+    rot.src_buf.size.width = src->header.w;
+    rot.src_buf.size.height = src->header.h;
+    rot.src_buf.format = src_fmt;
+
+    rot.src_rot_center.x = draw_dsc->pivot.x;
+    rot.src_rot_center.y = draw_dsc->pivot.y;
+
+    rot.dst_buf.buf_type = MPP_PHY_ADDR;
+    rot.dst_buf.phy_addr[0] = (uint32_t)(ulong)dst->data;
+    rot.dst_buf.stride[0] = dst->header.stride;
+    rot.dst_buf.size.width = dst->header.w;
+    rot.dst_buf.size.height = dst->header.h;
+    rot.dst_buf.format = dst_fmt;
+    rot.dst_buf.crop_en = 1U;
+    rot.dst_buf.crop.x = dst_area.x1;
+    rot.dst_buf.crop.y = dst_area.y1;
+    rot.dst_buf.crop.width = (uint32_t)lv_area_get_width(&dst_area);
+    rot.dst_buf.crop.height = (uint32_t)lv_area_get_height(&dst_area);
+
+    /* GE rotation centers are relative to the cropped destination area. */
+    rot.dst_rot_center.x = img_coords->x1 + draw_dsc->pivot.x - dst_area_abs->x1;
+    rot.dst_rot_center.y = img_coords->y1 + draw_dsc->pivot.y - dst_area_abs->y1;
+
+    angle = draw_dsc->rotation % 3600;
+    if (angle < 0) angle += 3600;
+    rot.angle_sin = lv_draw_aic_ge2d_angle_2_12(angle, false);
+    rot.angle_cos = lv_draw_aic_ge2d_angle_2_12(angle, true);
+
+    if (draw_dsc->opa >= LV_OPA_COVER && src_cf != LV_COLOR_FORMAT_ARGB8888) {
+        rot.ctrl.alpha_en = 0U;
+        rot.ctrl.src_alpha_mode = 0U;
+    }
+    else {
+        rot.ctrl.alpha_en = 1U;
+        rot.ctrl.alpha_rules = GE_PD_NONE;
+        rot.ctrl.src_alpha_mode = 2U;
+        rot.ctrl.src_global_alpha = draw_dsc->opa;
+    }
+
+    ge = lv_draw_aic_ge2d_device();
+    if (ge == NULL) {
+        LV_LOG_ERROR("GE2D device is not open");
+        return false;
+    }
+
+    if (mpp_ge_rotate(ge, &rot) < 0) {
+        s_blit_failed = true;
+        LV_LOG_ERROR("GE2D rotate failed");
+        return false;
+    }
+    if (mpp_ge_emit(ge) < 0) {
+        s_blit_failed = true;
+        LV_LOG_ERROR("GE2D emit failed");
+        return false;
+    }
+    if (mpp_ge_sync(ge) < 0) {
+        s_blit_failed = true;
+        LV_LOG_ERROR("GE2D sync failed");
+        return false;
+    }
+
+    return true;
+}
+
 /**
  * Build the GE2D blit descriptor and run it.
  *
@@ -150,6 +260,13 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
      * actual layer storage before inverse mapping; never drop an edge pixel. */
     if (!lv_area_intersect(&dst_area, clipped_img_area, &layer->buf_area)) {
         return false;
+    }
+    /* AIC_GE_ROTATE handles arbitrary angles, but it does not combine them
+     * with the scaler. Right-angle scale paths continue through GE_BITBLT;
+     * arbitrary-angle scale requests are rejected by evaluate(). */
+    if (!scaled && draw_dsc->rotation % 900 != 0) {
+        return lv_draw_aic_ge2d_rotate(layer, src, dst, src_cf, src_fmt, dst_fmt,
+                                       draw_dsc, img_coords, &dst_area);
     }
     rx = (int64_t)dst_area.x1 - img_coords->x1;
     ry = (int64_t)dst_area.y1 - img_coords->y1;

@@ -12,7 +12,7 @@ phase documents are historical; source presence and switches are not board proof
 | MPP | FILE and RAW/RAW_ALPHA memory JPEG/PNG; RGB888/ARGB8888; CMA tracking | Resource success inferred from test ordering; direct parity log pending; AICP/BMP/fake and YUV remain absent |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
-| GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded scale, right-angle rotation plus scale | Arbitrary angles, YUV, tiling/recolor/masks |
+| GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation | Arbitrary-angle plus scale, YUV, tiling/recolor/masks |
 | GE scale | Nominal 1/16..16; pivot/clip/per-axis handling | Small/unsafe geometry and D13x split interval fall back |
 | GE LAYER | Plain composition plus bounded 1/16..16 scale and right-angle rotation when the child buffer is accessible | Ordinary D13x heap source falls back; arbitrary angles, YUV and general HW layers remain absent |
 | Scheduling | Synchronous, error/task counters, bounded refresh timing | Async work and paired GE ON/OFF board timing |

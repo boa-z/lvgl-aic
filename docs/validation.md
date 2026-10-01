@@ -1064,7 +1064,9 @@ Three constraints apply to the whole phase and are not negotiable:
   memory-policy decision for a later phase, not a tweak to make a counter look
   better;
 - no async GE thread, no global CMA layer allocator, no temporary layer-to-CMA
-  copy, no recolor, no tile, no arbitrary-angle rotation;
+  copy, no recolor or tile. The no-arbitrary-angle constraint belongs to this
+  historical 3C1 checkpoint; unscaled IMAGE rotation is covered by the later
+  3C6 implementation candidate.
 - the synchronous GE2D dispatch, the existing FILL implementation, the MPP
   decoder and the software fallback all stay as they are.
 

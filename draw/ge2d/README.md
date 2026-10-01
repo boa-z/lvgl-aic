@@ -7,11 +7,12 @@ The synchronous backend evaluates FILL, IMAGE and LAYER, not only Phase 3A fills
   software pending alpha-destination validation. Opaque ARGB8888 remains supported.
   The executor checks buffer size/stride and clips to task, clip and layer bounds.
 - IMAGE: RGB565/RGB888/ARGB8888/XRGB8888, global/per-pixel alpha, bounded scales,
-  right-angle rotation and combined transforms.
-- LAYER: plain/right-angle composition, no scaling. Ordinary D13x heap buffers
-  fall back because GE cannot address them.
-- Arbitrary angles, YUV, masks, recolor and tiling stay software work. Small or
-  unsafe scale regions and D13x split-risk cases fall back.
+  right-angle rotation and unscaled arbitrary-angle rotation. Arbitrary-angle
+  plus scale remains software work.
+- LAYER: plain composition plus bounded scale/right-angle rotation. Ordinary
+  D13x heap buffers fall back because GE cannot address them.
+- YUV, masks, recolor and tiling stay software work. Small or unsafe scale
+  regions and D13x split-risk cases fall back.
 
 No owned render thread or buffers. Submit/emit/sync are synchronous and checked.
 Engine failures are never retried as software blends over possibly modified

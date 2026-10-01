@@ -9,12 +9,15 @@
 #include "../../draw/ge2d/lv_draw_aic_ge2d_image.c"
 
 static struct ge_bitblt captured;
-static int submits, fail_at;
+static struct ge_rotation captured_rotation;
+static int submits, rotate_submits, fail_at, rotate_fail;
 static const void *allowed_src, *allowed_dst;
 struct mpp_ge *mpp_ge_open(void) { return (struct mpp_ge *)(uintptr_t)1; }
 void mpp_ge_close(struct mpp_ge *ge) { (void)ge; }
 int mpp_ge_bitblt(struct mpp_ge *ge, struct ge_bitblt *b)
 { (void)ge; captured = *b; submits++; return fail_at == 1 ? -1 : 0; }
+int mpp_ge_rotate(struct mpp_ge *ge, struct ge_rotation *r)
+{ (void)ge; captured_rotation = *r; rotate_submits++; return rotate_fail ? -1 : 0; }
 int mpp_ge_emit(struct mpp_ge *ge) { (void)ge; return fail_at == 2 ? -1 : 0; }
 int mpp_ge_sync(struct mpp_ge *ge) { (void)ge; return fail_at == 3 ? -1 : 0; }
 bool lv_draw_aic_ge2d_buf_address_valid(const lv_draw_buf_t *b)
@@ -117,11 +120,49 @@ int main(void)
         assert(submits == before);
     }
     {
+        int before = rotate_submits;
+        lv_area_t rot_img = {100, 200, 131, 231};
+        lv_area_t rot_clip = {101, 202, 120, 215};
+        lv_draw_image_dsc_init(&d);
+        d.src = &src;
+        d.scale_x = d.scale_y = LV_SCALE_NONE;
+        d.rotation = 170;
+        d.pivot = (lv_point_t){16, 16};
+        d.opa = 128;
+        assert(lv_draw_aic_ge2d_accepts_image(&task));
+        assert(lv_draw_aic_ge2d_blit(&task, &d, &decoder, &rot_img, &rot_clip));
+        assert(rotate_submits == before + 1);
+        assert(captured_rotation.src_rot_center.x == 16 &&
+               captured_rotation.src_rot_center.y == 16);
+        assert(captured_rotation.dst_rot_center.x == 15 &&
+               captured_rotation.dst_rot_center.y == 14);
+        assert(captured_rotation.src_buf.crop_en == 0);
+        assert(captured_rotation.dst_buf.crop.x == 11 &&
+               captured_rotation.dst_buf.crop.y == 12);
+        assert(captured_rotation.dst_buf.crop.width == 20 &&
+               captured_rotation.dst_buf.crop.height == 14);
+        assert(captured_rotation.angle_sin > 1190 && captured_rotation.angle_sin < 1210);
+        assert(captured_rotation.angle_cos > 3910 && captured_rotation.angle_cos < 3930);
+        assert(captured_rotation.ctrl.alpha_rules == GE_PD_NONE &&
+               captured_rotation.ctrl.src_alpha_mode == 2 &&
+               captured_rotation.ctrl.src_global_alpha == 128);
+        {
+            lv_draw_aic_ge2d_outcome_t outcome;
+            task.area = rot_img;
+            task.clip_area = layer.buf_area;
+            rotate_fail = 1;
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
+            assert(outcome != LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+            rotate_fail = 0;
+        }
+    }
+    {
         int before = submits;
         d.scale_x = 0; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.scale_x = 15; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.scale_x = 4097; assert(!lv_draw_aic_ge2d_accepts_image(&task));
-        d.scale_x = 384; d.rotation = 170; assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        d.scale_x = 384; d.scale_y = 384; d.rotation = 170; assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        d.scale_x = d.scale_y = LV_SCALE_NONE; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 900; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 0; d.tile = 1; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.tile = 0; d.recolor_opa = 128; assert(!lv_draw_aic_ge2d_accepts_image(&task));
