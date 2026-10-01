@@ -18,7 +18,11 @@ The display owns the mpp_fb handle, LVGL display and software-rotation buffer.
 The physical framebuffer belongs to the BSP and is never freed by the port.
 Whole-display rotation uses software even when GE IMAGE transforms are enabled.
 Touch uses a worker and locked state; its IRQ callback wakes the worker without
-manipulating LVGL objects. Optional polling recovery defaults off.
+manipulating LVGL objects. Optional polling recovery defaults off. Encoder and
+mouse inputs use an application-owned provider callback: the application owns
+the board protocol and state source, while lvgl-aic owns the LVGL indev type,
+callback adapter and teardown. Providers must be registered before
+lv_aic_init() and are rejected after initialization.
 
 ## Optional backends
 

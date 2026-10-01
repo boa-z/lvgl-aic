@@ -19,8 +19,10 @@ RT_USING_EVENT, AIC_LVGL_PORT and the required display/touch options. Set
 AIC_LVGL_TOUCH_DEVICE to the board device (gt911 for the smoke profiles).
 Board profiles must also select the actual framebuffer/touch/GE/decoder devices.
 MPP decoding and GE2D are independent opt-ins, off by default. Smoke pages
-require AIC_LVGL_MANUAL_TEST. Encoder, mouse and AIC FreeType cache symbols are
-reserved placeholders. Native FreeType is separate: AIC_LVGL_USE_FREETYPE selects
+require AIC_LVGL_MANUAL_TEST. Encoder and mouse are optional application-owned
+providers: register lv_aic_input_provider_t callbacks before lv_aic_init() and
+use the returned native indevs. AIC FreeType cache symbols remain a separate
+gap. Native FreeType is separate: AIC_LVGL_USE_FREETYPE selects
 the independent LPKG_USING_FREETYPE library; AIC_LVGL_FREETYPE_GLYPHS defaults to
 64. No vendor LVGL/font adapter is linked. The SDK emits symbols without CONFIG_
 in rtconfig.h. See [font integration](font-stage.md).

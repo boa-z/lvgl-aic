@@ -28,8 +28,10 @@ FILL/IMAGE/LAYER dispatch. FILL includes partial opacity on RGB565/RGB888/XRGB88
 rotation and combined transforms. Ordinary D13x heap layers fall back to software.
 
 Target OS integration is LV_OS_CUSTOM with RT event-based binary notifications.
-No semaphore-value-limit kernel backport is required. Encoder, USB mouse and
-the vendor AIC FreeType cache remain placeholders. Optional native FreeType now
+No semaphore-value-limit kernel backport is required. Encoder and USB mouse
+inputs are available through application-owned provider callbacks; the board
+sampling protocol remains outside this component. The vendor AIC FreeType cache
+remains a separate gap. Optional native FreeType now
 provides dynamic sizes/styles, Chinese fallback and native glyph caching through
 application-owned font lifetimes; see [font stage](docs/font-stage.md).
 

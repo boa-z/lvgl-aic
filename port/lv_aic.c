@@ -6,6 +6,7 @@
 #include "lvgl_aic.h"
 #include "lv_aic_display.h"
 #include "lv_aic_indev.h"
+#include "lv_aic_input.h"
 #if AIC_LVGL_USE_MPP_DEC
 #include "lv_aic_mpp_decoder.h"
 #endif
@@ -27,6 +28,14 @@ static uint32_t lv_aic_tick_get_ms(void)
 
 static lv_display_t *lv_aic_display;
 static lv_indev_t *lv_aic_pointer_indev;
+#if AIC_LVGL_USE_ENCODER
+static lv_indev_t *lv_aic_encoder_indev;
+static lv_aic_input_provider_t lv_aic_encoder_provider;
+#endif
+#if AIC_LVGL_USE_MOUSE
+static lv_indev_t *lv_aic_mouse_indev;
+static lv_aic_input_provider_t lv_aic_mouse_provider;
+#endif
 #if AIC_LVGL_USE_MPP_DEC
 static lv_image_decoder_t *lv_aic_mpp_decoder;
 #endif
@@ -42,6 +51,12 @@ int lv_aic_init(void)
 
     lv_aic_display = NULL;
     lv_aic_pointer_indev = NULL;
+#if AIC_LVGL_USE_ENCODER
+    lv_aic_encoder_indev = NULL;
+#endif
+#if AIC_LVGL_USE_MOUSE
+    lv_aic_mouse_indev = NULL;
+#endif
 #if AIC_LVGL_USE_MPP_DEC
     lv_aic_mpp_decoder = NULL;
 #endif
@@ -66,9 +81,54 @@ int lv_aic_init(void)
     (void)result;
 #endif
 
+#if AIC_LVGL_USE_ENCODER
+    if (lv_aic_encoder_provider.read_cb != NULL) {
+        result = lv_aic_input_init(lv_aic_display, LV_INDEV_TYPE_ENCODER,
+                                   &lv_aic_encoder_provider, &lv_aic_encoder_indev);
+        if (result != LV_AIC_OK) {
+            if (lv_aic_pointer_indev != NULL) lv_aic_indev_deinit(lv_aic_pointer_indev);
+            lv_aic_display_deinit(lv_aic_display);
+            lv_aic_pointer_indev = NULL;
+            lv_aic_display = NULL;
+            return result;
+        }
+    }
+#endif
+#if AIC_LVGL_USE_MOUSE
+    if (lv_aic_mouse_provider.read_cb != NULL) {
+        result = lv_aic_input_init(lv_aic_display, LV_INDEV_TYPE_POINTER,
+                                   &lv_aic_mouse_provider, &lv_aic_mouse_indev);
+        if (result != LV_AIC_OK) {
+#if AIC_LVGL_USE_ENCODER
+            if (lv_aic_encoder_indev != NULL) lv_aic_input_deinit(lv_aic_encoder_indev);
+#endif
+            if (lv_aic_pointer_indev != NULL) lv_aic_indev_deinit(lv_aic_pointer_indev);
+#if AIC_LVGL_USE_ENCODER
+            lv_aic_encoder_indev = NULL;
+#endif
+            lv_aic_pointer_indev = NULL;
+            lv_aic_display_deinit(lv_aic_display);
+            lv_aic_display = NULL;
+            return result;
+        }
+    }
+#endif
+
 #if AIC_LVGL_USE_MPP_DEC
     result = lv_aic_mpp_decoder_init(&lv_aic_mpp_decoder);
     if (result != LV_AIC_OK) {
+#if AIC_LVGL_USE_MOUSE
+        if (lv_aic_mouse_indev != NULL) {
+            lv_aic_input_deinit(lv_aic_mouse_indev);
+            lv_aic_mouse_indev = NULL;
+        }
+#endif
+#if AIC_LVGL_USE_ENCODER
+        if (lv_aic_encoder_indev != NULL) {
+            lv_aic_input_deinit(lv_aic_encoder_indev);
+            lv_aic_encoder_indev = NULL;
+        }
+#endif
         if (lv_aic_pointer_indev != NULL) {
             lv_aic_indev_deinit(lv_aic_pointer_indev);
             lv_aic_pointer_indev = NULL;
@@ -108,6 +168,18 @@ void lv_aic_deinit(void)
         lv_aic_indev_deinit(lv_aic_pointer_indev);
         lv_aic_pointer_indev = NULL;
     }
+#if AIC_LVGL_USE_MOUSE
+    if (lv_aic_mouse_indev != NULL) {
+        lv_aic_input_deinit(lv_aic_mouse_indev);
+        lv_aic_mouse_indev = NULL;
+    }
+#endif
+#if AIC_LVGL_USE_ENCODER
+    if (lv_aic_encoder_indev != NULL) {
+        lv_aic_input_deinit(lv_aic_encoder_indev);
+        lv_aic_encoder_indev = NULL;
+    }
+#endif
 #if AIC_LVGL_USE_MPP_DEC
     if (lv_aic_mpp_decoder != NULL) {
         lv_aic_mpp_decoder_deinit(lv_aic_mpp_decoder);
@@ -134,6 +206,58 @@ lv_display_t *lv_aic_get_display(void)
 lv_indev_t *lv_aic_get_pointer_indev(void)
 {
     return lv_aic_pointer_indev;
+}
+
+int lv_aic_set_encoder_provider(const lv_aic_input_provider_t * provider)
+{
+#if AIC_LVGL_USE_ENCODER
+    if (lv_aic_initialized) return LV_AIC_ERR_INVALID_STATE;
+    if (provider == NULL) {
+        lv_aic_encoder_provider.read_cb = NULL;
+        lv_aic_encoder_provider.user_data = NULL;
+    } else {
+        lv_aic_encoder_provider = *provider;
+    }
+    return LV_AIC_OK;
+#else
+    (void)provider;
+    return LV_AIC_ERR_UNSUPPORTED;
+#endif
+}
+
+int lv_aic_set_mouse_provider(const lv_aic_input_provider_t * provider)
+{
+#if AIC_LVGL_USE_MOUSE
+    if (lv_aic_initialized) return LV_AIC_ERR_INVALID_STATE;
+    if (provider == NULL) {
+        lv_aic_mouse_provider.read_cb = NULL;
+        lv_aic_mouse_provider.user_data = NULL;
+    } else {
+        lv_aic_mouse_provider = *provider;
+    }
+    return LV_AIC_OK;
+#else
+    (void)provider;
+    return LV_AIC_ERR_UNSUPPORTED;
+#endif
+}
+
+lv_indev_t *lv_aic_get_encoder_indev(void)
+{
+#if AIC_LVGL_USE_ENCODER
+    return lv_aic_encoder_indev;
+#else
+    return NULL;
+#endif
+}
+
+lv_indev_t *lv_aic_get_mouse_indev(void)
+{
+#if AIC_LVGL_USE_MOUSE
+    return lv_aic_mouse_indev;
+#else
+    return NULL;
+#endif
 }
 
 #if AIC_LVGL_USE_MPP_DEC

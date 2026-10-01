@@ -8,7 +8,7 @@ phase documents are historical; source presence and switches are not board proof
 |---|---|---|
 | Integration | App-owned pins; LV_OS_CUSTOM RT events | Board regression after app/OS refactor |
 | Display | One framebuffer, DIRECT, PAN/VSync, software screen rotation | GE screen rotation, SPI/multi-display, extended cache/VSync tests |
-| Touch | Worker, mapping, diagnostics, optional recovery | Encoder/USB mouse are placeholders |
+| Touch / input | Touch worker, mapping, diagnostics and optional recovery; application-owned encoder and mouse providers create native LVGL indevs | Board-specific encoder/USB mouse sampling and board acceptance remain application scope |
 | MPP | FILE and RAW/RAW_ALPHA memory JPEG/PNG; RGB888/ARGB8888; CMA tracking | Resource success inferred from test ordering; direct parity log pending; AICP/BMP/fake and YUV remain absent |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
@@ -49,8 +49,8 @@ board confirmation remains required. See [font stage](font-stage.md).
    Retain complete native FreeType/resource probe logs for numeric acceptance.
 5. Validate the optional [native GIF stage](gif-stage.md) on board. Its decoding
    and lifecycle host coverage does not establish DMA/cache or panel behavior.
-6. Remaining priorities: whole-display GE rotation and required encoder/mouse
-   inputs; compressed vendor formats and media/widgets need separate scope.
+6. Remaining priorities: whole-display GE rotation, board input providers and
+   compressed vendor formats/media widgets as separate scopes.
 
 This sequence supersedes the old instruction to stop after 3C5. It does not
 waive hardware verification or authorize flashing.

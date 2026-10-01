@@ -7,8 +7,8 @@ set(LVGL_ROOT "" CACHE PATH "Separate LVGL v9.6.0 checkout")
 if (LVGL_ROOT STREQUAL "")
     message(FATAL_ERROR "Set -DLVGL_ROOT to an external LVGL v9.6.0 checkout")
 endif()
-
 option(AIC_BUILD_GIF_TESTS "Test native LVGL GIF widget" OFF)
+option(AIC_BUILD_INPUT_TESTS "Test application-owned encoder and mouse providers" OFF)
 option(AIC_BUILD_MANUAL_PREVIEW "Build native software reference screenshots" OFF)
 option(AIC_BUILD_FREETYPE_TESTS "Test native FreeType and glyph caches" OFF)
 option(AIC_BUILD_SDL_SMOKE "Build the interactive SDL2 smoke window" OFF)
@@ -16,7 +16,6 @@ option(AIC_BUILD_SDL_DEMOS "Build the official LVGL 9.6 demos for the SDL target
 if(AIC_BUILD_SDL_DEMOS AND NOT AIC_BUILD_SDL_SMOKE)
     message(FATAL_ERROR "AIC_BUILD_SDL_DEMOS requires AIC_BUILD_SDL_SMOKE=ON")
 endif()
-
 if(AIC_BUILD_SDL_DEMOS)
     set(LV_BUILD_CONF_PATH "${AIC_ROOT}/tests/host/lv_conf_sdl_demos.h" CACHE FILEPATH "" FORCE)
     set(CONFIG_LV_BUILD_DEMOS ON CACHE BOOL "" FORCE)
@@ -294,4 +293,23 @@ if(AIC_BUILD_GIF_TESTS)
         "${CMAKE_CURRENT_BINARY_DIR}/bulb.gif")
     set_tests_properties(lvgl_aic_gif_contract PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+endif()
+
+if(AIC_BUILD_INPUT_TESTS)
+    add_executable(lvgl_aic_input_contract input_contract.c
+        "${AIC_ROOT}/port/lv_aic.c"
+        "${AIC_ROOT}/port/lv_aic_indev.c"
+        "${AIC_ROOT}/port/lv_aic_input.c")
+    target_include_directories(lvgl_aic_input_contract PRIVATE
+        "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${AIC_ROOT}/port")
+    target_compile_definitions(lvgl_aic_input_contract PRIVATE
+        AIC_LVGL_BSP_MPP=0 AIC_LVGL_BSP_RTTHREAD=0
+        AIC_LVGL_USE_DISPLAY=1 AIC_LVGL_USE_TOUCH=0
+        AIC_LVGL_USE_ENCODER=1 AIC_LVGL_USE_MOUSE=1
+        AIC_LVGL_USE_MPP_DEC=0 AIC_LVGL_USE_GE2D=0)
+    target_link_libraries(lvgl_aic_input_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_input_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_input_contract COMMAND lvgl_aic_input_contract)
 endif()

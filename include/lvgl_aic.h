@@ -31,6 +31,16 @@ typedef enum {
     LV_AIC_ERR_UNSUPPORTED = -6,
 } lv_aic_result_t;
 
+/** Application-owned input sampler for optional encoder and mouse devices. */
+typedef void (*lv_aic_input_read_cb_t)(lv_indev_t * indev,
+                                       lv_indev_data_t * data,
+                                       void * user_data);
+
+typedef struct {
+    lv_aic_input_read_cb_t read_cb;
+    void * user_data;
+} lv_aic_input_provider_t;
+
 /**
  * @brief Initialize ArtInChip display and input integration.
  *
@@ -40,6 +50,10 @@ typedef enum {
  * @return LV_AIC_OK on success, otherwise a negative lv_aic_result_t.
  */
 int lv_aic_init(void);
+
+/** Register a sampler before lv_aic_init(); NULL clears the provider. */
+int lv_aic_set_encoder_provider(const lv_aic_input_provider_t * provider);
+int lv_aic_set_mouse_provider(const lv_aic_input_provider_t * provider);
 
 /**
  * @brief Deinitialize the ArtInChip integration.
@@ -55,6 +69,8 @@ lv_display_t *lv_aic_get_display(void);
 
 /** @brief Return the LVGL pointer input device, or NULL. */
 lv_indev_t *lv_aic_get_pointer_indev(void);
+lv_indev_t *lv_aic_get_encoder_indev(void);
+lv_indev_t *lv_aic_get_mouse_indev(void);
 
 #if AIC_LVGL_USE_MPP_DEC
 /** Component-owned decoded-image cache; call only from the serialized LVGL owner.

@@ -12,7 +12,7 @@ cmake --build build/host
 ctest --test-dir build/host --output-on-failure
 ```
 
-Without AIC_SDK_ROOT, four tests cover OS notifications, platform lifecycle,
+Without AIC_SDK_ROOT, five tests cover OS notifications, platform lifecycle,
 manual pages and disabled features. With SDK ABI headers, eight tests run.
 AIC BSP/board validation remains a separate pending step.
 
@@ -120,6 +120,14 @@ tests require background navigation to remain blocked, and both feature
 configurations check top-layer ownership after teardown.
 
 `lvgl_aic_manual_pages` now exercises the three-page smoke UI with a real pointer indev: the shared top navigation is fixed above every page, previous / next controls wrap in both directions, invalid requests are ignored, and teardown clears pending state. With FreeType enabled it also opens/closes the modal Fonts panel repeatedly and verifies the overlay prevents background navigation. Configure `AIC_BUILD_MANUAL_PREVIEW=ON` with `AIC_BUILD_FREETYPE_TESTS=ON` to emit software reference PPM/PNG frames under the host build's `preview/` directory. These frames validate layout and image placement; GE2D/MPP hardware behavior is not inferred from them.
+
+## Application-owned encoder and mouse contract
+
+Add -DAIC_BUILD_INPUT_TESTS=ON to build lvgl_aic_input_contract. It registers
+application callbacks before lv_aic_init(), verifies native encoder and pointer
+indev types and callback data, rejects provider changes after initialization,
+and checks teardown clears both indevs. The contract does not prescribe a board
+protocol; an application supplies the sampler and owns its device lifecycle.
 
 ## Native GIF contract
 
