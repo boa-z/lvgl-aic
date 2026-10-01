@@ -34,6 +34,7 @@ int main(void)
     lv_draw_image_dsc_t d;
     lv_image_decoder_dsc_t decoder = {0};
     lv_layer_t layer = {0};
+    lv_layer_t child_layer = {0};
     lv_draw_task_t task = {0};
     lv_area_t origin = {100, 200, 131, 231};
     lv_area_t clip = {101, 202, 120, 215};
@@ -48,6 +49,7 @@ int main(void)
                             output, sizeof(output)) == LV_RESULT_OK);
     layer.draw_buf = &dst;
     layer.buf_area = (lv_area_t){90, 190, 217, 317};
+    child_layer.draw_buf = &src;
     task.target_layer = &layer;
     task.type = LV_DRAW_TASK_TYPE_IMAGE;
     task.draw_dsc = &d;
@@ -124,6 +126,19 @@ int main(void)
         d.rotation = 0; d.tile = 1; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.tile = 0; d.recolor_opa = 128; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         assert(submits == before);
+    }
+    {
+        lv_draw_image_dsc_init(&d);
+        d.src = &child_layer;
+        d.scale_x = 384;
+        d.scale_y = 512;
+        d.rotation = 900;
+        d.opa = 128;
+        task.type = LV_DRAW_TASK_TYPE_LAYER;
+        assert(lv_draw_aic_ge2d_accepts_layer(&task));
+        d.scale_x = 4097;
+        assert(!lv_draw_aic_ge2d_accepts_layer(&task));
+        task.type = LV_DRAW_TASK_TYPE_IMAGE;
     }
     assert(!lv_aic_ge2d_scale_axis(32, 0, 3, 0, 512, &a));
     assert(!lv_aic_ge2d_scale_axis(32, -1, 8, 0, 384, &a));

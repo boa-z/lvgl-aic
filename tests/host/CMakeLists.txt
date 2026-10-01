@@ -9,6 +9,7 @@ if (LVGL_ROOT STREQUAL "")
 endif()
 option(AIC_BUILD_GIF_TESTS "Test native LVGL GIF widget" OFF)
 option(AIC_BUILD_INPUT_TESTS "Test application-owned encoder and mouse providers" OFF)
+option(AIC_BUILD_WIDGET_TESTS "Test native LVGL widget surface" OFF)
 option(AIC_BUILD_MANUAL_PREVIEW "Build native software reference screenshots" OFF)
 option(AIC_BUILD_FREETYPE_TESTS "Test native FreeType and glyph caches" OFF)
 option(AIC_BUILD_SDL_SMOKE "Build the interactive SDL2 smoke window" OFF)
@@ -312,4 +313,27 @@ if(AIC_BUILD_INPUT_TESTS)
         target_compile_options(lvgl_aic_input_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     endif()
     add_test(NAME lvgl_aic_input_contract COMMAND lvgl_aic_input_contract)
+endif()
+
+if(AIC_BUILD_WIDGET_TESTS)
+    target_compile_definitions(lvgl PUBLIC
+        LV_USE_CANVAS=1
+        LV_USE_CHART=1
+        LV_USE_DROPDOWN=1
+        LV_USE_ROLLER=1
+        LV_USE_SLIDER=1
+        LV_USE_TABLE=1
+        LV_USE_TABVIEW=1
+        LV_USE_TEXTAREA=1
+        LV_USE_TILEVIEW=1)
+    add_executable(lvgl_aic_widget_contract widget_contract.c)
+    target_compile_definitions(lvgl_aic_widget_contract PRIVATE
+        LV_USE_CANVAS=1 LV_USE_CHART=1 LV_USE_DROPDOWN=1 LV_USE_ROLLER=1
+        LV_USE_SLIDER=1 LV_USE_TABLE=1 LV_USE_TABVIEW=1 LV_USE_TEXTAREA=1
+        LV_USE_TILEVIEW=1)
+    target_link_libraries(lvgl_aic_widget_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_widget_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_widget_contract COMMAND lvgl_aic_widget_contract)
 endif()

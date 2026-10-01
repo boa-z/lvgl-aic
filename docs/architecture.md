@@ -47,9 +47,9 @@ partial ARGB8888 targets to software. Its executor rechecks address/geometry
 and intersects the saved task clip with the layer buffer before cache/DMA work.
 
 IMAGE handles RGB/ARGB/XRGB, alpha, bounded scaling and right-angle rotation
-plus scale. LAYER has narrower transforms and needs accessible source memory;
-ordinary D13x heap sources use software. No global layer allocator or LVGL
-cache handler is replaced. Cache maintenance is region-local.
+plus scale. LAYER reuses the same bounded scaler/rotator when the child layer
+buffer is accessible; ordinary D13x heap sources use software. No global layer
+allocator or LVGL cache handler is replaced. Cache maintenance is region-local.
 
 Native FreeType is owned by upstream lv_init/lv_deinit. Applications own font
 instances, fallback chains and all objects/styles referring to them. The optional
@@ -67,3 +67,9 @@ widgets before closing their filesystem/display. Its software-decoded canvas is
 separate from MPP's compressed-image CMA/cache lifetime; no legacy SDK GIF hooks
 are imported. The manual shell only queues requests for the UI timer to handle.
 See [GIF ownership and board gate](gif-stage.md).
+
+The common upstream widget surface remains application-owned. The host widget
+contract enables canvas, chart, dropdown, roller, slider, table, tabview,
+textarea and tileview together and checks construction, basic state mutation,
+lookup and teardown. Vendor camera/player/video-window controls remain outside
+this component and should be supplied by the application.

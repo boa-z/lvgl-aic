@@ -6,8 +6,9 @@
  * IMAGE: right-angle rotated, untiled, unrecolored RGB copies/scales -
  * the blit blends, so a partial opacity is supported rather than declined.
  * LAYER: the same blit, fed from a child layer's buffer instead of a decoded
- * image. Everything else is declined, and a declined task simply stays with the
- * software renderer. The unit runs synchronously on the dispatching thread -
+ * image, including bounded scaling and right-angle rotation. Everything else
+ * is declined, and a declined task simply stays with the software renderer.
+ * The unit runs synchronously on the dispatching thread -
  * there is no render thread, no task queue and no saved layer/clip state, which
  * is why it does not reuse lv_draw_sw_unit_t the way the legacy port did.
  *
@@ -93,13 +94,16 @@ static bool lv_draw_aic_ge2d_accepts_dst(const lv_draw_task_t *task)
 /**
  * True when @p dsc carries a supported LAYER transform.
  *
- * LAYER accepts right-angle rotation but leaves scaling to software.
+ * LAYER accepts the same bounded scale and right-angle rotation as IMAGE.
  */
 static bool lv_draw_aic_ge2d_dsc_is_supported_transform(const lv_draw_image_dsc_t *dsc)
 {
     return (dsc->rotation == 0 || dsc->rotation == 900 ||
             dsc->rotation == 1800 || dsc->rotation == 2700) &&
-           dsc->scale_x == LV_SCALE_NONE && dsc->scale_y == LV_SCALE_NONE &&
+           dsc->scale_x >= LV_SCALE_NONE / 16 &&
+           dsc->scale_x <= LV_SCALE_NONE * 16 &&
+           dsc->scale_y >= LV_SCALE_NONE / 16 &&
+           dsc->scale_y <= LV_SCALE_NONE * 16 &&
            dsc->skew_x == 0 && dsc->skew_y == 0;
 }
 
@@ -241,10 +245,7 @@ static bool lv_draw_aic_ge2d_accepts_layer(const lv_draw_task_t *task)
         return false;
     }
 
-    /* A transform needs the scaler or the rotator, which this step does not
-     * drive. This is the common case for a transformed widget, and it is
-     * deliberately left to the software renderer for now. */
-        if (!lv_draw_aic_ge2d_dsc_is_supported_transform(dsc)) {
+    if (!lv_draw_aic_ge2d_dsc_is_supported_transform(dsc)) {
         return false;
     }
 

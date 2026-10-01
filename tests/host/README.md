@@ -139,3 +139,13 @@ inputs, 20 widget cycles plus 20 panel cycles and balanced file handles.
 With SDK headers and FreeType enabled the combined suite contains ten CTests.
 This is software rendering/lifecycle evidence, not board or heap-profile proof.
 See [GIF stage](../../docs/gif-stage.md) for the optional firmware and shell gate.
+
+## Native widget contract
+
+Add -DAIC_BUILD_WIDGET_TESTS=ON to build lvgl_aic_widget_contract. The
+profile enables the upstream canvas, chart, dropdown, roller, slider, table,
+tabview, textarea and tileview widgets together, then verifies construction,
+basic state setters/getters, selection, text storage and teardown. This proves
+the application-owned third-party build can expose the native widget surface;
+it does not claim board rendering/input acceptance or provide vendor
+camera/player/video-window adapters.
