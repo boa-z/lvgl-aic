@@ -69,6 +69,12 @@ glyph cache is count-bounded per cache, not a global byte budget. See
 
 See [capabilities](capabilities.md) and [validation](validation.md).
 
+The optional SDK image carousel is compiled from component-owned widgets/.
+Its public header exposes functions and the class symbol; instance state stays
+private. LVGL class internals are accessed through lvgl_aic_private.h, while
+layout/image/scroll operations use current public APIs. See
+[image roller](image-roller-stage.md) for source ownership and API differences.
+
 Native GIF is an optional upstream widget selected by AIC_LVGL_USE_GIF. The
 application owns its objects, source strings/descriptors and borrowed RAW bytes.
 Each live file-backed GIF retains its file until replacement/deletion. Delete

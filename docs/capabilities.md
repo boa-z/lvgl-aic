@@ -21,6 +21,11 @@ phase documents are historical; source presence and switches are not board proof
 | Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
 | Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu and vendor camera/player/video-window remain outside this profile |
 
+SDK image roller is now optional via AIC_LVGL_USE_IMG_ROLLER: application-owned
+carousel, looping, direction, zoom and active selection. Host lifecycle/layout
+contracts pass; board acceptance is pending. See [image roller](image-roller-stage.md).
+SDK swipe_v1 and media widgets remain missing.
+
 Declined drawing normally stays with software. Unsupported compressed resources
 do not imply another decoder can read them. Whole-screen rotation and IMAGE
 rotation are different paths.

@@ -1,5 +1,9 @@
 # Host smoke test
 
+`AIC_BUILD_IMG_ROLLER_TESTS=ON` adds the adapted SDK carousel contract. It
+exercises production code with real layout, scrolling, animation and repeated
+teardown. See [image roller stage](../../docs/image-roller-stage.md).
+
 This test is intentionally separate from the D50T product application. It
 builds the pinned LVGL checkout supplied by the caller, compiles the
 `lvgl-aic` public API and platform sources, and runs a small platform-only UI

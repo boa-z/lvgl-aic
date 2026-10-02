@@ -101,4 +101,9 @@ config AIC_LVGL_MANUAL_TEST
     default n
     depends on AIC_LVGL_PORT
 
+config AIC_LVGL_USE_IMG_ROLLER
+    bool "Enable ArtInChip image roller adapted for LVGL 9.6"
+    default n
+    depends on AIC_LVGL_PORT
+
 endmenu

@@ -47,6 +47,8 @@ group = DefineGroup('Application-LVGL-9.6', src, depend=['AIC_LVGL_PORT'],
 Env.AppendUnique(CCFLAGS=['-include', 'lvgl_aic_build_config.h'])
 
 src = Glob('port/*.c') + Glob('image/mpp/*.c') + Glob('common/*.c') + Glob('draw/ge2d/*.c')
+if GetDepend('AIC_LVGL_USE_IMG_ROLLER'):
+    src += Glob('widgets/*.c')
 if GetDepend('AIC_LVGL_MANUAL_TEST'):
     src += Glob('tests/manual/*.c')
 includes += [os.path.join(cwd, 'common'), os.path.join(cwd, 'image', 'mpp'),

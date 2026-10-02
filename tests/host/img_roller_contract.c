@@ -1,0 +1,91 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#include <assert.h>
+#include "lv_img_roller.h"
+
+static void advance(void)
+{
+    for (int i = 0; i < 60; i++) {
+        lv_tick_inc(20);
+        lv_timer_handler();
+    }
+}
+
+static void delete_on_change(lv_event_t *event)
+{
+    bool *deleted = lv_event_get_user_data(event);
+    *deleted = true;
+    lv_obj_delete(lv_event_get_target_obj(event));
+}
+
+int main(void)
+{
+    static uint8_t pixels[80 * 80 * 4];
+    lv_image_dsc_t img = {0};
+    img.header.magic = LV_IMAGE_HEADER_MAGIC;
+    img.header.cf = LV_COLOR_FORMAT_ARGB8888;
+    img.header.w = img.header.h = 80;
+    img.header.stride = 320;
+    img.data_size = sizeof(pixels);
+    img.data = pixels;
+    lv_init();
+    lv_display_t *display = lv_display_create(320, 240);
+    assert(display);
+    for (int cycle = 0; cycle < 10; cycle++) {
+        lv_obj_t *roller = lv_img_roller_create(lv_screen_active());
+        assert(roller);
+        lv_obj_set_size(roller, 160, 120);
+        lv_img_roller_ready(roller);
+        assert(lv_img_roller_child_count(roller) == 0);
+        assert(lv_img_roller_get_child_by_id(roller, 0) == NULL);
+        lv_obj_t *items[5];
+        for (int i = 0; i < 5; i++) {
+            items[i] = lv_img_roller_add_child(roller, &img);
+            assert(items[i]);
+        }
+        lv_obj_update_layout(roller);
+        assert(lv_img_roller_child_count(roller) == 5);
+        for (int i = 0; i < 5; i++) assert(lv_img_roller_get_child_by_id(roller, i) == items[i]);
+        assert(lv_img_roller_get_child_by_id(roller, 5) == NULL);
+        lv_img_roller_set_loop_mode(roller, LV_ROLL_LOOP_OFF);
+        lv_img_roller_set_active(roller, 2, LV_ANIM_OFF);
+        advance();
+        assert(lv_img_get_active_id(roller) == 2);
+        lv_img_roller_set_active(roller, 99, LV_ANIM_OFF);
+        assert(lv_img_get_active_id(roller) == 2);
+        lv_img_roller_set_transform_ratio(roller, 256);
+        lv_img_roller_ready(roller);
+        for (int i = 0; i < 5; i++) assert(lv_image_get_scale_x(items[i]) == 256);
+        lv_img_roller_set_direction(roller, LV_DIR_VER);
+        lv_obj_update_layout(roller);
+        lv_img_roller_set_active(roller, 3, LV_ANIM_ON);
+        advance();
+        assert(lv_img_get_active_id(roller) == 3);
+        lv_img_roller_set_direction(roller, LV_DIR_HOR);
+        lv_img_roller_set_loop_mode(roller, LV_ROLL_LOOP_ON);
+        lv_obj_update_layout(roller);
+        lv_obj_scroll_to_x(roller, -20, LV_ANIM_OFF);
+        advance();
+        for (int i = 0; i < 5; i++) assert(lv_img_roller_get_child_by_id(roller, i) == items[i]);
+        /* Delete with an animation in flight. */
+        lv_img_roller_set_active(roller, 1, LV_ANIM_ON);
+        lv_obj_delete(roller);
+        advance();
+    }
+    {
+        bool deleted = false;
+        lv_obj_t *roller = lv_img_roller_create(lv_screen_active());
+        lv_obj_set_size(roller, 160, 120);
+        lv_img_roller_set_loop_mode(roller, LV_ROLL_LOOP_OFF);
+        for (int i = 0; i < 5; i++) assert(lv_img_roller_add_child(roller, &img));
+        lv_obj_update_layout(roller);
+        lv_img_roller_set_active(roller, 2, LV_ANIM_OFF);
+        advance();
+        lv_obj_add_event_cb(roller, delete_on_change, LV_EVENT_VALUE_CHANGED, &deleted);
+        lv_img_roller_set_active(roller, 3, LV_ANIM_ON);
+        advance();
+        assert(deleted);
+    }
+    lv_display_delete(display);
+    lv_deinit();
+    return 0;
+}
