@@ -244,6 +244,50 @@ int main(void)
         task.type = LV_DRAW_TASK_TYPE_IMAGE;
     }
     assert(!lv_aic_ge2d_scale_axis(32, 0, 3, 0, 512, &a));
+    {
+        lv_image_colorkey_t key = {0};
+        key.low = key.high = lv_color_make(255, 0, 255);
+        lv_draw_image_dsc_init(&d);
+        d.src = &src;
+        d.colorkey = &key;
+        d.antialias = 0;
+        d.opa = 128;
+        task.area = origin;
+        task.clip_area = clip;
+        for (unsigned f = 1; f < sizeof(formats) / sizeof(formats[0]); f++) {
+            lv_draw_aic_ge2d_outcome_t outcome;
+            assert(lv_draw_buf_init(&src, 32, 32, formats[f], 128,
+                                   pixels, sizeof(pixels)) == LV_RESULT_OK);
+            assert(lv_draw_aic_ge2d_accepts_image(&task));
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+            assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_ENGINE);
+            assert(captured.ctrl.ck_en == 1 && captured.ctrl.ck_value == 0xff00ff);
+            assert(captured.ctrl.alpha_en == 1 && captured.ctrl.src_global_alpha == 128);
+            lv_image_cache_drop(&src);
+        }
+        key.high = lv_color_make(255, 1, 255);
+        assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        key.high = key.low;
+        d.scale_x = 512;
+        assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        d.scale_x = LV_SCALE_NONE;
+        d.rotation = 175;
+        assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        d.rotation = 900;
+        assert(lv_draw_aic_ge2d_accepts_image(&task));
+        d.rotation = 0;
+        assert(lv_draw_buf_init(&src,32,32,LV_COLOR_FORMAT_RGB565,128,pixels,sizeof(pixels)) == LV_RESULT_OK);
+        int before = submits;
+        assert(!lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&clip));
+        assert(submits == before);
+        assert(lv_draw_buf_init(&src,32,32,LV_COLOR_FORMAT_ARGB8888,128,pixels,sizeof(pixels)) == LV_RESULT_OK);
+        d.antialias = 1;
+        assert(!lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&clip));
+        assert(submits == before);
+        d.colorkey = NULL;
+        assert(lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&clip));
+        assert(captured.ctrl.ck_en == 0);
+    }
     assert(!lv_aic_ge2d_scale_axis(32, -1, 8, 0, 384, &a));
     assert(!lv_aic_ge2d_scale_axis(32, 60, 8, 0, 512, &a));
     assert(!lv_aic_ge2d_scale_axis(32, INT_MAX, INT_MAX, INT_MIN, 16, &a));

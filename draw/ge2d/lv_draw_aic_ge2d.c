@@ -112,9 +112,9 @@ static bool lv_draw_aic_ge2d_dsc_is_supported_transform(const lv_draw_image_dsc_
 /**
  * True when @p dsc needs nothing beyond a straight copy.
  *
- * Shared by IMAGE and LAYER: neither the GE2D control block nor the blit
- * descriptor carries a recolor, a mask, a rounded clip, a color key or a blend
- * rule, so any one of them means the software renderer has to take the task.
+ * Shared by IMAGE and LAYER: recolor, masks, rounded clips and non-normal
+ * blends remain software work. BITBLT supports an exact RGB color key under
+ * the transform restrictions below.
  * Keeping the list here is what stops the two task types from drifting apart.
  */
 static bool lv_draw_aic_ge2d_dsc_is_plain(const lv_draw_image_dsc_t *dsc)
@@ -126,7 +126,12 @@ static bool lv_draw_aic_ge2d_dsc_is_plain(const lv_draw_image_dsc_t *dsc)
         return false;
     }
     if (dsc->colorkey != NULL) {
-        return false;
+        /* GE compares one RGB value; LVGL also supports a component range.
+         * Filtering before keying changes matches, so keep scaled/ROTATE
+         * requests on software. The executor checks the decoded format. */
+        if (!lv_color_eq(dsc->colorkey->low, dsc->colorkey->high) ||
+            dsc->scale_x != LV_SCALE_NONE || dsc->scale_y != LV_SCALE_NONE ||
+            dsc->rotation % 900 != 0) return false;
     }
 
     return dsc->blend_mode == LV_BLEND_MODE_NORMAL;

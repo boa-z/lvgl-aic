@@ -239,6 +239,13 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     /* Acceptance already checked the destination, but the source format is
      * only known after the decode, so it has to be re-checked here. */
     src_cf = (lv_color_format_t)src->header.cf;
+    if (draw_dsc->colorkey != NULL &&
+        (src_cf == LV_COLOR_FORMAT_RGB565 ||
+         (src_cf == LV_COLOR_FORMAT_ARGB8888 && draw_dsc->antialias))) {
+        /* RGB565 expansion and premultiplied antialias filtering can change
+         * the comparison space. Preserve LVGL's key semantics in software. */
+        return false;
+    }
     if (!lv_aic_pixel_format_is_ge2d_src(src_cf)) {
         LV_LOG_WARN("GE2D cannot read source format %d; falling back", (int)src_cf);
         return false;
@@ -439,6 +446,10 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         blt.ctrl.src_global_alpha = draw_dsc->opa;
     }
     blt.ctrl.flags = rotation_flags;
+    if (draw_dsc->colorkey != NULL) {
+        blt.ctrl.ck_en = 1U;
+        blt.ctrl.ck_value = lv_color_to_u32(draw_dsc->colorkey->low) & 0xffffffU;
+    }
     ge = lv_draw_aic_ge2d_device();
     if (ge == NULL) {
         LV_LOG_ERROR("GE2D device is not open");

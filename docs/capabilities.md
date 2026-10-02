@@ -1,7 +1,7 @@
 # Current capabilities and SDK gaps
 
-Maintained inventory, 2026-10-01. Completed port stage: d26f0b0; subsequent GIF
-development on codex/sdk-basic-capabilities. Comparison: the SDK's ArtInChip LVGL 9.1.0 implementation. Earlier
+Maintained inventory, 2026-10-03. Development branch: codex/sdk-basic-capabilities.
+Comparison: the SDK's ArtInChip LVGL 9.1.0 implementation. Earlier
 phase documents are historical; source presence and switches are not board proof.
 
 | Area | Implementation | Remaining scope |
@@ -12,7 +12,7 @@ phase documents are historical; source presence and switches are not board proof
 | MPP | FILE and RAW/RAW_ALPHA memory JPEG/PNG; RGB888/ARGB8888; CMA tracking | Resource success inferred from test ordering; direct parity log pending; AICP/BMP/fake and YUV remain absent |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
-| GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation | Arbitrary-angle plus scale, YUV, tiling/recolor/masks |
+| GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, arbitrary-angle plus scale, YUV, tiling/recolor/masks |
 | GE scale | Nominal 1/16..16; pivot/clip/per-axis handling | Small/unsafe geometry and D13x split interval fall back |
 | GE LAYER | Plain composition, bounded 1/16..16 scale with right-angle rotation, and unscaled arbitrary-angle rotation when the child buffer is accessible | Ordinary D13x heap source and ROTATE regions outside 4..4096 fall back; arbitrary-angle plus scale, YUV and general HW layers remain absent |
 | Scheduling | Synchronous, error/task counters, bounded refresh timing | Async work and paired GE ON/OFF board timing |

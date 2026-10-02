@@ -90,7 +90,9 @@ and executor contracts. No SDK libraries or physical hardware are required.
   supported formats and injected failures. Arbitrary LAYER rotations exercise
   all four source formats, native decoding, narrow-clip/address fallback and
   empty child layers. All 3600 tenth-degree coefficients are checked against
-  a floating-point oracle (less than 2 Q12 units of error).
+  a floating-point oracle (less than 2 Q12 units of error). Exact RGB color-key
+  descriptors include alpha and key-disable checks; ranges, filtered transforms,
+  RGB565 and antialiased ARGB8888 remain covered by rejection/fallback checks.
 
 Hardware calls and cache operations are mocked. These tests do not prove pixel
 arithmetic, real cache coherency, DMA completion, panel output or performance.

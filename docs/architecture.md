@@ -53,6 +53,13 @@ the same bounded scaler/rotator, including unscaled arbitrary angles, when the c
 ordinary D13x heap sources use software. No global layer allocator or LVGL
 cache handler is replaced. Cache maintenance is region-local.
 
+BITBLT also maps LVGL single-color keys (low == high) to the SDK RGB comparator.
+Ranges, scaling and arbitrary rotation remain software work. After decode,
+RGB565 and antialiased ARGB8888 are declined because their expanded or
+premultiplied comparison space needs separate validation. RGB888/XRGB8888 and
+non-antialiased ARGB8888 retain global/per-pixel alpha with the key enabled.
+Host contracts verify command descriptors and fallback, not hardware pixel output.
+
 Native FreeType is owned by upstream lv_init/lv_deinit. Applications own font
 instances, fallback chains and all objects/styles referring to them. The optional
 SDK FreeType library supplies the rasterizer; no legacy lvgl-ui adapter is used.
