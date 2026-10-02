@@ -1,6 +1,7 @@
 # Build and editor artifacts
 build/
 out/
+/output/
 .vscode/
 *.o
 *.obj
