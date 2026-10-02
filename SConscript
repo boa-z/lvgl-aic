@@ -9,7 +9,9 @@ if not GetDepend('AIC_LVGL_PORT'):
     Return('group')
 if GetDepend('LPKG_USING_LVGL'):
     raise RuntimeError('Application LVGL cannot be combined with the SDK legacy LVGL package')
-if not GetDepend('LPKG_MPP') or not GetDepend('KERNEL_RTTHREAD'):
+# 部分 SDK 版本只导出 RT_USING_EVENT，不导出 KERNEL_RTTHREAD 别名；事件
+# 同步接口已由 RT-Thread 提供，不能因别名缺失误拒绝应用级 LVGL。
+if not GetDepend('LPKG_MPP') or not (GetDepend('KERNEL_RTTHREAD') or GetDepend('RT_USING_EVENT')):
     raise RuntimeError('lvgl-aic requires the RT-Thread and MPP platform interfaces')
 if not GetDepend('RT_USING_EVENT'):
     raise RuntimeError('Application LVGL synchronization requires RT_USING_EVENT')
