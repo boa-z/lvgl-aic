@@ -49,7 +49,7 @@ and intersects the saved task clip with the layer buffer before cache/DMA work.
 IMAGE handles RGB/ARGB/XRGB, alpha, bounded scaling and right-angle rotation
 plus scale. Unscaled arbitrary angles use the SDK's mpp_ge_rotate path with
 the same source/global alpha rules and clipped destination crop. LAYER reuses
-the same bounded scaler/rotator when the child layer buffer is accessible;
+the same bounded scaler/rotator, including unscaled arbitrary angles, when the child layer buffer is accessible;
 ordinary D13x heap sources use software. No global layer allocator or LVGL
 cache handler is replaced. Cache maintenance is region-local.
 

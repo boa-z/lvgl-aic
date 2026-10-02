@@ -81,11 +81,14 @@ static bool s_blit_failed;
 
 static int lv_draw_aic_ge2d_angle_2_12(int32_t angle, bool cosine)
 {
-    int32_t degrees = (angle + 5) / 10;
-    int32_t value = cosine ? lv_trigo_cos((int16_t)degrees) :
-                            lv_trigo_sin((int16_t)degrees);
+    /* LVGL angles have tenths-of-degree precision. Interpolate the native
+     * degree table before converting Q15 to GE Q12; do not round the angle. */
+    int32_t degrees = angle / 10 + (cosine ? 90 : 0);
+    int32_t remainder = angle % 10;
+    int32_t value = lv_trigo_sin((int16_t)degrees) * (10 - remainder) +
+                    lv_trigo_sin((int16_t)(degrees + 1)) * remainder;
 
-    return (value * 4096) / 32767;
+    return value / 80;
 }
 
 static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
@@ -110,11 +113,15 @@ static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
     struct mpp_ge *ge;
     int32_t angle;
 
-    if (src_area.x2 < 0 || src_area.y2 < 0 ||
+    /* SDK check_format_and_size rejects either rectangle outside 4..4096.
+     * Decline before cache/submission so narrow clips can render in software. */
+    if (src->header.w < 4 || src->header.h < 4 ||
+        src->header.w > 4096 || src->header.h > 4096 ||
         dst_area.x1 < 0 || dst_area.y1 < 0 ||
         dst_area.x2 >= (int32_t)dst->header.w ||
         dst_area.y2 >= (int32_t)dst->header.h ||
-        lv_area_get_width(&dst_area) <= 0 || lv_area_get_height(&dst_area) <= 0) {
+        lv_area_get_width(&dst_area) < 4 || lv_area_get_height(&dst_area) < 4 ||
+        lv_area_get_width(&dst_area) > 4096 || lv_area_get_height(&dst_area) > 4096) {
         return false;
     }
 

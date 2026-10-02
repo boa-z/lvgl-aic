@@ -93,16 +93,15 @@ static bool lv_draw_aic_ge2d_accepts_dst(const lv_draw_task_t *task)
 }
 
 /**
- * True when @p dsc carries a supported LAYER transform.
+ * True when @p dsc carries a supported IMAGE or LAYER transform.
  *
- * LAYER accepts bounded scale and right-angle rotation. Arbitrary-angle IMAGE
- * rotation is intentionally kept out of the child-layer path until it has its
- * own layer-buffer acceptance contract.
+ * Arbitrary angles use ROTATE without scaling; orthogonal transforms use BITBLT.
  */
 static bool lv_draw_aic_ge2d_dsc_is_supported_transform(const lv_draw_image_dsc_t *dsc)
 {
-    return (dsc->rotation == 0 || dsc->rotation == 900 ||
-            dsc->rotation == 1800 || dsc->rotation == 2700) &&
+    return ((dsc->rotation == 0 || dsc->rotation == 900 ||
+             dsc->rotation == 1800 || dsc->rotation == 2700) ||
+            (dsc->scale_x == LV_SCALE_NONE && dsc->scale_y == LV_SCALE_NONE)) &&
            dsc->scale_x >= LV_SCALE_NONE / 16 &&
            dsc->scale_x <= LV_SCALE_NONE * 16 &&
            dsc->scale_y >= LV_SCALE_NONE / 16 &&
@@ -184,18 +183,8 @@ static bool lv_draw_aic_ge2d_accepts_image(const lv_draw_task_t *task)
         return false;
     }
 
-    /* Phase 3C2/3C6: bounded RGB scale, plus arbitrary-angle IMAGE rotation
-     * when no scaler is requested. AIC_GE_ROTATE has no combined scaler path. */
-    {
-        int32_t rotation = dsc->rotation % 3600;
-        if (rotation < 0) rotation += 3600;
-        if ((rotation % 900 != 0 &&
-             (dsc->scale_x != LV_SCALE_NONE || dsc->scale_y != LV_SCALE_NONE)) ||
-            dsc->skew_x != 0 || dsc->skew_y != 0 ||
-            dsc->scale_x < LV_SCALE_NONE / 16 || dsc->scale_x > LV_SCALE_NONE * 16 ||
-            dsc->scale_y < LV_SCALE_NONE / 16 || dsc->scale_y > LV_SCALE_NONE * 16) {
-            return false;
-        }
+    if (!lv_draw_aic_ge2d_dsc_is_supported_transform(dsc)) {
+        return false;
     }
 
     /* A tiled image is many blits with its own helper; not this step. */

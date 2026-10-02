@@ -87,7 +87,10 @@ and executor contracts. No SDK libraries or physical hardware are required.
   address/buffer guards; fillrect/emit/sync failure propagation.
 - lvgl_aic_ge2d_scale_contract: real image evaluator/executor, LVGL decoder,
   bounded scale, right-angle and arbitrary-angle rotation descriptors, clipping,
-  supported formats and injected failures.
+  supported formats and injected failures. Arbitrary LAYER rotations exercise
+  all four source formats, native decoding, narrow-clip/address fallback and
+  empty child layers. All 3600 tenth-degree coefficients are checked against
+  a floating-point oracle (less than 2 Q12 units of error).
 
 Hardware calls and cache operations are mocked. These tests do not prove pixel
 arithmetic, real cache coherency, DMA completion, panel output or performance.

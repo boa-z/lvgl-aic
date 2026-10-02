@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
 /* Native SDK ulong is pointer-sized; Windows unsigned long is not. */
 #define ulong uintptr_t
 #include "../../draw/ge2d/lv_draw_aic_ge2d.c"
@@ -58,6 +59,13 @@ int main(void)
     task.draw_dsc = &d;
     g_ge2d_dev = mpp_ge_open();
     g_ge2d_ready = true;
+    /* Independent floating-point oracle for every LVGL tenth of a degree.
+     * Integer-degree rounding used to lose up to 36 Q12 units here. */
+    for (int angle = 0; angle < 3600; angle++) {
+        double radians = angle * 3.14159265358979323846 / 1800.0;
+        assert(fabs(lv_draw_aic_ge2d_angle_2_12(angle, false) - sin(radians) * 4096) < 2);
+        assert(fabs(lv_draw_aic_ge2d_angle_2_12(angle, true) - cos(radians) * 4096) < 2);
+    }
     for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); f++) {
         assert(lv_draw_buf_init(&src, 32, 32, formats[f], 128, pixels, sizeof(pixels)) == LV_RESULT_OK);
         decoder.decoded = &src;
@@ -178,6 +186,60 @@ int main(void)
         task.type = LV_DRAW_TASK_TYPE_LAYER;
         assert(lv_draw_aic_ge2d_accepts_layer(&task));
         d.scale_x = 4097;
+        assert(!lv_draw_aic_ge2d_accepts_layer(&task));
+        d.scale_x = d.scale_y = LV_SCALE_NONE;
+        d.rotation = 175;
+        d.pivot = (lv_point_t){16, 16};
+        task.area = origin;
+        task.clip_area = clip;
+        assert(lv_draw_aic_ge2d_accepts_layer(&task));
+        for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); f++) {
+            lv_draw_aic_ge2d_outcome_t outcome;
+            int before = rotate_submits;
+            assert(lv_draw_buf_init(&src, 32, 32, formats[f], 128,
+                                   pixels, sizeof(pixels)) == LV_RESULT_OK);
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+            assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_ENGINE);
+            assert(rotate_submits == before + 1);
+            assert(captured_rotation.src_buf.stride[0] == 128);
+            assert(captured_rotation.dst_buf.crop.x == 11);
+            assert(captured_rotation.dst_rot_center.x == 15);
+            assert(captured_rotation.dst_rot_center.y == 13);
+            assert(captured_rotation.angle_sin >= 1230 && captured_rotation.angle_sin <= 1232);
+            assert(captured_rotation.ctrl.src_global_alpha == 128);
+            lv_image_cache_drop(&src);
+        }
+        for (fail_at = 1; fail_at <= 3; fail_at++) {
+            lv_draw_aic_ge2d_outcome_t outcome;
+            rotate_fail = fail_at == 1;
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
+            assert(outcome != LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+        }
+        rotate_fail = fail_at = 0;
+        {
+            lv_draw_aic_ge2d_outcome_t outcome;
+            int before = rotate_submits;
+            /* Narrow destination clips fall back BEFORE GE submission. */
+            task.clip_area = (lv_area_t){101, 203, 103, 215};
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+            assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+            assert(rotate_submits == before);
+            task.clip_area = clip;
+            allowed_src = NULL;
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+            assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+            assert(rotate_submits == before);
+            allowed_src = pixels;
+            child_layer.draw_buf = NULL;
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+            assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING);
+            child_layer.draw_buf = &src;
+            assert(rotate_submits == before);
+        }
+        d.scale_x = 384;
+        assert(!lv_draw_aic_ge2d_accepts_layer(&task));
+        d.scale_x = LV_SCALE_NONE;
+        d.skew_x = 1;
         assert(!lv_draw_aic_ge2d_accepts_layer(&task));
         task.type = LV_DRAW_TASK_TYPE_IMAGE;
     }

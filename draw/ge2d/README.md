@@ -9,8 +9,9 @@ The synchronous backend evaluates FILL, IMAGE and LAYER, not only Phase 3A fills
 - IMAGE: RGB565/RGB888/ARGB8888/XRGB8888, global/per-pixel alpha, bounded scales,
   right-angle rotation and unscaled arbitrary-angle rotation. Arbitrary-angle
   plus scale remains software work.
-- LAYER: plain composition plus bounded scale/right-angle rotation. Ordinary
-  D13x heap buffers fall back because GE cannot address them.
+- LAYER: plain composition, bounded scale/right-angle rotation and unscaled
+  arbitrary angles. Ordinary D13x heap buffers fall back because GE cannot
+  address them. ROTATE requires source and clipped destination sizes 4..4096.
 - YUV, masks, recolor and tiling stay software work. Small or unsafe scale
   regions and D13x split-risk cases fall back.
 
