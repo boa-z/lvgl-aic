@@ -10,7 +10,9 @@ static struct ge_fillrect captured;
 static lv_area_t cache_area;
 static int submits, emits, syncs, caches, fail_at;
 static const void *allowed_dst;
-bool lv_draw_aic_ge2d_yuv_faulted(void) { return false; }
+static bool yuv_fault;
+static int image_calls;
+bool lv_draw_aic_ge2d_yuv_faulted(void) { return yuv_fault; }
 struct mpp_ge *mpp_ge_open(void) { return (struct mpp_ge *)(uintptr_t)1; }
 void mpp_ge_close(struct mpp_ge *ge) { (void)ge; }
 int mpp_ge_fillrect(struct mpp_ge *ge, struct ge_fillrect *f)
@@ -26,7 +28,45 @@ bool lv_draw_aic_ge2d_dst_format_supported(lv_color_format_t cf)
 void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *b, const lv_area_t *a)
 { (void)b; cache_area = *a; caches++; }
 lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *t, lv_draw_aic_ge2d_outcome_t *o)
-{ (void)t; (void)o; return LV_RESULT_INVALID; }
+{ (void)t; (void)o; image_calls++; return LV_RESULT_INVALID; }
+static void dispatcher_failure_contract(lv_layer_t *layer)
+{
+    for (unsigned fatal = 0; fatal < 2; fatal++) {
+        lv_draw_aic_ge2d_unit_t unit = {0};
+        lv_draw_task_t *task = lv_draw_add_task(layer, &layer->buf_area,
+                                               LV_DRAW_TASK_TYPE_IMAGE);
+        assert(task != NULL);
+        task->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
+        yuv_fault = fatal != 0;
+        image_calls = 0;
+        lv_draw_aic_ge2d_stats_reset();
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == 1);
+        assert(image_calls == 1 && g_ge2d_stats.errors == 1);
+        assert(g_ge2d_stats.image_completed == 0);
+        assert(task->draw_unit == &unit.base_unit);
+        assert(task->state == (fatal ? LV_DRAW_TASK_STATE_IN_PROGRESS :
+                                      LV_DRAW_TASK_STATE_FAILED));
+        assert(unit.task_act == (fatal ? task : NULL));
+        lv_draw_task_t *queued = NULL;
+        if (fatal) {
+            queued = lv_draw_add_task(layer, &layer->buf_area, LV_DRAW_TASK_TYPE_IMAGE);
+            assert(queued != NULL);
+            queued->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
+        }
+        for (unsigned retry = 0; retry < 3; retry++) {
+            assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == LV_DRAW_UNIT_IDLE);
+            assert(image_calls == 1 && g_ge2d_stats.errors == 1);
+            assert(layer->draw_buf->data == allowed_dst);
+            if (queued) assert(queued->state == LV_DRAW_TASK_STATE_WAITING);
+        }
+        /* Only this synchronous mock can prove no DMA is pending. Never
+         * release a quarantined production task this way. */
+        layer->draw_task_head = NULL;
+        lv_free(queued);
+        lv_free(task);
+    }
+    yuv_fault = false;
+}
 static void reset_calls(void) { submits = emits = syncs = caches = 0; }
 static void rejected(lv_draw_task_t *t)
 {
@@ -133,5 +173,6 @@ int main(void)
     assert(submits == 0 && caches == 0);
     allowed_dst = output;
     task.type = LV_DRAW_TASK_TYPE_IMAGE; rejected(&task); rejected(NULL);
+    dispatcher_failure_contract(&layer);
     lv_deinit(); return 0;
 }

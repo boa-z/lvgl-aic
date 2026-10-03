@@ -111,6 +111,14 @@ This image supersedes the CPU-decoder-only 467509b candidate
 (SHA256 467e6682531d0aebe82d8d855ef30948a04240bf40eabce498d7d084f01d7d40)
 and the earlier frame-contract-only a32613c candidate.
 
+Dispatcher host validation: PASS (21/21 full host suite). The production
+dispatch callback is tested with real LVGL task allocation and selection.
+Ordinary image failure becomes FAILED and clears the active task; a YUV DMA
+fault retains IN_PROGRESS, the active task and destination buffer. Repeated
+dispatch leaves a second queued task WAITING, performs no additional image
+execution and increments the error counter only once. This synchronous mock
+does not establish hardware quiescence or authorize a production reset path.
+
 Remaining scope: YUV scaling with chroma phase, tiled YUV, broader board CSC
-and clipped-rotation numeric probes, dispatcher fault-stop validation,
+and clipped-rotation numeric probes,
 and camera/player/video-window ownership. This stage does not close those gaps.

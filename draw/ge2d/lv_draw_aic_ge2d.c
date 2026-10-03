@@ -16,8 +16,9 @@
  * Two departures from the legacy port are the reason this file exists
  * separately and are easy to regress:
  *   1. evaluate() reports acceptance (returns 1), not 0.
- *   2. a GE failure marks the task FAILED, never FINISHED. A rectangle or an
- *      image the engine did not draw must not be reported as drawn.
+ *   2. a GE failure never marks the task FINISHED. Ordinary failures become
+ *      FAILED; a quarantined YUV DMA fault retains IN_PROGRESS and its layer
+ *      until reboot because DMA completion has not been established.
  *
  * A third point is specific to this file: the counters separate "the unit
  * claimed the task" from "the engine drew it". A completed count alone would
