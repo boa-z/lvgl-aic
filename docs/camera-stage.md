@@ -238,3 +238,13 @@ compiles the enabled camera and shared window against D13x target headers and
 checks actual camera references to window present/close. Full camera-enabled
 image linking still requires application-supplied sensor/board configuration;
 no bus or sensor selection is inferred. Barcode support remains absent.
+
+Stage evidence: **56/56 host PASS**; strict enabled-camera/window D13x compile
+**PASS**, including actual camera references to window presentation and close.
+Camera widget object SHA256 `1c3a3d7c91ed943a81141f9a7563b740092cf5828083f096be2f8bdfdf2a51b7`.
+The full GE/fonts/GIF/widgets/AICP/player/APNG regression boot/app/static/image/
+manifest gates **PASS**, with camera disabled. Clean component
+`10f146c239060f2d4b48e390ddf5f1c7a9a51619`, SDK
+`527b5f006f9abd98437cc8a0f087ad539fb449e7`. Regression image SHA256
+`27fc9175b47abb0ff9d01406fa7c0274c8d424beea195faaeaa8947dce5d7a11`.
+Camera-enabled final linking and all physical capture/scanout remain **NOT_RUN**.
