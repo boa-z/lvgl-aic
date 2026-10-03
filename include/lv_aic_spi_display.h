@@ -24,6 +24,16 @@ lv_aic_spi_display_t *lv_aic_spi_display_create_buffered(lv_aic_spi_session_t *s
 lv_display_t *lv_aic_spi_display_get(lv_aic_spi_display_t *display);
 /* Transport status, not visual acceptance. Initial value OK; updated per frame. */
 lv_aic_spi_result_t lv_aic_spi_display_result(lv_aic_spi_display_t *display);
+/* Permanently claim this display for direct RGB565 blits. UI-owner thread only,
+ * outside refresh/events. First call pauses LVGL; BUSY means prior LVGL frame
+ * still owns its source, so retry. No automatic return to LVGL mode. */
+lv_aic_spi_result_t lv_aic_spi_display_claim_blit(lv_aic_spi_display_t *display);
+/* Same producer/UI-owner thread. Borrow immutable CPU-coherent source until
+ * blit_take succeeds or display_close succeeds. One outstanding frame; errors
+ * from packing/transport arrive asynchronously through take. No raw tx access. */
+lv_aic_spi_result_t lv_aic_spi_display_blit(lv_aic_spi_display_t *display,
+    const lv_aic_spi_rgb565_frame_t *frame,unsigned degrees);
+bool lv_aic_spi_display_blit_take(lv_aic_spi_display_t *display,lv_aic_spi_result_t *result);
 /* UI thread outside refresh/events: stops refresh/admission and consumes result.
  * Retry until true; no forced worker deletion. Session/panel/tx are borrowed,
  * close them separately after success (retain them on transport FAULT).

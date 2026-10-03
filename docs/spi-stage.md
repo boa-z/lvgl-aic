@@ -467,3 +467,33 @@ supersedes earlier partial-link-only limitations, not physical runtime limits.
 Hardware **NOT_RUN**. No panel object is instantiated and no flashing performed.
 Target scheduler/cache behavior, concrete panel/power/TE setup, direct-blit mode,
 statistics, GE/DMA pipelining and multi-display board acceptance remain open.
+
+
+## Exclusive direct-blit producer mode
+
+`lv_aic_spi_display_claim_blit` implements the SDK's permanent LVGL-to-blit
+ownership transition. Call on the UI owner outside refresh/events. It pauses
+refresh and disables invalidation immediately, then returns BUSY until the prior
+LVGL frame completion has been consumed. Only after that boundary may direct
+frames be submitted. Repeated successful claims are idempotent; no return-to-LVGL
+mode is implied. Manual refresh also cannot submit pixels after claim begins.
+
+`lv_aic_spi_display_blit` borrows an explicit immutable CPU-coherent RGB565 frame
+through the same worker/session, with per-frame rotation. There is one outstanding
+frame; `blit_take` returns its checked result exactly once and releases the CPU
+source. Descriptor validation/packing failures are asynchronous results. Closing
+waits for outstanding work before releasing source ownership, including external
+frames. This interface uses the same producer/UI thread as display lifecycle;
+a separate producer thread must not call these APIs concurrently. Standalone
+worker usage remains available when no LVGL display needs to be managed.
+
+Validation: **65/65 host PASS**, covering pre-claim rejection, BUSY claim while
+LVGL owns a frame, idempotence, disabled manual/invalidation refresh, external
+source handoff, backpressure, exactly-once completion and close with a pending
+external source. D13x compile/component partial link PASS; combined SHA256:
+`fe784c9ce44aeb4299d681bab7a1865ba68cb6d7ae7c2ebbc446805a17776d99`.
+Logs: `output/spi-blit-tests.log`, `output/spi-blit-target.log`.
+Enabled-firmware symbol gates now include the three blit APIs; the previously
+recorded final image predates these additions and is not their link evidence.
+Panel configuration/TE/power, statistics, pipeline performance and board output
+remain open. Hardware **NOT_RUN**.

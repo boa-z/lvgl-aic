@@ -66,5 +66,25 @@ int main(void)
         if(i) assert(buffers[0]!=buffers[1]);
     }
     ready=true;assert(lv_aic_spi_display_close(d));assert(takes==9);
+    expected_pixel=255;completion=LV_AIC_SPI_OK;d=create();display=lv_aic_spi_display_get(d);
+    uint8_t external[64];for(unsigned i=0;i<sizeof external;i++) external[i]=255;
+    lv_aic_spi_rgb565_frame_t external_frame={external,sizeof external,16,8,4};
+    assert(lv_aic_spi_display_blit(d,&external_frame,90)==LV_AIC_SPI_INVALID);
+    lv_refr_now(display);
+    assert(lv_aic_spi_display_claim_blit(d)==LV_AIC_SPI_BUSY);
+    assert(lv_aic_spi_display_blit(d,&external_frame,90)==LV_AIC_SPI_INVALID);
+    ready=true;assert(lv_aic_spi_display_claim_blit(d)==LV_AIC_SPI_OK);
+    assert(lv_aic_spi_display_claim_blit(d)==LV_AIC_SPI_OK);
+    unsigned before=submits;lv_obj_invalidate(lv_display_get_screen_active(display));lv_refr_now(display);
+    assert(submits==before);
+    assert(lv_aic_spi_display_blit(d,&external_frame,90)==LV_AIC_SPI_OK && source==external);
+    assert(lv_aic_spi_display_blit(d,&external_frame,90)==LV_AIC_SPI_BUSY);
+    lv_aic_spi_result_t result;
+    assert(!lv_aic_spi_display_blit_take(d,&result));
+    lv_refr_now(display);assert(pending && submits==before+1);
+    ready=true;assert(lv_aic_spi_display_blit_take(d,&result) && result==LV_AIC_SPI_OK);
+    assert(!lv_aic_spi_display_blit_take(d,&result));
+    assert(lv_aic_spi_display_blit(d,&external_frame,90)==LV_AIC_SPI_OK);
+    assert(!lv_aic_spi_display_close(d));ready=true;assert(lv_aic_spi_display_close(d));
     return 0;
 }

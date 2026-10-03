@@ -8,7 +8,7 @@ struct lv_aic_spi_display {
     lv_draw_buf_t *buffer,*second;
     lv_aic_spi_worker_t *worker;
     unsigned degrees;
-    bool pending,closing;
+    bool pending,closing,claiming,blit,pending_blit;
     lv_aic_spi_result_t result;
 };
 static bool collect(lv_aic_spi_display_t *d)
@@ -17,14 +17,15 @@ static bool collect(lv_aic_spi_display_t *d)
     void *cookie;
     if(!lv_aic_spi_worker_take(d->worker,&d->result,&cookie)) return false;
     d->pending=false;
-    if(d->display) lv_display_flush_ready(d->display);
+    if(d->display && !d->pending_blit) lv_display_flush_ready(d->display);
+    d->pending_blit=false;
     return true;
 }
 static void flush(lv_display_t *display,const lv_area_t *area,uint8_t *pixels)
 {
     lv_aic_spi_display_t *d=lv_display_get_driver_data(display);
     (void)area;(void)pixels;
-    if(d->closing || !lv_display_flush_is_last(display)) {
+    if(d->closing || d->claiming || !lv_display_flush_is_last(display)) {
         lv_display_flush_ready(display);return;
     }
     lv_draw_buf_t *active=lv_display_get_buf_active(display);
@@ -40,6 +41,7 @@ static void flush(lv_display_t *display,const lv_area_t *area,uint8_t *pixels)
 static void wait_flush(lv_display_t *display)
 {
     lv_aic_spi_display_t *d=lv_display_get_driver_data(display);
+    if(d->pending_blit) return;
     while(!collect(d)) aicos_msleep(1);
 }
 static void deleted(lv_event_t *event)
@@ -87,6 +89,33 @@ lv_aic_spi_display_t *lv_aic_spi_display_create_buffered(lv_aic_spi_session_t *s
 lv_display_t *lv_aic_spi_display_get(lv_aic_spi_display_t *d) { return d?d->display:NULL; }
 lv_aic_spi_result_t lv_aic_spi_display_result(lv_aic_spi_display_t *d)
 { return d?d->result:LV_AIC_SPI_INVALID; }
+lv_aic_spi_result_t lv_aic_spi_display_claim_blit(lv_aic_spi_display_t *d)
+{
+    if(!d || d->closing || !d->display) return LV_AIC_SPI_INVALID;
+    if(d->blit) return LV_AIC_SPI_OK;
+    if(!d->claiming) {
+        d->claiming=true;
+        lv_timer_pause(lv_display_get_refr_timer(d->display));
+        lv_display_enable_invalidation(d->display,false);
+    }
+    if(!collect(d)) return LV_AIC_SPI_BUSY;
+    if(d->result==LV_AIC_SPI_FAULT || d->result==LV_AIC_SPI_BUSY) return d->result;
+    d->blit=true;return LV_AIC_SPI_OK;
+}
+lv_aic_spi_result_t lv_aic_spi_display_blit(lv_aic_spi_display_t *d,
+    const lv_aic_spi_rgb565_frame_t *frame,unsigned degrees)
+{
+    if(!d || !d->blit || d->closing || !frame) return LV_AIC_SPI_INVALID;
+    if(d->pending) return LV_AIC_SPI_BUSY;
+    d->result=lv_aic_spi_worker_submit(d->worker,frame,degrees,d);
+    if(d->result==LV_AIC_SPI_OK) { d->pending=true;d->pending_blit=true; }
+    return d->result;
+}
+bool lv_aic_spi_display_blit_take(lv_aic_spi_display_t *d,lv_aic_spi_result_t *result)
+{
+    if(!d || !result || !d->pending_blit || !collect(d)) return false;
+    *result=d->result;return true;
+}
 bool lv_aic_spi_display_close(lv_aic_spi_display_t *d)
 {
     if(!d) return false;

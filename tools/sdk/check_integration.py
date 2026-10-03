@@ -310,7 +310,7 @@ def main():
         if not re.search(r"^#define AIC_LVGL_USE_SPI_SDK(?:\s|$)", header, re.MULTILINE):
             fail("SPI target header mismatch")
         text = map_path.read_text(encoding="utf-8", errors="replace")
-        for symbol in ('lv_aic_spi_display_create_buffered', 'lv_aic_spi_display_create', 'lv_aic_spi_display_get', 'lv_aic_spi_display_result', 'lv_aic_spi_display_close', 'lv_aic_spi_panel_create', 'lv_aic_spi_panel_prepare', 'lv_aic_spi_panel_close', 'lv_aic_spi_session_open_owned', 'lv_aic_spi_session_close', 'lv_aic_spi_worker_create', 'lv_aic_spi_handoff_run', 'lv_aic_spi_sdk_write_qspi', 'lv_aic_spi_sdk_submit_qspi', 'lv_aic_spi_sdk_wait_complete', 'rt_qspi_transfer_message', 'rt_spi_wait_completion', 'rt_spi_nonblock_set', 'rt_spi_get_transfer_status'):
+        for symbol in ('lv_aic_spi_display_claim_blit', 'lv_aic_spi_display_blit', 'lv_aic_spi_display_blit_take', 'lv_aic_spi_display_create_buffered', 'lv_aic_spi_display_create', 'lv_aic_spi_display_get', 'lv_aic_spi_display_result', 'lv_aic_spi_display_close', 'lv_aic_spi_panel_create', 'lv_aic_spi_panel_prepare', 'lv_aic_spi_panel_close', 'lv_aic_spi_session_open_owned', 'lv_aic_spi_session_close', 'lv_aic_spi_worker_create', 'lv_aic_spi_handoff_run', 'lv_aic_spi_sdk_write_qspi', 'lv_aic_spi_sdk_submit_qspi', 'lv_aic_spi_sdk_wait_complete', 'rt_qspi_transfer_message', 'rt_spi_wait_completion', 'rt_spi_nonblock_set', 'rt_spi_get_transfer_status'):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("SPI live symbol absent: " + symbol)
         print("SPI display/worker/panel/session/SDK final link: PASS (no device execution)")
