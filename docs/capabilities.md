@@ -764,3 +764,9 @@ injected no-op, luma/chroma corruption, guard writes and uncertain DMA verify
 checker failure and allocation retention. Host PASS is checker evidence only.
 This supersedes the missing solid YUV CSC probe entry above. YUV gradients,
 blending/round-trip CSC accuracy and real-board pixel acceptance remain open.
+
+YUV-probe firmware evidence: host **54/54 PASS**, full-profile boot/app/static/
+image/manifest **PASS**. Clean component `8cbb4b1f95979d05834ddd08124232526336218f`,
+SDK `93cf1254efce054ce707339693f30e93cc36d563`.
+Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `93daaa919777fb8f8b3f3304ed9dc7ca10cae9605dfe786baf72ff68752024dc`. Board **NOT_RUN**.
