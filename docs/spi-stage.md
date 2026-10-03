@@ -587,3 +587,28 @@ Logs: `output/spi-lifecycle-tests.log`, `output/spi-lifecycle-target.log`.
 The final-link gate includes the lifecycle setter, but the prior image predates
 this increment. Concrete panel callbacks and physical TE/power acceptance remain
 application/board work; hardware **NOT_RUN**.
+
+
+## Worker-stage timing
+
+The handoff now publishes `lv_aic_spi_timing_t` with the same release/acquire
+completion as each frame result. `submit_ms` measures session submit (packing,
+panel lifecycle/TE/commands and pixel acceptance); `drain_ms` measures the
+subsequent checked completion wait, or zero when submission failed and drain was
+skipped. Both use the LVGL tick source and include preemption; neither represents
+pure hardware execution time. In particular submit_ms is not a GE-only metric.
+
+Optional `handoff_take_timed` and `worker_take_timed` preserve exactly-once consume
+semantics; existing take APIs remain wrappers that discard timing. Display stats
+expose the most recently consumed worker timing independently of UI-observed
+latency, so delayed polling no longer obscures the worker's stage durations.
+No unsynchronized producer read of worker-owned counters is introduced.
+
+Validation: **67/67 host PASS**, including 1000 real-thread handoffs with distinct
+3 ms submit/5 ms drain values, failed submit with zero drain, and display snapshot
+propagation independent of 17 ms UI-observed latency. Existing composed pipeline
+normal/fault regressions pass. D13x compile/partial link PASS; combined SHA256:
+`abffafbb413932fb38d83e5251a6cad95faed8faf888977a78d2eb02eebddffe`.
+Logs: `output/spi-timing-tests.log`, `output/spi-timing-target.log`.
+Final image refresh and actual board performance measurements remain pending;
+hardware **NOT_RUN**.

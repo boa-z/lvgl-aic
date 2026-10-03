@@ -54,6 +54,9 @@ lv_aic_spi_result_t lv_aic_spi_worker_submit(lv_aic_spi_worker_t *w,
 }
 bool lv_aic_spi_worker_take(lv_aic_spi_worker_t *w,lv_aic_spi_result_t *result,void **cookie)
 { return w && lv_aic_spi_handoff_take(w->handoff,result,cookie); }
+bool lv_aic_spi_worker_take_timed(lv_aic_spi_worker_t *w,lv_aic_spi_result_t *result,
+    void **cookie,lv_aic_spi_timing_t *timing)
+{ return w && lv_aic_spi_handoff_take_timed(w->handoff,result,cookie,timing); }
 void lv_aic_spi_worker_stop(lv_aic_spi_worker_t *w)
 {
     if(!w) return;

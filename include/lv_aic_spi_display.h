@@ -27,6 +27,7 @@ lv_aic_spi_result_t lv_aic_spi_display_result(lv_aic_spi_display_t *display);
 typedef struct {
     uint32_t accepted,completed,failed,rejected;
     uint32_t last_observed_ms,max_observed_ms;
+    lv_aic_spi_timing_t last_worker; /* From most recently consumed completion. */
     lv_aic_spi_result_t last_completion;
     bool pending,blit_owned,closing;
 } lv_aic_spi_display_stats_t;

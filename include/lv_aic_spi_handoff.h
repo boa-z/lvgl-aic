@@ -22,6 +22,15 @@ bool lv_aic_spi_handoff_run(lv_aic_spi_handoff_t *handoff);
  * on FAULT: DMA uses session-owned tx, never this CPU source. */
 bool lv_aic_spi_handoff_take(lv_aic_spi_handoff_t *handoff,
     lv_aic_spi_result_t *result,void **cookie);
+typedef struct {
+    uint32_t submit_ms; /* packing + panel preparation + checked submission */
+    uint32_t drain_ms;  /* subsequent checked completion wait; zero if skipped */
+} lv_aic_spi_timing_t;
+/* Same exactly-once consume as take, with optional worker-stage timing output.
+ * Uses LVGL tick source; intervals must be shorter than its 32-bit wrap period.
+ * Stages include preemption; drain_ms is not a pure hardware/DMA measurement. */
+bool lv_aic_spi_handoff_take_timed(lv_aic_spi_handoff_t *handoff,
+    lv_aic_spi_result_t *result,void **cookie,lv_aic_spi_timing_t *timing);
 /* Producer stops admission permanently; queued work must still run/be consumed. */
 void lv_aic_spi_handoff_stop(lv_aic_spi_handoff_t *handoff);
 /* Producer only, after worker joined and completion consumed. Frees handoff

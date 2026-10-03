@@ -18,11 +18,11 @@ lv_aic_spi_result_t lv_aic_spi_worker_submit(lv_aic_spi_worker_t *w,
     saved_pixel=expected_pixel; /* Actual LVGL rendered black/white RGB565. */
     source=f->data;saved_cookie=cookie;pending=true;ready=false;submits++;return LV_AIC_SPI_OK;
 }
-bool lv_aic_spi_worker_take(lv_aic_spi_worker_t *w,lv_aic_spi_result_t *result,void **cookie)
+bool lv_aic_spi_worker_take_timed(lv_aic_spi_worker_t *w,lv_aic_spi_result_t *result,void **cookie,lv_aic_spi_timing_t *timing)
 {
     assert(w);if(!pending || !ready) return false;
     assert(source[0]==saved_pixel && source[1]==saved_pixel);pending=false;takes++;
-    *result=completion;*cookie=saved_cookie;return true;
+    *result=completion;*cookie=saved_cookie;*timing=(lv_aic_spi_timing_t){2,3};return true;
 }
 void aicos_msleep(unsigned int ms) { assert(ms==1);sleeps++;ready=true; }
 void lv_aic_spi_worker_stop(lv_aic_spi_worker_t *w) { assert(w);stopped=true;stops++; }
@@ -89,7 +89,7 @@ int main(void)
     lv_tick_inc(17);
     ready=true;assert(lv_aic_spi_display_blit_take(d,&result) && result==LV_AIC_SPI_OK);
     assert(lv_aic_spi_display_stats(d,&stats) && stats.completed==2 && stats.last_observed_ms==17 && stats.max_observed_ms==17);
-    assert(stats.rejected==3 && !stats.pending);
+    assert(stats.rejected==3 && !stats.pending && stats.last_worker.submit_ms==2 && stats.last_worker.drain_ms==3);
     assert(!lv_aic_spi_display_blit_take(d,&result));
     lv_tick_inc(UINT32_MAX-lv_tick_get()-2); /* Completion crosses tick wrap. */
     assert(lv_aic_spi_display_blit(d,&external_frame,90)==LV_AIC_SPI_OK);

@@ -22,7 +22,7 @@ static bool collect(lv_aic_spi_display_t *d)
 {
     if(!d->pending) return true;
     void *cookie;
-    if(!lv_aic_spi_worker_take(d->worker,&d->result,&cookie)) return false;
+    if(!lv_aic_spi_worker_take_timed(d->worker,&d->result,&cookie,&d->stats.last_worker)) return false;
     d->pending=false;
     d->stats.last_completion=d->result;
     if(d->result==LV_AIC_SPI_OK) increment(&d->stats.completed);

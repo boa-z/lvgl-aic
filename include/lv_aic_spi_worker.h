@@ -14,6 +14,9 @@ lv_aic_spi_worker_t *lv_aic_spi_worker_create(lv_aic_spi_session_t *session,
 lv_aic_spi_result_t lv_aic_spi_worker_submit(lv_aic_spi_worker_t *worker,
     const lv_aic_spi_rgb565_frame_t *frame,unsigned degrees,void *cookie);
 bool lv_aic_spi_worker_take(lv_aic_spi_worker_t *worker,lv_aic_spi_result_t *result,void **cookie);
+/* Same consume, optionally returning worker stage timings. */
+bool lv_aic_spi_worker_take_timed(lv_aic_spi_worker_t *worker,lv_aic_spi_result_t *result,
+    void **cookie,lv_aic_spi_timing_t *timing);
 /* Stop admission, finish queued work, then relinquish all application resources.
  * Nonblocking. UI must consume any completion, then retry close until true.
  * No forced thread deletion. Faulted sessions/DMA storage remain retained. */

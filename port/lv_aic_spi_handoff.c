@@ -12,6 +12,7 @@ struct lv_aic_spi_handoff {
     unsigned degrees;
     void *cookie;
     lv_aic_spi_result_t result;
+    lv_aic_spi_timing_t timing;
 };
 lv_aic_spi_handoff_t *lv_aic_spi_handoff_create(lv_aic_spi_session_t *session)
 {
@@ -36,14 +37,25 @@ bool lv_aic_spi_handoff_run(lv_aic_spi_handoff_t *h)
     unsigned expected=QUEUED;
     if(!__atomic_compare_exchange_n(&h->state,&expected,RUNNING,false,
                                    __ATOMIC_ACQUIRE,__ATOMIC_RELAXED)) return false;
+    uint32_t start=lv_tick_get();
     h->result=lv_aic_spi_session_submit(h->session,&h->frame,h->degrees);
-    if(h->result==LV_AIC_SPI_OK) h->result=lv_aic_spi_session_drain(h->session);
+    h->timing.submit_ms=lv_tick_elaps(start);h->timing.drain_ms=0;
+    if(h->result==LV_AIC_SPI_OK) {
+        start=lv_tick_get();h->result=lv_aic_spi_session_drain(h->session);
+        h->timing.drain_ms=lv_tick_elaps(start);
+    }
     __atomic_store_n(&h->state,DONE,__ATOMIC_RELEASE);return true;
 }
 bool lv_aic_spi_handoff_take(lv_aic_spi_handoff_t *h,lv_aic_spi_result_t *result,void **cookie)
 {
+    return lv_aic_spi_handoff_take_timed(h,result,cookie,NULL);
+}
+bool lv_aic_spi_handoff_take_timed(lv_aic_spi_handoff_t *h,lv_aic_spi_result_t *result,
+    void **cookie,lv_aic_spi_timing_t *timing)
+{
     if(!h || !result || !cookie || __atomic_load_n(&h->state,__ATOMIC_ACQUIRE)!=DONE) return false;
     *result=h->result;*cookie=h->cookie;
+    if(timing) *timing=h->timing;
     if(h->result==LV_AIC_SPI_FAULT || h->result==LV_AIC_SPI_BUSY) h->fault=true;
     __atomic_store_n(&h->state,EMPTY,__ATOMIC_RELEASE);return true;
 }
