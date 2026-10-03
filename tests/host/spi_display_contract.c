@@ -75,6 +75,9 @@ int main(void)
     assert(lv_aic_spi_display_blit(d,&external_frame,90)==LV_AIC_SPI_INVALID);
     ready=true;assert(lv_aic_spi_display_claim_blit(d)==LV_AIC_SPI_OK);
     assert(lv_aic_spi_display_claim_blit(d)==LV_AIC_SPI_OK);
+    lv_aic_spi_display_stats_t stats;
+    assert(lv_aic_spi_display_stats(d,&stats));
+    assert(stats.accepted==1 && stats.completed==1 && stats.failed==0 && stats.rejected==2 && stats.blit_owned);
     unsigned before=submits;lv_obj_invalidate(lv_display_get_screen_active(display));lv_refr_now(display);
     assert(submits==before);
     assert(lv_aic_spi_display_blit(d,&external_frame,90)==LV_AIC_SPI_OK && source==external);
@@ -82,9 +85,19 @@ int main(void)
     lv_aic_spi_result_t result;
     assert(!lv_aic_spi_display_blit_take(d,&result));
     lv_refr_now(display);assert(pending && submits==before+1);
+    assert(lv_aic_spi_display_stats(d,&stats) && stats.accepted==2 && stats.completed==1 && stats.pending);
+    lv_tick_inc(17);
     ready=true;assert(lv_aic_spi_display_blit_take(d,&result) && result==LV_AIC_SPI_OK);
+    assert(lv_aic_spi_display_stats(d,&stats) && stats.completed==2 && stats.last_observed_ms==17 && stats.max_observed_ms==17);
+    assert(stats.rejected==3 && !stats.pending);
     assert(!lv_aic_spi_display_blit_take(d,&result));
+    lv_tick_inc(UINT32_MAX-lv_tick_get()-2); /* Completion crosses tick wrap. */
     assert(lv_aic_spi_display_blit(d,&external_frame,90)==LV_AIC_SPI_OK);
-    assert(!lv_aic_spi_display_close(d));ready=true;assert(lv_aic_spi_display_close(d));
+    assert(!lv_aic_spi_display_close(d));
+    ready=true;completion=LV_AIC_SPI_FAULT;
+    lv_tick_inc(4);assert(lv_aic_spi_display_blit_take(d,&result) && result==LV_AIC_SPI_FAULT);
+    assert(lv_aic_spi_display_stats(d,&stats) && stats.failed==1 && stats.accepted==3 && stats.completed==2);
+    assert(stats.last_completion==LV_AIC_SPI_FAULT && stats.last_observed_ms==4 && stats.max_observed_ms==17);
+    assert(lv_aic_spi_display_close(d));
     return 0;
 }

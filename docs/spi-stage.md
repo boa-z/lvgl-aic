@@ -497,3 +497,28 @@ Enabled-firmware symbol gates now include the three blit APIs; the previously
 recorded final image predates these additions and is not their link evidence.
 Panel configuration/TE/power, statistics, pipeline performance and board output
 remain open. Hardware **NOT_RUN**.
+
+
+## Per-display observed transport statistics
+
+`lv_aic_spi_display_stats` returns a UI-owner snapshot without polling or consuming
+completion. Saturating counters distinguish accepted, checked-success completed,
+asynchronously failed and immediately rejected flush/blit submissions. Claim,
+status-poll and close calls do not count as submissions. Pending/closing/blit
+ownership and last completion result are explicit, so an accepted frame is never
+reported as already displayed. LVGL and direct-blit modes share the same counters.
+
+Last/max observed latency spans accepted submission to UI completion collection.
+It includes worker scheduling, packing, DMA and delayed collection; it is not a
+GE or pure SPI measurement. Unsigned tick wrap is supported for a frame shorter
+than the 32-bit tick wrap interval. Fine-grained GE/DMA stage timing and physical
+FPS acceptance remain pending.
+
+Validation: **65/65 host PASS**, including counts before completion, rejected
+pre-claim/busy submissions, once-only completion, fault classification, distinct
+17 ms/4 ms observed durations and a completion crossing tick wrap. D13x enabled
+compile/partial link PASS; combined SHA256:
+`566121c941162ca00b4655afe460d8cb2216a24ffaf2c7ac8181556588c284b0`.
+Logs: `output/spi-stats-tests.log`, `output/spi-stats-target.log`.
+Final firmware symbol gate includes the new API; the prior final image predates
+this increment. Hardware **NOT_RUN**.

@@ -10,13 +10,26 @@ struct lv_aic_spi_display {
     unsigned degrees;
     bool pending,closing,claiming,blit,pending_blit;
     lv_aic_spi_result_t result;
+    lv_aic_spi_display_stats_t stats;
+    uint32_t submitted_at;
 };
+static void increment(uint32_t *counter) { if(*counter<UINT32_MAX) (*counter)++; }
+static void accepted(lv_aic_spi_display_t *d)
+{
+    d->pending=true;d->submitted_at=lv_tick_get();increment(&d->stats.accepted);
+}
 static bool collect(lv_aic_spi_display_t *d)
 {
     if(!d->pending) return true;
     void *cookie;
     if(!lv_aic_spi_worker_take(d->worker,&d->result,&cookie)) return false;
     d->pending=false;
+    d->stats.last_completion=d->result;
+    if(d->result==LV_AIC_SPI_OK) increment(&d->stats.completed);
+    else increment(&d->stats.failed);
+    d->stats.last_observed_ms=lv_tick_elaps(d->submitted_at);
+    if(d->stats.last_observed_ms>d->stats.max_observed_ms)
+        d->stats.max_observed_ms=d->stats.last_observed_ms;
     if(d->display && !d->pending_blit) lv_display_flush_ready(d->display);
     d->pending_blit=false;
     return true;
@@ -30,13 +43,13 @@ static void flush(lv_display_t *display,const lv_area_t *area,uint8_t *pixels)
     }
     lv_draw_buf_t *active=lv_display_get_buf_active(display);
     if(!active || (active!=d->buffer && active!=d->second)) {
-        d->result=LV_AIC_SPI_INVALID;lv_display_flush_ready(display);return;
+        increment(&d->stats.rejected);d->result=LV_AIC_SPI_INVALID;lv_display_flush_ready(display);return;
     }
     lv_aic_spi_rgb565_frame_t frame={active->data,active->data_size,
         active->header.stride,active->header.w,active->header.h};
     d->result=lv_aic_spi_worker_submit(d->worker,&frame,d->degrees,d);
-    if(d->result==LV_AIC_SPI_OK) d->pending=true;
-    else lv_display_flush_ready(display);
+    if(d->result==LV_AIC_SPI_OK) accepted(d);
+    else { increment(&d->stats.rejected);lv_display_flush_ready(display); }
 }
 static void wait_flush(lv_display_t *display)
 {
@@ -105,16 +118,24 @@ lv_aic_spi_result_t lv_aic_spi_display_claim_blit(lv_aic_spi_display_t *d)
 lv_aic_spi_result_t lv_aic_spi_display_blit(lv_aic_spi_display_t *d,
     const lv_aic_spi_rgb565_frame_t *frame,unsigned degrees)
 {
-    if(!d || !d->blit || d->closing || !frame) return LV_AIC_SPI_INVALID;
-    if(d->pending) return LV_AIC_SPI_BUSY;
+    if(!d) return LV_AIC_SPI_INVALID;
+    if(!d->blit || d->closing || !frame) { increment(&d->stats.rejected);return LV_AIC_SPI_INVALID; }
+    if(d->pending) { increment(&d->stats.rejected);return LV_AIC_SPI_BUSY; }
     d->result=lv_aic_spi_worker_submit(d->worker,frame,degrees,d);
-    if(d->result==LV_AIC_SPI_OK) { d->pending=true;d->pending_blit=true; }
+    if(d->result==LV_AIC_SPI_OK) { accepted(d);d->pending_blit=true; }
+    else increment(&d->stats.rejected);
     return d->result;
 }
 bool lv_aic_spi_display_blit_take(lv_aic_spi_display_t *d,lv_aic_spi_result_t *result)
 {
     if(!d || !result || !d->pending_blit || !collect(d)) return false;
     *result=d->result;return true;
+}
+bool lv_aic_spi_display_stats(lv_aic_spi_display_t *d,lv_aic_spi_display_stats_t *stats)
+{
+    if(!d || !stats) return false;
+    *stats=d->stats;stats->pending=d->pending;stats->blit_owned=d->blit;stats->closing=d->closing;
+    return true;
 }
 bool lv_aic_spi_display_close(lv_aic_spi_display_t *d)
 {

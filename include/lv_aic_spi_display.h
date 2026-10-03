@@ -24,6 +24,18 @@ lv_aic_spi_display_t *lv_aic_spi_display_create_buffered(lv_aic_spi_session_t *s
 lv_display_t *lv_aic_spi_display_get(lv_aic_spi_display_t *display);
 /* Transport status, not visual acceptance. Initial value OK; updated per frame. */
 lv_aic_spi_result_t lv_aic_spi_display_result(lv_aic_spi_display_t *display);
+typedef struct {
+    uint32_t accepted,completed,failed,rejected;
+    uint32_t last_observed_ms,max_observed_ms;
+    lv_aic_spi_result_t last_completion;
+    bool pending,blit_owned,closing;
+} lv_aic_spi_display_stats_t;
+/* UI-owner snapshot, never consumes completion. Counters saturate at UINT32_MAX.
+ * completed means checked transport OK, not panel acceptance. observed_ms spans
+ * accepted submit to UI result collection (includes scheduling/poll delay), not
+ * pure DMA time. Tick wrap is supported for frames shorter than one tick period.
+ * Rejected counts failed flush/blit submissions, not claim/poll/close attempts. */
+bool lv_aic_spi_display_stats(lv_aic_spi_display_t *display,lv_aic_spi_display_stats_t *stats);
 /* Permanently claim this display for direct RGB565 blits. UI-owner thread only,
  * outside refresh/events. First call pauses LVGL; BUSY means prior LVGL frame
  * still owns its source, so retry. No automatic return to LVGL mode. */
