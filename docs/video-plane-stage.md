@@ -15,8 +15,8 @@ submission. RGB565/RGB888/XRGB8888/ARGB8888 and the existing linear YUV mappings
 are accepted; actual DE format/scaler support remains board-dependent.
 
 Rectangles use physical screen coordinates and must fit completely on screen.
-The DE performs scaling. Rotation, implicit clipping, automatic UI alpha
-changes are opt-in through the alpha lease described below. The player binding below is explicit; use the
+The DE performs scaling. Rotation uses the explicit rotated API described below;
+implicit clipping is unsupported. UI alpha changes require the explicit alpha lease. The player binding below is explicit; use the
 existing video-window API and an alpha-capable UI plane when composing UI over
 video. RGB565 global alpha policy remains the application's responsibility.
 This is a callable scanout session, not completion of SDK player auto-layer parity.
@@ -177,3 +177,14 @@ not pixels or hardware DMA. Player widget image/display rotation is still
 unsupported; its geometry and transparent-window mapping need separate work.
 Firmware evidence below must be updated after a clean-source build. Board
 **NOT_RUN**.
+
+Rotation firmware boot/app/static/image/manifest **PASS**, including the live
+`lv_aic_video_plane_present_rotated` symbol. Clean build source identities:
+
+- sdk: `64de6953a3fe2750ddcbd18ce924cf25895d7ff0`.
+- lvgl-aic: `c6698d7477f9945a659d0d434fcbacdc7fdf9eee`.
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `4c8c3394cdda93f1274bb5e91a385b2d527a2bdeebdf48a7652794fc04f26781`.
+- ELF SHA256: `0e004b39e8ad5a130c852180bf5e6db24019edf7748d575c833805ffda2c971c`.
+
+The combined-profile manifest now records this build. Board **NOT_RUN**.
