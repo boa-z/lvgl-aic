@@ -861,3 +861,18 @@ It links the barcode adapter/vendor archive but does not invoke decoding.
 Evidence lives in SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode/manifest.json`.
 Camera-enabled final linking and physical acceptance are **NOT_RUN**; do not
 substitute this image for a sensor-configured camera test.
+
+
+### Full-resolution YUV native gradient probes
+
+The native-fill board runner now adds 32 replacement-gradient cases for YUV400
+and YUV444P: four CSC spaces, horizontal/vertical direction and forward/reverse
+RGB endpoints. Every allocation byte is checked, including crop guards, stride
+padding and unused plane capacity. Expected output uses the reviewed SDK CSC2
+coefficients after RGB interpolation, with tolerance 2. These cases complement
+24 RGB gradient and 240 solid YUV cases (296 submissions total).
+Host **57/57 PASS**; the probe contract injects no-op, luma/chroma corruption,
+outside-crop writes and uncertain-DMA retention. Physical GE execution remains
+**NOT_RUN**. Subsampled YUV gradients need phase-aware characterization; YUV
+blend/round-trip checks remain open. This does not enable ordinary LVGL gradient
+draw-task acceleration; it validates the existing native fill helper.

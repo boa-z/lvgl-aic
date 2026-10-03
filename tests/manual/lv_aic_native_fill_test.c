@@ -145,6 +145,54 @@ static int yuv_probe(enum mpp_pixel_format fmt,unsigned space,unsigned color)
 done:
     lv_mpp_image_free(owner);return result;
 }
+/* Full-resolution YUV avoids an assumed hardware chroma sampling phase.
+ * Subsampled gradients require separate phase-aware board characterization. */
+static int yuv_gradient_probe(enum mpp_pixel_format fmt,unsigned space,int direction,int reverse)
+{
+    static const int k[4][12]={
+        {66,129,25,16,-38,-74,112,128,112,-94,-18,128},
+        {47,157,16,16,-26,-87,112,128,112,-102,-10,128},
+        {77,150,29,0,-42,-84,128,128,128,-106,-20,128},
+        {54,183,18,0,-28,-98,128,128,128,-115,-11,128}};
+    struct lv_mpp_buf *owner=lv_mpp_image_alloc(16,64,MPP_FMT_ARGB_8888);
+    if(!owner) return -1;
+    struct mpp_buf dst=owner->buf;
+    dst.size.height=16;dst.format=fmt;dst.flags=space;
+    dst.crop_en=1;dst.crop=(struct mpp_rect){4,4,8,8};
+    unsigned planes=fmt==MPP_FMT_YUV444P?3:1;
+    for(unsigned c=1;c<planes;c++) { dst.stride[c]=64;dst.phy_addr[c]=dst.phy_addr[0]+1024*c; }
+    memset(owner->data,0xa5,owner->size);
+    unsigned first=reverse?0xff90e898:0xff204060,last=reverse?0xff204060:0xff90e898;
+    int result=-1,worst=0;
+    if(lv_ge_fill(&dst,direction,first,last,0)!=LV_RESULT_OK) goto done;
+    for(unsigned offset=0;offset<(unsigned)owner->size;offset++) {
+        unsigned c=offset/1024,y=(offset%1024)/64,x=offset%64;
+        bool active=c<planes && y>=4 && y<12 && x>=4 && x<12;
+        int expected=0xa5;
+        if(active) {
+            int position=direction==GE_H_LINEAR_GRADIENT?(int)x-4:(int)y-4,sum=0;
+            for(unsigned channel=0;channel<3;channel++) {
+                unsigned shift=16-channel*8;
+                int a=(first>>shift)&255,b=(last>>shift)&255;
+                sum+=k[space][c*4+channel]*(a+(b-a)*position/7);
+            }
+            expected=(sum+128)/256+k[space][c*4+3];
+            if(expected<0) expected=0;
+            if(expected>255) expected=255;
+        }
+        int error=(int)owner->data[offset]-expected;if(error<0) error=-error;
+        if((!active && error) || (active && error>2)) {
+            AIC_TEST_E("FAIL YUV gradient fmt=%u space=%u dir=%d rev=%d offset=%u error=%d",
+                (unsigned)fmt,space,direction,reverse,offset,error);goto done;
+        }
+        if(error>worst) worst=error;
+    }
+    AIC_TEST_I("PASS YUV gradient fmt=%u space=%u dir=%d rev=%d error=%d guards=OK",
+        (unsigned)fmt,space,direction,reverse,worst);
+    result=0;
+done:
+    lv_mpp_image_free(owner);return result;
+}
 static int yuv_probes(void)
 {
     const enum mpp_pixel_format formats[]={MPP_FMT_YUV420P,MPP_FMT_YUV422P,MPP_FMT_YUV444P,
@@ -165,7 +213,12 @@ int lv_aic_native_fill_test_run(void)
         for(int blend=0;blend<=1;blend++) for(int reverse=0;reverse<=1;reverse++)
             if(gradient_probe(formats[f],direction,blend,reverse)) return -1;
     if(yuv_probes()) return -1;
-    AIC_TEST_I("PASS 24 gradient and 240 YUV CSC probes; panel acceptance separate");
+    for(unsigned space=0;space<4;space++) for(int direction=1;direction<=2;direction++)
+        for(int reverse=0;reverse<=1;reverse++) {
+            if(yuv_gradient_probe(MPP_FMT_YUV400,space,direction,reverse) ||
+               yuv_gradient_probe(MPP_FMT_YUV444P,space,direction,reverse)) return -1;
+        }
+    AIC_TEST_I("PASS 24 RGB gradient, 240 YUV solid, 32 YUV gradient probes; panel separate");
     return 0;
 }
 #endif
