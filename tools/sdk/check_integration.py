@@ -145,6 +145,7 @@ def main():
     parser.add_argument("--with-fonts", action="store_true")
     parser.add_argument("--with-gif", action="store_true")
     parser.add_argument("--with-widgets", action="store_true")
+    parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
                         help="Development builds only; preserve the component diff with evidence")
     args = parser.parse_args()
@@ -172,6 +173,15 @@ def main():
     except ValueError:
         fail("link map is outside the integration checkout: %s" % map_path)
     check_config(root, args.phase, args.with_fonts, args.with_gif, args.with_widgets)
+    config = (root / ".config").read_text(encoding="utf-8")
+    header = (root / "rtconfig.h").read_text(encoding="utf-8")
+    turns = args.rotation // 90
+    for text, pattern in (
+        (config, r"^CONFIG_AIC_LVGL_DISPLAY_ROTATION=%d$" % turns),
+        (header, r"^#define AIC_LVGL_DISPLAY_ROTATION\s+%d\s*$" % turns),
+    ):
+        if not re.search(pattern, text, re.MULTILINE):
+            fail("application display rotation profile mismatch")
     check_map(map_path)
     if args.phase in ("mpp", "ge2d"):
         text = map_path.read_text(encoding="utf-8", errors="replace")

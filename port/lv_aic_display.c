@@ -20,6 +20,16 @@
 #if AIC_LVGL_USE_DISPLAY && AIC_LVGL_BSP_MPP
 
 #include <rtconfig.h>
+#ifndef AIC_LVGL_DISPLAY_ROTATION
+#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
+#define AIC_LVGL_DISPLAY_ROTATION (LV_ROTATE_DEGREE / 90)
+#else
+#define AIC_LVGL_DISPLAY_ROTATION 0
+#endif
+#endif
+#if AIC_LVGL_DISPLAY_ROTATION < 0 || AIC_LVGL_DISPLAY_ROTATION > 3
+#error "AIC_LVGL_DISPLAY_ROTATION must be 0..3"
+#endif
 #include <aic_core.h>
 #include <aic_osal.h>
 #include <mpp_fb.h>
@@ -88,7 +98,7 @@ static void lv_aic_cache_clean(const void *address, size_t size)
                                      lv_aic_align_up((uint32_t)size, CACHE_LINE_SIZE));
 }
 
-#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
+#if AIC_LVGL_DISPLAY_ROTATION != 0
 static void *lv_aic_alloc_cma(size_t size)
 {
     return aicos_malloc_align(MEM_CMA, size, CACHE_LINE_SIZE);
@@ -265,7 +275,7 @@ int lv_aic_display_init(lv_display_t **display)
     lv_color_format_t color_format;
     void *buffer1;
     void *buffer2 = NULL;
-#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
+#if AIC_LVGL_DISPLAY_ROTATION != 0
     lv_display_rotation_t rotation = LV_DISPLAY_ROTATION_0;
     uint32_t rotation_buffer_size = 0U;
 #endif
@@ -336,8 +346,8 @@ int lv_aic_display_init(lv_display_t **display)
     buffer1 = lv_aic_framebuffer_at(ctx, 0U);
 #endif
 
-#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
-    rotation = (lv_display_rotation_t)(LV_ROTATE_DEGREE / 90);
+#if AIC_LVGL_DISPLAY_ROTATION != 0
+    rotation = (lv_display_rotation_t)AIC_LVGL_DISPLAY_ROTATION;
     ctx->use_rotation = (rotation != LV_DISPLAY_ROTATION_0);
     if (ctx->use_rotation) {
         int32_t logical_width = (int32_t)ctx->info.width;
@@ -402,7 +412,7 @@ int lv_aic_display_init(lv_display_t **display)
     lv_display_set_driver_data(ctx->display, ctx);
     lv_display_set_physical_resolution(ctx->display, (int32_t)ctx->info.width,
                                        (int32_t)ctx->info.height);
-#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
+#if AIC_LVGL_DISPLAY_ROTATION != 0
     lv_display_set_rotation(ctx->display, rotation);
 #endif
     lv_display_set_buffers_with_stride(ctx->display, buffer1, buffer2,

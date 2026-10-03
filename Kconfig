@@ -13,6 +13,15 @@ config AIC_LVGL_USE_DISPLAY
     depends on AIC_LVGL_PORT
     depends on LPKG_MPP
 
+config AIC_LVGL_DISPLAY_ROTATION
+    int "Display rotation (0=0, 1=90, 2=180, 3=270 degrees)"
+    default 0
+    range 0 3
+    depends on AIC_LVGL_USE_DISPLAY
+    help
+      Application-owned display rotation. Allocates a CMA rotation buffer.
+      GE2D is used when available; unsupported geometry uses software.
+
 config AIC_LVGL_USE_TOUCH
     bool "Enable ArtInChip touch integration"
     default y

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
@@ -18,6 +18,7 @@ $variant=$Phase
 if ($WithFonts) { $variant += '-fonts' }
 if ($WithGif) { $variant += '-gif' }
 if ($WithWidgets) { $variant += '-widgets' }
+if ($Rotation) { $variant += "-rotate$Rotation" }
 $evidence=Join-Path $root "output/lvgl-evidence/$variant"
 New-Item -ItemType Directory -Force $evidence | Out-Null
 $env:SCONS_LIB_DIR=Join-Path $root 'tools/env/tools/Python27/Lib/site-packages/scons'
@@ -67,9 +68,9 @@ if ($Phase -eq 'ge2d') {
 $defPath=Join-Path $root "target/configs/$def"
 $originalDef=[IO.File]::ReadAllBytes($defPath)
 try {
-    if ($WithFonts -or $WithGif -or $WithWidgets) {
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation) {
         [IO.File]::WriteAllBytes("$evidence/defconfig-original", $originalDef)
-        $settings=@()
+        $settings=@("CONFIG_AIC_LVGL_DISPLAY_ROTATION=$([int]($Rotation / 90))")
         if ($WithFonts) { $settings += @('CONFIG_AIC_LVGL_USE_FREETYPE=y', 'CONFIG_LPKG_USING_FREETYPE=y', 'CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64') }
         if ($WithGif) { $settings += 'CONFIG_AIC_LVGL_USE_GIF=y' }
         if ($WithWidgets) { $settings += @('CONFIG_AIC_LVGL_USE_IMG_ROLLER=y', 'CONFIG_AIC_LVGL_USE_SWIPE_V1=y') }
@@ -85,7 +86,7 @@ try {
     Run-Step 'app-config' @($scons,"--apply-def=$def")
     Run-Step 'app-build' @($scons,"-j$Jobs")
 } finally {
-    if ($WithFonts -or $WithGif -or $WithWidgets) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
 }
 $app='output/'+($def -replace '_defconfig$','')+'/images'
 $checkArgs=@("$PSScriptRoot/check_integration.py",'--root','.', '--map',"$app/d13x.map",'--phase',$Phase)
@@ -93,6 +94,7 @@ if ($AllowComponentDirty) { $checkArgs += '--allow-component-dirty' }
 if ($WithFonts) { $checkArgs += '--with-fonts' }
 if ($WithGif) { $checkArgs += '--with-gif' }
 if ($WithWidgets) { $checkArgs += '--with-widgets' }
+$checkArgs += @('--rotation', "$Rotation")
 Run-Step 'static-check' $checkArgs
 Run-Step 'image-check' @("$PSScriptRoot/verify_image.py",$app,'output/d13x_d50t-2-lite_baremetal_bootloader/images',$Phase)
 New-Item -ItemType Directory -Force "$evidence/images" | Out-Null
