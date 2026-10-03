@@ -6,6 +6,18 @@
 static unsigned pins,cleans,writes,waits,status;
 static int fail_wait,fail_pin;
 static lv_aic_spi_panel_t *active;
+static unsigned powers,inits,tes;
+static bool fail_te;
+static bool power(void *context,bool on)
+{
+    assert(context==&powers && !status);
+    assert(on ? powers==0 && inits==0 : powers==1 && inits==1);
+    assert(!lv_aic_spi_panel_close(active));powers++;return true;
+}
+static bool initialize(void *context)
+{ assert(context==&powers && powers==1 && !inits && !tes);inits++;return true; }
+static bool te(void *context,uint32_t timeout)
+{ assert(context==&powers && powers==1 && inits==1 && timeout==20);tes++;return !fail_te; }
 static void present(void) {}
 static bool dc(void *context,bool data)
 {
@@ -34,11 +46,15 @@ int main(void)
     assert(!lv_aic_spi_panel_create(&device,steps,2,3,2,dc,&pins,true));
     assert(!pins && !writes);steps[1].capacity=64;
     active=lv_aic_spi_panel_create(&device,steps,2,3,2,dc,&pins,true);assert(active);
+    lv_aic_spi_panel_lifecycle_t lifecycle={power,initialize,te,&powers,0};
+    assert(!lv_aic_spi_panel_set_lifecycle(active,&lifecycle));lifecycle.te_timeout_ms=20;
+    assert(lv_aic_spi_panel_set_lifecycle(active,&lifecycle));
     steps[0].data_lines=3; /* descriptors are snapshotted */
     assert(!lv_aic_spi_panel_prepare(active,2,3) && !pins);
     assert(lv_aic_spi_panel_prepare(active,3,2));
     assert(lv_aic_spi_panel_prepare(active,3,2));
-    assert(pins==6 && writes==4 && waits==4 && cleans==4);
+    assert(pins==6 && writes==4 && waits==4 && cleans==4 && powers==1 && inits==1 && tes==2);
+    assert(!lv_aic_spi_panel_set_lifecycle(active,&lifecycle));
     assert(lv_aic_spi_panel_close(active));active=NULL;steps[0].data_lines=1;
     active=lv_aic_spi_panel_create(&device,steps,2,3,2,dc,&pins,true);assert(active);
     fail_wait=1;assert(!lv_aic_spi_panel_prepare(active,3,2));
@@ -52,5 +68,12 @@ int main(void)
     active=lv_aic_spi_panel_create(&device,steps,2,3,2,dc,&pins,true);assert(active);
     fail_pin=1;assert(!lv_aic_spi_panel_prepare(active,3,2));
     assert(pins==1 && !writes && !cleans && !lv_aic_spi_panel_close(active));
+    struct rt_spi_bus third_bus={&ops};struct rt_qspi_device third={{&third_bus}};
+    powers=inits=tes=0;fail_pin=0;fail_te=true;
+    active=lv_aic_spi_panel_create(&third,steps,2,3,2,dc,&pins,true);assert(active);
+    assert(lv_aic_spi_panel_set_lifecycle(active,&lifecycle));unsigned before=writes;
+    assert(!lv_aic_spi_panel_prepare(active,3,2) && writes==before && powers==1 && inits==1 && tes==1);
+    assert(!lv_aic_spi_panel_prepare(active,3,2) && tes==1);
+    assert(!lv_aic_spi_panel_close(active) && powers==1);
     return 0;
 }

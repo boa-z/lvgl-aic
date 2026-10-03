@@ -13,7 +13,8 @@ struct lv_aic_spi_panel {
     uint32_t width,height;
     bool (*set_dc)(void *,bool);
     void *context;
-    bool final_mode,busy,fault;
+    bool final_mode,busy,fault,started,powered;
+    lv_aic_spi_panel_lifecycle_t lifecycle;
     lv_aic_spi_panel_step_t steps[];
 };
 static bool lines(unsigned n) { return n==1 || n==2 || n==4; }
@@ -40,6 +41,13 @@ lv_aic_spi_panel_t *lv_aic_spi_panel_create(struct rt_qspi_device *device,
     p->set_dc=set_dc;p->context=context;p->final_mode=final_mode;
     lv_memcpy(p->steps,steps,count*sizeof(*steps));return p;
 }
+bool lv_aic_spi_panel_set_lifecycle(lv_aic_spi_panel_t *p,const lv_aic_spi_panel_lifecycle_t *lifecycle)
+{
+    if(!p || !lifecycle || p->started || p->busy || p->fault ||
+       (lifecycle->wait_te ? !lifecycle->te_timeout_ms || lifecycle->te_timeout_ms>60000 : lifecycle->te_timeout_ms!=0))
+        return false;
+    p->lifecycle=*lifecycle;return true;
+}
 static bool idle(lv_aic_spi_panel_t *p)
 {
     if(p->device->parent.bus!=p->bus || !p->bus->ops || !p->bus->ops->gstatus) return false;
@@ -51,6 +59,18 @@ bool lv_aic_spi_panel_prepare(void *context,uint32_t width,uint32_t height)
     lv_aic_spi_panel_t *p=context;
     if(!p || p->busy || p->fault || width!=p->width || height!=p->height) return false;
     p->busy=true;
+    if(!idle(p)) goto fault;
+    if(!p->started) {
+        p->started=true;
+        if(p->lifecycle.power) {
+            if(!p->lifecycle.power(p->lifecycle.context,true)) goto fault;
+            p->powered=true;
+        }
+        if(!idle(p)) goto fault;
+        if(p->lifecycle.initialize && !p->lifecycle.initialize(p->lifecycle.context)) goto fault;
+        if(!idle(p)) goto fault;
+    }
+    if(p->lifecycle.wait_te && !p->lifecycle.wait_te(p->lifecycle.context,p->lifecycle.te_timeout_ms)) goto fault;
     if(!idle(p)) goto fault;
     for(size_t i=0;i<p->count;i++) {
         const lv_aic_spi_panel_step_t *s=&p->steps[i];
@@ -69,6 +89,10 @@ fault:
 bool lv_aic_spi_panel_close(lv_aic_spi_panel_t *p)
 {
     if(!p || p->busy || p->fault) return false;
+    p->busy=true;
+    if(p->powered && (!idle(p) || !p->lifecycle.power(p->lifecycle.context,false) || !idle(p))) {
+        p->fault=true;p->busy=false;return false;
+    }
     lv_free(p);return true;
 }
 #endif

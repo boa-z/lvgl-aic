@@ -557,3 +557,33 @@ and the GE address-span correction. Clean source identities, image SHA256 and
 all build/link/image gate results are recorded at the top of
 [validation record](validation.md). This supersedes pending final-link notes in
 the intervening sections. Hardware remains **NOT_RUN**.
+
+
+## Explicit panel power/init/TE lifecycle
+
+`lv_aic_spi_panel_set_lifecycle` snapshots optional synchronous checked callbacks
+before worker startup/first prepare. First prepare performs power-on, one-time
+initialization, TE wait and then frame commands. Later frames repeat TE/frame
+commands only. The device bus/status is rechecked between phases. A configured
+TE wait receives an explicit 1..60000 ms timeout; its implementation must honor
+the bound. No callback means no invented GPIO, delay, screen command or TE source.
+Applications may use the checked SPI command writer for initialization, retaining
+persistent command buffers if completion becomes uncertain.
+
+Normal close powers off after the referencing session has been successfully
+closed, with unmanaged bus clients excluded until panel close finishes. Reentrant
+close during callbacks is rejected. Callback failure is sticky: no command replay,
+no force power-off after uncertain DMA, and contexts/storage remain alive. Lifecycle
+cannot be replaced once prepare starts; geometry rejection before prepare does not
+start or power the panel. The application must honor worker/UI callback execution
+contexts (prepare on worker; normal close on lifecycle owner).
+
+Validation: **67/67 host PASS**, including power/init before first frame, no repeat
+initialization over two frames, per-frame TE, timeout argument validation, refusal
+to reconfigure a started panel, reentrant close, and TE failure with no command
+submission or retry. D13x compile/partial link PASS; combined SHA256:
+`90d14649f5f81cea85669606db604ee2cc809b88fba236f64e451c57f7fc24c8`.
+Logs: `output/spi-lifecycle-tests.log`, `output/spi-lifecycle-target.log`.
+The final-link gate includes the lifecycle setter, but the prior image predates
+this increment. Concrete panel callbacks and physical TE/power acceptance remain
+application/board work; hardware **NOT_RUN**.
