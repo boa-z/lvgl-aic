@@ -161,7 +161,7 @@ config AIC_LVGL_USE_PLAYER_SESSION
 config AIC_LVGL_USE_PLAYER
     bool "Build asynchronous LVGL player widget"
     default n
-    depends on AIC_LVGL_USE_PLAYER_SESSION && LV_USE_IMAGE
+    depends on AIC_LVGL_USE_PLAYER_SESSION
     help
         RGB/YUV image widget with deferred source replacement, playback,
         pause/resume, stop/replay, volume and asynchronous deletion cleanup.

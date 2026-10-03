@@ -61,7 +61,7 @@ def check_submodule(root, path, expected):
         fail("%s is %s, expected %s" % (path, actual, expected))
 
 
-def check_config(root, phase="gate1", with_fonts=False, with_gif=False, with_widgets=False):
+def check_config(root, phase="gate1", with_fonts=False, with_gif=False, with_widgets=False, with_player=False):
     config = (root / ".config").read_text(encoding="utf-8")
     header = (root / "rtconfig.h").read_text(encoding="utf-8")
     for symbol in REQUIRED_CONFIG_SYMBOLS:
@@ -87,6 +87,12 @@ def check_config(root, phase="gate1", with_fonts=False, with_gif=False, with_wid
         defined = bool(re.search(r"^#define %s(?:\s|$)" % symbol, header, re.MULTILINE))
         if enabled != with_widgets or defined != with_widgets:
             fail("widget profile mismatch: " + symbol)
+    for symbol in ("AIC_LVGL_USE_PLAYER", "AIC_LVGL_USE_PLAYER_SESSION",
+                   "AIC_MPP_PLAYER_INTERFACE", "AIC_MPP_PLAYER_VIDEO_EXT_RENDER"):
+        enabled = bool(re.search(r"^CONFIG_%s=y$" % symbol, config, re.MULTILINE))
+        defined = bool(re.search(r"^#define %s(?:\s|$)" % symbol, header, re.MULTILINE))
+        if enabled != with_player or defined != with_player:
+            fail("player profile mismatch: " + symbol)
     disabled = list(DISABLED_CONFIG_SYMBOLS)
     if phase in ("mpp", "ge2d"):
         disabled.remove("AIC_LVGL_USE_MPP_DEC")
@@ -145,6 +151,7 @@ def main():
     parser.add_argument("--with-fonts", action="store_true")
     parser.add_argument("--with-gif", action="store_true")
     parser.add_argument("--with-widgets", action="store_true")
+    parser.add_argument("--with-player", action="store_true")
     parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
@@ -173,7 +180,7 @@ def main():
         map_path.relative_to(root)
     except ValueError:
         fail("link map is outside the integration checkout: %s" % map_path)
-    check_config(root, args.phase, args.with_fonts, args.with_gif, args.with_widgets)
+    check_config(root, args.phase, args.with_fonts, args.with_gif, args.with_widgets, args.with_player)
     config = (root / ".config").read_text(encoding="utf-8")
     header = (root / "rtconfig.h").read_text(encoding="utf-8")
     turns = args.rotation // 90
@@ -267,6 +274,14 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("SDK widget live symbol absent: " + symbol)
         print("SDK widget live symbols: PASS")
+    if args.with_player:
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_aic_player_create", "lv_aic_player_set_src", "lv_aic_player_start",
+                       "lv_aic_player_playback_prepare", "lv_aic_player_frames_poll_image",
+                       "lv_aic_player_allocator_create", "aic_player_create", "aic_player_get_frame"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("player live symbol absent: " + symbol)
+        print("player link closure: PASS (no media playback execution)")
     print(args.phase + " static checks: PASS (not board validation)")
 
 

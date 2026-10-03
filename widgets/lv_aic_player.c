@@ -4,6 +4,9 @@
 #include "lvgl_aic_private.h"
 #if defined(AIC_LVGL_USE_PLAYER) && AIC_LVGL_USE_PLAYER
 #include <string.h>
+#if !LV_USE_IMAGE
+#error "The AIC player widget requires LV_USE_IMAGE"
+#endif
 typedef struct {
     lv_obj_t *obj;
     lv_timer_t *timer;

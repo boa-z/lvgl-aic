@@ -15,6 +15,7 @@ $includes=@('.', 'bsp/common/include', 'bsp/artinchip/sys/d13x/include',
     'packages/artinchip/mpp/include', 'packages/artinchip/mpp/middle_media/player/include',
     'kernel/rt-thread/include', 'kernel/common/include/osal',
     'kernel/rt-thread/components/finsh', 'kernel/rt-thread/components/drivers/include',
+    'kernel/rt-thread/components/drivers/audio',
     'kernel/rt-thread/components/utilities/ulog',
     'kernel/rt-thread/components/libc/posix/pthreads',
     'kernel/rt-thread/components/libc/compilers/common/include')

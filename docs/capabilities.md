@@ -119,7 +119,7 @@ clock and coherent SDK callback mailbox now provide timing/event primitives;
 PLAY_END remains an ambiguous terminal notification, not clean EOS evidence.
 The background playback worker now supports prepare/start/pause/volume,
 RGB/YUV publication and deferred close, using SDK get_frame synchronization.
-Host ABI contracts and target compilation pass; widget/seek/repeat controls,
+Host ABI contracts and target compilation pass; seek/repeat controls,
 real A/V timing, APNG, group/slave and video-plane integration remain open. No media-enabled image or physical playback has been verified.
 
 Native RGB frame publication now covers the D13x MJPEG RGB565/RGB888/ARGB8888

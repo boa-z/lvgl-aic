@@ -11,7 +11,7 @@ The application still owns audio/codec configuration. No SDK core is changed.
 
 会话必须零初始化一次，随后只能由同一串行 worker 使用；prepare、start、取帧和
 stop 都可能阻塞，不能直接从 LVGL UI 调用。下述 playback worker 已接入这些接口；
-播放器 widget 仍待实现。
+原生播放器 widget 已接入，接口与验证边界见下文。
 URI 是 SDK 原生路径，限制为 SDK 的 128 字节（含终止符），不自动解释 LVGL 盘符。
 
 基础能力：打开并同步准备、媒体信息、开始、幂等暂停/恢复、停止后重新准备并启动、
@@ -302,3 +302,17 @@ fault cleanup. The separate worker contract exercises real worker code with
 mock SDK. Strict E907 widget compilation: **PASS**; output/lvgl-player.o SHA256
 `8e14df2e234d1babe7f24ea0a386532be7927118d4168c5f40caa28e63942d9d`.
 Media-enabled firmware linking and physical playback: **NOT_RUN**.
+
+## Media link profile
+
+`tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -WithPlayer -Jobs 8`
+enables the SDK external-render player, H264 and application player widget in
+the isolated smoke build. The profile retains widget API roots so link-time
+GC cannot silently discard the worker/allocator/bridge/SDK dependency closure.
+It validates player Kconfig/header values and live symbols in the final map.
+It does not auto-play or provide runtime media acceptance. Evidence goes to a
+separate `ge2d-fonts-gif-widgets-aicp-player` directory.
+
+LV_USE_IMAGE is an application C configuration, not an SDK Kconfig symbol.
+The widget enforces that dependency during C compilation; referencing it in
+Kconfig would silently disable this application-owned widget.
