@@ -16,6 +16,13 @@ RGB geometry, truncated headers and inconsistent component lengths.
 
 This is integration code, not verified AICP pixel decoding. The SDK codec
 implementation is supplied outside the visible decoder source tree.
-Remaining: genuine AICP fixtures, FILE decode/cache lifecycle tests,
-V31 four-component tests, enabled-codec target link and board pixel parity.
+SDK bird.aicp (three components) and flower.aicp (four components) now
+exercise FILE and RAW paths, decoded-buffer sharing, invalidation while
+readers remain open, final CMA release and engine-error cleanup.
+The engine is mocked: actual compressed pixels are not decoded on host.
+Non-V31 rejects flower; AIC_BUILD_AICP_V31_TESTS=ON accepts its ARGB header.
+Both platform contracts pass; the V31 host configuration passes 14/14 tests.
+Fixtures are read from the external SDK without copying vendor assets.
+
+Remaining: enabled-codec target link and board pixel parity.
 Do not enable the codec in a release solely on the basis of these host tests.

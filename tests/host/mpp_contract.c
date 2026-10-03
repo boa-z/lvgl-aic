@@ -260,11 +260,71 @@ static void aicp_header_contract(void)
     assert(lv_aic_mpp_info_cb(NULL, &dsc, &header) == LV_RESULT_INVALID);
 }
 
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+static void aicp_fixture_contract(const char *root)
+{
+    const char *names[] = {"flower.aicp", "bird.aicp"};
+    lv_image_decoder_t *decoder;
+    request_stride = request_height = 0;
+    assert(lv_aic_mpp_decoder_init(&decoder) == LV_AIC_OK);
+    lv_aic_mpp_cache_set_limit(4 * 1024 * 1024);
+    for (unsigned i = 0; i < 2; i++) {
+        uint32_t size;
+        uint8_t *bytes = fixture(root, names[i], &size);
+        lv_image_dsc_t image = {0};
+        image.header.magic = LV_IMAGE_HEADER_MAGIC;
+        image.header.cf = LV_COLOR_FORMAT_RAW;
+        image.data = bytes; image.data_size = size;
+        char path[1024];
+        snprintf(path, sizeof(path), "L:%s/%s", root, names[i]);
+        for (int memory = 0; memory < 2; memory++) {
+            const void *src = memory ? (const void *)&image : (const void *)path;
+            lv_image_header_t header;
+            lv_image_decoder_dsc_t a, b;
+            lv_image_decoder_args_t args = {0};
+#ifndef AIC_VE_DRV_V31
+            if (i == 0) {
+                lv_image_decoder_dsc_t rejected = {0};
+                rejected.src = src;
+                assert(lv_aic_mpp_info_cb(NULL, &rejected, &header) == LV_RESULT_INVALID);
+                continue;
+            }
+#endif
+            assert(lv_image_decoder_get_info(src, &header) == LV_RESULT_OK);
+            assert(header.cf == (i == 0 ? LV_COLOR_FORMAT_ARGB8888 : LV_COLOR_FORMAT_RGB888));
+            assert(header.w > 0 && header.h > 0);
+            open_mpp(&a, src, &args);
+            int before = decodes;
+            open_mpp(&b, src, &args);
+            assert(decodes == before && a.decoded == b.decoded);
+            lv_aic_mpp_cache_drop(src);
+            lv_image_decoder_close(&a);
+            assert(live_cma > 0);
+            lv_image_decoder_close(&b);
+            assert(live_cma == 0);
+            fail_decode = 1;
+            assert(lv_image_decoder_open(&a, src, &args) == LV_RESULT_INVALID);
+            fail_decode = 0;
+            assert(live_cma == 0);
+        }
+        free(bytes);
+    }
+    lv_aic_mpp_decoder_deinit(decoder);
+}
+#endif
+
 int main(int argc, char **argv) {
     jpeg_header_boundaries();
     assert(argc == 2 || argc == 3);
     lv_init();
     aicp_header_contract();
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+    if (argc == 3 && strcmp(argv[2], "--aicp") == 0) {
+        aicp_fixture_contract(argv[1]);
+        lv_deinit();
+        return 0;
+    }
+#endif
     if (argc == 3) {
         assert(strcmp(argv[2],"--memory-cache") == 0);
         memory_cache_contract(argv[1]);
