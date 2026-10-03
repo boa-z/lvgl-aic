@@ -152,6 +152,7 @@ def main():
     parser.add_argument("--with-gif", action="store_true")
     parser.add_argument("--with-widgets", action="store_true")
     parser.add_argument("--with-player", action="store_true")
+    parser.add_argument("--with-apng", action="store_true")
     parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
@@ -183,6 +184,21 @@ def main():
     check_config(root, args.phase, args.with_fonts, args.with_gif, args.with_widgets, args.with_player)
     config = (root / ".config").read_text(encoding="utf-8")
     header = (root / "rtconfig.h").read_text(encoding="utf-8")
+    for symbol in ("AIC_LVGL_USE_APNG", "AIC_LVGL_USE_APNG_WIDGET"):
+        enabled = re.search(r"^CONFIG_" + symbol + r"=y$", config, re.MULTILINE) is not None
+        defined = re.search(r"^#define " + symbol + r"(?:\s|$)", header, re.MULTILINE) is not None
+        if enabled != args.with_apng or defined != args.with_apng:
+            fail("APNG profile mismatch: " + symbol)
+    if args.with_apng:
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_aic_apng_create", "lv_aic_apng_set_src", "lv_aic_apng_start",
+                       "lv_aic_apng_restart", "lv_aic_apng_set_rate", "lv_aic_apng_close",
+                       "lv_aic_apng_playback_prepare", "lv_aic_apng_stream_tick",
+                       "lv_aic_apng_decoder_decode", "lv_aic_apng_frames_publish",
+                       "lv_aic_apng_compose", "lv_aic_apng_timeline_commit"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("APNG live symbol absent: " + symbol)
+        print("APNG widget/worker/codec/composition/timing live symbols: PASS")
     turns = args.rotation // 90
     if args.with_aicp:
         if "CONFIG_AIC_MPP_AICP_DEC_ENABLE=y" not in config or not re.search(
