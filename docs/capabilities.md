@@ -30,9 +30,9 @@ video playback-rate changes are not supported by the SDK reference either.
 See [current command contract](player-command-compat.md). The milestone notes
 below record historical checkpoints; older “remaining” items for APNG worker,
 widget, command, metadata, automatic backend selection and group lifecycle
-are superseded here. Multi-instance groups remain incomplete.
+are superseded here. Physical multi-instance group acceptance remains incomplete.
 
-Maintained inventory, 2026-10-03. Development branch: codex/sdk-basic-capabilities.
+Maintained inventory, 2026-10-04. Development branch: codex/sdk-basic-capabilities.
 Comparison: the SDK's ArtInChip LVGL 9.1.0 implementation. Earlier
 phase documents are historical; source presence and switches are not board proof.
 
@@ -62,8 +62,8 @@ See [swipe_v1](swipe-stage.md). Both widgets have a shared manual test page;
 the combined GE2D/fonts/GIF/widgets cross-build and linked-symbol checks pass.
 Physical display/input acceptance remains pending;
 SDK media parity remains incomplete; video-window and camera image composition
-are implemented separately, while player and video-plane
-ownership remain gaps.
+are implemented separately. Explicit video-plane ownership is available; automatic
+player-to-plane composition and physical acceptance remain gaps.
 
 A [component BMP decoder](bmp-stage.md) now covers FILE/RAW uncompressed
 24/32-bit images with full-buffer CMA/cache ownership and host pixel tests.
@@ -259,3 +259,14 @@ against SDK av_media_info; video/audio metadata and APNG file/dimensions are
 supported. Queries reject closing/replacement/fault states without stale writes.
 Host **39/39 PASS** plus updated focused tests; strict E907 **PASS**. Automatic
 backend selection, group lifecycle and cross-backend slave binding remain open.
+
+
+## Codec applicability on D13x (2026-10-04)
+
+The effective D50T profile selects `AIC_VE_DRV_V30`. SDK
+`packages/artinchip/mpp/Kconfig` restricts `AIC_MPP_H264_DEC_ENABLE` to
+`LPKG_MPP && AIC_VE_DRV_V10`; requesting H.264 in the profile cannot override
+that dependency. Therefore the D13x image has no H.264 decoder call path to
+validate. This is an SDK/SoC applicability boundary, not evidence of a lost
+LVGL adapter feature. H.264 linkage/arbitration needs a separate supported V10
+board profile; do not force the V10 driver into D13x to satisfy a symbol check.

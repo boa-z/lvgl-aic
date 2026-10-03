@@ -36,3 +36,13 @@ update failure, first/second VSync failure, repeated failed close, recovery,
 YUV mapping and balanced producer release. These prove resource policy, not DE
 register latching, cache coherency or physical scanout. Strict E907 compilation
 uses real SDK headers. Physical acceptance remains **NOT_RUN**.
+
+
+Typical owner-thread usage: initialize native RGB/YUV decoders, open a plane,
+poll an explicitly started playback session, and pass
+`lv_aic_player_image_source(&image)` to `lv_aic_video_plane_present`. Destroy
+the polled image owner afterward; the plane retains its own native reader even
+when submission fails. If `lv_aic_video_plane_faulted` is true, stop submitting
+and retry hide/close. After successful hide/close, close and drain playback.
+Do not call the player polling API independently on a session owned by a widget.
+An automatic widget binding remains a separate integration stage.
