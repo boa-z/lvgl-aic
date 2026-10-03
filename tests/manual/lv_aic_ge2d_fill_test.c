@@ -225,6 +225,7 @@ static int key565_probe(void)
             aicos_dcache_clean_invalid_range((unsigned long *)dst,1024);
             if(mpp_ge_bitblt(ge,&blt)<0 || mpp_ge_emit(ge)<0 || mpp_ge_sync(ge)<0) {
                 fill_probe_poisoned=true;
+                lv_draw_aic_ge2d_quarantine();
                 AIC_TEST_E("FAIL key565 DMA; retaining 3072 CMA bytes until reboot");
                 return -1;
             }

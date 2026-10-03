@@ -574,6 +574,22 @@ int main(void)
         assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
         assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING);
     }
+    /* A quarantined client must not turn a fake image into a CPU fallback
+     * that could race the outstanding DMA. Exercise the real image executor. */
+    for (unsigned kind = 0; kind < 2; kind++) {
+        lv_draw_aic_ge2d_outcome_t outcome;
+        fill_dma_faulted = kind == 0;
+        if (kind == 1) lv_draw_aic_ge2d_quarantine();
+        task.clip_area = task.area;
+        memset(output, 0xa5, sizeof(output));
+        int old_fills = fills, old_submits = submits;
+        assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
+        assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING);
+        assert(fills == old_fills && submits == old_submits);
+        for (unsigned i = 0; i < sizeof(output); i++) assert(output[i] == 0xa5);
+        /* Only synchronous mocks can safely reset fault state. */
+        fill_dma_faulted = g_ge2d_external_fault = false;
+    }
     g_ge2d_dev=mpp_ge_open(); g_ge2d_ready=true;
     assert(lv_aic_rgb_image_decoder_init());
     for(unsigned copy=0;copy<2;copy++) for(unsigned tiled=0;tiled<2;tiled++) for(int failure=1;failure<=3;failure++) {

@@ -47,7 +47,7 @@ static lv_result_t fill_core(lv_draw_task_t *task, bool replace, uint32_t argb)
     uint32_t bpp;
     lv_color_format_t cf;
 
-    if (fill_dma_faulted || task == NULL || task->type != LV_DRAW_TASK_TYPE_FILL) {
+    if (lv_draw_aic_ge2d_faulted() || task == NULL || task->type != LV_DRAW_TASK_TYPE_FILL) {
         return LV_RESULT_INVALID;
     }
 

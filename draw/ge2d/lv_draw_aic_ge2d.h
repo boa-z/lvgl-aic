@@ -90,10 +90,19 @@ typedef struct {
  */
 void lv_draw_aic_ge2d_init(void);
 
-/** @brief Close the GE2D device handle. */
+/** Close a healthy client; retain a faulted client until reboot.
+ * Full LVGL/display teardown with uncertain DMA is unsupported. */
 void lv_draw_aic_ge2d_deinit(void);
 
-/** @brief The open GE2D device, or NULL when unavailable. */
+/** True if fill, leased image, or a direct user reported uncertain DMA. */
+bool lv_draw_aic_ge2d_faulted(void);
+
+/** Latch uncertain DMA from a direct device user (e.g. a board probe).
+ * UI-thread only, like all draw-unit APIs. Caller must retain DMA buffers.
+ * No runtime reset is provided; stop rendering and reboot. */
+void lv_draw_aic_ge2d_quarantine(void);
+
+/** @brief The open GE2D device, or NULL when unavailable or quarantined. */
 struct mpp_ge *lv_draw_aic_ge2d_device(void);
 
 /** @brief Current counters. Never NULL. */

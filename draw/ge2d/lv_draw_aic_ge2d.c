@@ -59,6 +59,7 @@
 
 static struct mpp_ge *g_ge2d_dev;
 static bool g_ge2d_ready;
+static bool g_ge2d_external_fault;
 static bool g_ge2d_registered;
 static lv_draw_aic_ge2d_stats_t g_ge2d_stats;
 
@@ -268,6 +269,11 @@ void lv_draw_aic_ge2d_init(void)
 {
     lv_draw_aic_ge2d_unit_t *unit;
 
+    if (lv_draw_aic_ge2d_faulted()) {
+        LV_LOG_ERROR("GE DMA fault: reinitialization requires reboot");
+        return;
+    }
+
     /* The device is opened on EVERY init, not only the first one. The smoke
      * application runs LVGL deinit/init cycles, and lv_draw_aic_ge2d_deinit()
      * closes the device while LVGL keeps the unit in its draw-unit list (there
@@ -306,8 +312,27 @@ void lv_draw_aic_ge2d_init(void)
     g_ge2d_registered = true;
 }
 
+bool lv_draw_aic_ge2d_faulted(void)
+{
+    return g_ge2d_external_fault || lv_draw_aic_ge2d_fill_faulted() ||
+           lv_draw_aic_ge2d_yuv_faulted() || lv_draw_aic_ge2d_image_faulted();
+}
+
+void lv_draw_aic_ge2d_quarantine(void)
+{
+    g_ge2d_external_fault = true;
+    g_ge2d_stats.ready = false;
+}
+
 void lv_draw_aic_ge2d_deinit(void)
 {
+    if (lv_draw_aic_ge2d_faulted()) {
+        /* close frees the SDK client without proving DMA has stopped. Keep
+         * it alive. This cannot make LVGL display/object teardown safe. */
+        g_ge2d_stats.ready = false;
+        LV_LOG_ERROR("GE DMA fault: retaining client until reboot");
+        return;
+    }
     if (g_ge2d_dev != NULL) {
         mpp_ge_close(g_ge2d_dev);
         g_ge2d_dev = NULL;
@@ -318,7 +343,7 @@ void lv_draw_aic_ge2d_deinit(void)
 
 struct mpp_ge *lv_draw_aic_ge2d_device(void)
 {
-    return g_ge2d_dev;
+    return lv_draw_aic_ge2d_faulted() ? NULL : g_ge2d_dev;
 }
 
 const lv_draw_aic_ge2d_stats_t *lv_draw_aic_ge2d_stats(void)
@@ -411,7 +436,7 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
     lv_result_t result;
 
     /* Synchronous unit: exactly one task in flight. */
-    if (ge2d->task_act != NULL) {
+    if (ge2d->task_act != NULL || lv_draw_aic_ge2d_faulted()) {
         return LV_DRAW_UNIT_IDLE;
     }
 
@@ -477,8 +502,7 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
         }
     }
     else {
-        if (lv_draw_aic_ge2d_fill_faulted() || lv_draw_aic_ge2d_yuv_faulted() ||
-            lv_draw_aic_ge2d_image_faulted()) {
+        if (lv_draw_aic_ge2d_faulted()) {
             /* A failed GE submission or sync may leave DMA active. Keep this task and its
              * destination layer in flight, and retain the source lease.
              * Rendering is intentionally stopped until hardware reboot. */

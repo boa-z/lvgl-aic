@@ -11,11 +11,11 @@ static lv_area_t cache_area;
 static int submits, emits, syncs, caches, fail_at;
 static const void *allowed_dst;
 static bool yuv_fault, rgb_fault;
-static int image_calls;
+static int image_calls, image_fault_kind, opens, closes;
 bool lv_draw_aic_ge2d_image_faulted(void) { return rgb_fault; }
 bool lv_draw_aic_ge2d_yuv_faulted(void) { return yuv_fault; }
-struct mpp_ge *mpp_ge_open(void) { return (struct mpp_ge *)(uintptr_t)1; }
-void mpp_ge_close(struct mpp_ge *ge) { (void)ge; }
+struct mpp_ge *mpp_ge_open(void) { opens++; return (struct mpp_ge *)(uintptr_t)1; }
+void mpp_ge_close(struct mpp_ge *ge) { (void)ge; closes++; }
 int mpp_ge_fillrect(struct mpp_ge *ge, struct ge_fillrect *f)
 { (void)ge; captured = *f; submits++; return fail_at == 1 ? -1 : 0; }
 int mpp_ge_emit(struct mpp_ge *ge)
@@ -29,7 +29,7 @@ bool lv_draw_aic_ge2d_dst_format_supported(lv_color_format_t cf)
 void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *b, const lv_area_t *a)
 { (void)b; cache_area = *a; caches++; }
 lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *t, lv_draw_aic_ge2d_outcome_t *o)
-{ (void)t; (void)o; image_calls++; return LV_RESULT_INVALID; }
+{ (void)t; (void)o; image_calls++; yuv_fault = image_fault_kind == 1; rgb_fault = image_fault_kind == 2; return LV_RESULT_INVALID; }
 static void dispatcher_failure_contract(lv_layer_t *layer)
 {
     for (unsigned fatal = 0; fatal < 3; fatal++) {
@@ -38,7 +38,7 @@ static void dispatcher_failure_contract(lv_layer_t *layer)
                                                LV_DRAW_TASK_TYPE_IMAGE);
         assert(task != NULL);
         task->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
-        yuv_fault = fatal == 1; rgb_fault = fatal == 2;
+        yuv_fault = rgb_fault = false; image_fault_kind = fatal;
         image_calls = 0;
         lv_draw_aic_ge2d_stats_reset();
         assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == 1);
@@ -66,7 +66,7 @@ static void dispatcher_failure_contract(lv_layer_t *layer)
         lv_free(queued);
         lv_free(task);
     }
-    yuv_fault = rgb_fault = false;
+    yuv_fault = rgb_fault = false; image_fault_kind = 0;
 }
 static void reset_calls(void) { submits = emits = syncs = caches = 0; }
 static void verify_latched(lv_draw_task_t *task)
@@ -106,6 +106,40 @@ static void rejected(lv_draw_task_t *t)
     reset_calls();
     assert(lv_draw_aic_ge2d_fill(t) == LV_RESULT_INVALID);
     assert(submits == 0 && emits == 0 && syncs == 0 && caches == 0);
+}
+static void client_fault_contract(lv_draw_task_t *task)
+{
+    for (unsigned kind = 0; kind < 4; kind++) {
+        fill_dma_faulted = kind == 0;
+        yuv_fault = kind == 1; rgb_fault = kind == 2;
+        if (kind == 3) lv_draw_aic_ge2d_quarantine();
+        int old_opens = opens, old_closes = closes;
+        struct mpp_ge *retained = g_ge2d_dev;
+        assert(lv_draw_aic_ge2d_faulted() && lv_draw_aic_ge2d_device() == NULL);
+        reset_calls();
+        assert(lv_draw_aic_ge2d_fill(task) == LV_RESULT_INVALID);
+        assert(lv_draw_aic_ge2d_fill_replace(task, 0) == LV_RESULT_INVALID);
+        assert(submits == 0 && caches == 0);
+        lv_layer_t *layer = task->target_layer;
+        lv_draw_aic_ge2d_unit_t unit = {0};
+        lv_draw_task_t *queued = lv_draw_add_task(layer, &layer->buf_area, LV_DRAW_TASK_TYPE_FILL);
+        queued->draw_dsc = task->draw_dsc;
+        queued->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == LV_DRAW_UNIT_IDLE);
+        assert(queued->state == LV_DRAW_TASK_STATE_WAITING && unit.task_act == NULL);
+        assert(submits == 0);
+        layer->draw_task_head = NULL; lv_free(queued);
+        lv_draw_aic_ge2d_deinit(); lv_draw_aic_ge2d_init();
+        assert(opens == old_opens && closes == old_closes && g_ge2d_dev == retained);
+        assert(!lv_draw_aic_ge2d_stats()->ready);
+        lv_draw_aic_ge2d_stats_reset();
+        assert(lv_draw_aic_ge2d_faulted());
+        /* Mock-only reset: production must reboot, never discard this latch. */
+        fill_dma_faulted = yuv_fault = rgb_fault = g_ge2d_external_fault = false;
+    }
+    int old_closes = closes;
+    lv_draw_aic_ge2d_deinit();
+    assert(closes == old_closes + 1 && g_ge2d_dev == NULL);
 }
 int main(void)
 {
@@ -210,5 +244,7 @@ int main(void)
     task.type = LV_DRAW_TASK_TYPE_IMAGE; rejected(&task); rejected(NULL);
     dispatcher_failure_contract(&layer);
     d.opa = 255; fill_dispatch_failure(&layer, &d);
+    task.type = LV_DRAW_TASK_TYPE_FILL;
+    client_fault_contract(&task);
     lv_deinit(); return 0;
 }

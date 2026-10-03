@@ -748,7 +748,7 @@ static lv_result_t image_draw(lv_draw_task_t *task,
 lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,lv_draw_aic_ge2d_outcome_t *outcome)
 {
     if(outcome) *outcome=LV_DRAW_AIC_GE2D_OUTCOME_NOTHING;
-    if(rgb_quarantined) return LV_RESULT_INVALID;
+    if(lv_draw_aic_ge2d_faulted()) return LV_RESULT_INVALID;
     lv_aic_rgb_image_t *lease=NULL;
     const lv_aic_rgb_frame_t *frame;
     if(task && task->type==LV_DRAW_TASK_TYPE_IMAGE && task->draw_dsc) {

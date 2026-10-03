@@ -440,3 +440,22 @@ Image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_
 (SDK-relative), SHA256
 `aa8b5aa8d725fd1821fcbd4a0fd4c5571f89ec7705e12ce0e111c2832d1d9122`.
 Physical board validation remains NOT_RUN; this is build evidence only.
+
+
+### Shared GE client quarantine (2026-10-04)
+
+The client now aggregates fill, leased RGB/YUV and direct-probe DMA faults.
+A quarantined device is unavailable to subsequent users; queued GE tasks stay
+waiting, and the image entry rejects work before any software fallback can touch
+a possibly active destination. The raw RGB565 key probe reports its uncertain
+DMA to this shared latch while retaining its three buffers.
+
+Client deinit retains the SDK handle on fault, and init refuses to reopen it.
+Stats reset cannot clear quarantine. Healthy close still releases its client.
+This supersedes the client-close/raw-probe pending items above, but does NOT make
+full LVGL/display/object teardown safe during uncertain DMA: reboot is required.
+Other independent GE clients and SDK reset semantics remain outside this guard.
+
+Host coverage checks all four fault origins, no resubmission, queued-task state,
+client open/close counts and pseudo-image refusal without CPU writes. Board
+NOT_RUN; no runtime recovery or reset procedure is claimed.
