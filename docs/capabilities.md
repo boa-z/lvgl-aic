@@ -160,3 +160,10 @@ APNG now also has a worker-side timeline foundation for finite/infinite loops,
 pause/resume, rational 0.1..10x rate and fractional frame delays. Host contracts
 and target compilation pass. It is not yet connected to a background MPP decoder
 or the player widget; SDK video timing continues to use its own synchronized path.
+
+APNG now also has a bounded worker-only MPP PNG decoder adapter, independently
+selectable with `AIC_LVGL_USE_APNG` without the SDK player/audio interface.
+It converts native ARGB to compositor RGBA, pins verified CMA allocations and
+retains failed frame returns for retry. Host **36/36 PASS** and strict E907
+compile **PASS**; APNG playback/publication/widget and board decoding remain
+unverified. See [stage details](apng-stage.md).

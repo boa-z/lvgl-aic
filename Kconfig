@@ -147,6 +147,15 @@ config AIC_LVGL_USE_CAMERA
         Explicit application colorimetry and YUV decoder initialization required.
         Uses LVGL composition, not the SDK lower video plane or barcode backend.
 
+config AIC_LVGL_USE_APNG
+    bool "Build worker-side APNG PNG decoder foundation"
+    default n
+    depends on AIC_LVGL_PORT && LPKG_MPP && AIC_VE_DRV
+    help
+        Bounded standalone PNG decoding to RGBA for APNG composition.
+        Independent of SDK player/audio. This is an internal worker API;
+        asynchronous playback and an APNG widget are not yet provided.
+
 config AIC_LVGL_USE_PLAYER_SESSION
     bool "Build application-owned background media playback"
     default n

@@ -106,3 +106,42 @@ from a background APNG worker. A separate bounded MPP PNG adapter, explicit
 RGBA/native byte-order handoff, asynchronous immutable publication and widget
 backend selection remain to be implemented. No new APNG firmware image or
 physical playback acceptance is claimed by this stage.
+
+## Worker MPP PNG adapter (2026-10-03)
+
+`compat/lv_aic_apng_decoder.h` / `port/lv_aic_apng_decoder.c` add a
+serialized worker-only decoder under `AIC_LVGL_USE_APNG`. It depends on
+application port + MPP + VE, independently of the SDK media player/audio.
+Each extracted standalone PNG is CRC/structure checked before submission;
+expected dimensions, disjoint caller storage, strides and capacities are
+checked before decoding. This is not a sandbox for untrusted compressed data.
+
+A fresh SDK PNG decoder is used for each frame because its reset method is
+currently a TODO. Output uses the existing native ARGB8888 contract (BGRA
+bytes on E907), then explicitly swaps R/B into straight-alpha RGBA8 for the
+software compositor. Caller row padding is preserved. Frames with error flags,
+wrong format/dimensions/crop, invalid stride/address or unowned allocation are
+rejected before CPU copying. Allocator acquisition invalidates the CPU cache
+before reading decoded pixels; the pin is released before SDK frame return.
+
+Frame CMA and aligned packet-size limits are explicit. The frame limit does
+not cover SDK internal VE scratch, the bitstream allocation or caller-owned
+file/rectangle/canvas/PREVIOUS storage. The adapter does not allocate a second
+full-frame CPU copy. Caller output is publishable only on a true result; a
+failed frame return can occur after pixels were written. Such failure keeps
+the decoder/frame/context alive and rejects new decode requests until close
+succeeds. Destroy is retryable and must never be replaced by a forced free.
+
+Validation: **36/36 host contracts PASS**, including the new adapter linked
+against real SDK MPP headers, the real bounded allocator and mocked MPP/OSAL.
+Tests cover 100 cycles, 3x2 pixels with independent source/destination padding,
+straight alpha and channel order, create/control/init/packet/decode/get-frame
+failures, invalid frames, input CRC/shape/span/alias rejection, a 31-byte budget
+rejecting a 32-byte allocation, and failed put-frame followed by safe retry and
+reuse. Mock pixels do not establish physical PNG codec correctness.
+Strict E907 compilation **PASS**, `output/lvgl-apng-decoder.o` SHA256:
+`89c6b017d5ff8c579ac05c562a9673b88c8cabf57e7f77652e35ca5e86e4a09b`.
+
+This stage adds no new firmware image. File loading, background orchestration,
+immutable publication, widget/backend switching and physical playback remain
+open; the existing player backend is unchanged.

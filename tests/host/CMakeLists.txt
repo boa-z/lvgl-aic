@@ -699,3 +699,21 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME lvgl_aic_apng_timeline_contract COMMAND lvgl_aic_apng_timeline_contract)
 set_tests_properties(lvgl_aic_apng_timeline_contract PROPERTIES TIMEOUT 15)
+
+if(AIC_SDK_ROOT)
+    add_executable(lvgl_aic_apng_decoder_contract apng_decoder_contract.c
+        "${AIC_ROOT}/port/lv_aic_apng_decoder.c"
+        "${AIC_ROOT}/port/lv_aic_player_allocator.c"
+        "${AIC_ROOT}/common/lv_aic_apng.c")
+    target_include_directories(lvgl_aic_apng_decoder_contract PRIVATE
+        "${AIC_ROOT}/compat" "${AIC_ROOT}/common"
+        "${CMAKE_CURRENT_LIST_DIR}/player_stubs" "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+    target_compile_definitions(lvgl_aic_apng_decoder_contract PRIVATE AIC_LVGL_USE_APNG=1)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_apng_decoder_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_apng_decoder_contract COMMAND lvgl_aic_apng_decoder_contract)
+    set_tests_properties(lvgl_aic_apng_decoder_contract PROPERTIES TIMEOUT 15)
+endif()
