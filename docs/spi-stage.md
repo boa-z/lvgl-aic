@@ -231,3 +231,29 @@ Combined object SHA256:
 Logs: `output/spi-panel-tests.log`, `output/spi-panel-target.log`.
 Concrete panel command adapters, LVGL display/worker integration and physical
 transfers remain open; hardware **NOT_RUN**.
+
+
+## Checked command/data writes
+
+`lv_aic_spi_sdk_write_qspi` composes exact-count submission with checked terminal
+completion on the exclusive worker. It can be called from session `prepare` for
+panel command and parameter payloads. For single-lane panels, set D/C to command,
+write a persistent one-byte command payload with no prefix, then only after true
+set D/C to data and write persistent parameters. Supply cache-clean DMA storage;
+no stack command arrays. QSPI prefix framing uses the same explicit fields as
+the pixel submit API. Empty/prefix-only transactions are not supported here.
+
+Any false result stops the sequence: caller must return false from prepare and
+retain command storage/context, because short submission or timeout may leave
+DMA outstanding. This helper does not initialize a panel, toggle pins, claim a
+bus, clean cache, cancel DMA or make the SDK command wrappers safe implicitly.
+It closes the checked nonempty command-write gap while concrete panel adapters
+and the display worker remain pending.
+
+Validation: 61/61 host tests PASS, covering exact and short command submission,
+wait timeout, in-progress/error status after accepted submission, explicit DONE,
+active-bus rejection and null device. D13x real-header compile/partial link PASS;
+combined object SHA256
+`a94eddf1402b17f5f1afeef999fc0bbe19a6c790316e7f794b9f92ffcee42c44`.
+Logs: `output/spi-write-tests.log`, `output/spi-write-target.log`.
+Hardware NOT_RUN; this is not evidence of a working physical SPI display.

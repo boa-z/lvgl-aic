@@ -11,12 +11,13 @@ int rt_spi_wait_completion(struct rt_spi_device *d) { assert(d);waits++;return e
 rt_uint32_t rt_spi_get_transfer_status(struct rt_spi_device *d) { assert(d);queries++;return status; }
 static void present(void) {}
 static unsigned submits,modes;
+static rt_uint32_t submitted_status;
 static int mode_error;
 static size_t accepted=64;
 static struct rt_qspi_message last;
 int rt_spi_nonblock_set(struct rt_spi_device *d,unsigned mode) { assert(d && mode==1);modes++;return mode_error; }
 size_t rt_qspi_transfer_message(struct rt_qspi_device *d,struct rt_qspi_message *m)
-{ assert(d);submits++;last=*m;return accepted; }
+{ assert(d);submits++;last=*m;status=submitted_status;return accepted; }
 static void test_submit(struct rt_spi_bus *bus)
 {
     struct rt_qspi_device q={{bus}};
@@ -51,6 +52,32 @@ static void test_submit(struct rt_spi_bus *bus)
     bus->ops=saved;
     assert(submits==old);
 }
+static void test_write(struct rt_spi_bus *bus)
+{
+    struct rt_qspi_device q={{bus}};
+    const uint8_t *command=(const uint8_t *)(uintptr_t)0x42000100;
+    accepted=1;status=0;error=0;
+    unsigned before=waits;
+    assert(lv_aic_spi_sdk_write_qspi(&q,command,1,0,0,0,1));
+    assert(waits==before+1 && last.parent.send_buf==command && last.parent.length==1);
+    accepted=0;before=waits;
+    assert(!lv_aic_spi_sdk_write_qspi(&q,command,1,0,0,0,1));
+    assert(waits==before); /* A short submit cannot be promoted by a good wait. */
+    accepted=1;error=-1;
+    assert(!lv_aic_spi_sdk_write_qspi(&q,command,1,0,0,0,1));
+    assert(waits==before+1);error=0;
+    submitted_status=HAL_QSPI_STATUS_IN_PROGRESS;
+    assert(!lv_aic_spi_sdk_write_qspi(&q,command,1,0,0,0,1));
+    status=0;submitted_status=HAL_QSPI_STATUS_TRAN_DONE | 2U;
+    assert(!lv_aic_spi_sdk_write_qspi(&q,command,1,0,0,0,1));
+    status=0;submitted_status=HAL_QSPI_STATUS_TRAN_DONE;
+    assert(lv_aic_spi_sdk_write_qspi(&q,command,1,0,0,0,1));
+    submitted_status=0;
+    status=HAL_QSPI_STATUS_IN_PROGRESS;before=submits;
+    assert(!lv_aic_spi_sdk_write_qspi(&q,command,1,0,0,0,1));
+    assert(submits==before);status=0;
+    assert(!lv_aic_spi_sdk_write_qspi(NULL,command,1,0,0,0,1));
+}
 int main(void)
 {
     struct rt_spi_ops ops={present,present,present,present,present};
@@ -68,5 +95,5 @@ int main(void)
         status=1U<<bit;assert(!lv_aic_spi_sdk_wait_complete(&device));
         status|=HAL_QSPI_STATUS_TRAN_DONE;assert(!lv_aic_spi_sdk_wait_complete(&device));
     }
-    assert(waits==65 && queries==64);test_submit(&bus);return 0;
+    assert(waits==65 && queries==64);test_submit(&bus);test_write(&bus);return 0;
 }

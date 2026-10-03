@@ -43,4 +43,11 @@ bool lv_aic_spi_sdk_submit_qspi(struct rt_qspi_device *device,const uint8_t *pix
     message.address.qspi_lines=prefix_lines;message.qspi_data_lines=data_lines;
     return rt_qspi_transfer_message(device,&message)==bytes;
 }
+bool lv_aic_spi_sdk_write_qspi(struct rt_qspi_device *device,const uint8_t *data,
+    size_t bytes,uint32_t prefix,unsigned prefix_bytes,unsigned prefix_lines,unsigned data_lines)
+{
+    if(!lv_aic_spi_sdk_submit_qspi(device,data,bytes,prefix,prefix_bytes,prefix_lines,data_lines))
+        return false;
+    return lv_aic_spi_sdk_wait_complete(&device->parent);
+}
 #endif

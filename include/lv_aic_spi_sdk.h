@@ -27,6 +27,16 @@ struct rt_qspi_device;
  * No previous transfer may remain pending; use the transfer core to drain it. */
 bool lv_aic_spi_sdk_submit_qspi(struct rt_qspi_device *device,const uint8_t *pixels,
     size_t bytes,uint32_t prefix,unsigned prefix_bytes,unsigned prefix_lines,unsigned data_lines);
+/* Checked synchronous command/data write on the exclusive owner worker.
+ * Same framing and DMA/cache preconditions as submit_qspi; payload is nonempty
+ * (a one-lane command can itself be the payload with no prefix). Caller sets
+ * D/C before calling and changes it only after success. Unlike SDK panel
+ * wrappers, both exact acceptance and terminal completion are required.
+ * false is not cancellation: preserve payload and stop the entire command
+ * sequence. Do not use stack payloads whose lifetime ends on a timeout.
+ * Suitable inside session prepare; this function does not claim the bus. */
+bool lv_aic_spi_sdk_write_qspi(struct rt_qspi_device *device,const uint8_t *data,
+    size_t bytes,uint32_t prefix,unsigned prefix_bytes,unsigned prefix_lines,unsigned data_lines);
 #ifdef __cplusplus
 }
 #endif
