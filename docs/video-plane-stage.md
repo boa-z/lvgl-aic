@@ -143,3 +143,14 @@ Host **45/45 PASS**, strict E907 **PASS**. Real session tests inject partial
 alpha writes, both VSync failures, failed restoration, retry and exact restore;
 RGB565/query failure rejects before mutation. Widget tests cover all overlay
 roots and inactive screens. Physical alpha compositing remains **NOT_RUN**.
+
+Alpha/overlay firmware boot/app/static/image/manifest **PASS**. The alpha lease
+API is verified live in the final ELF. Sources:
+
+- sdk: `b3dd9496d88bb4f2ac248e4a32bcbe5509e063f3`.
+- lvgl-aic: `4e9bdba1c3476d8f994e4b3fe5a5e47b0a8fb96f`.
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `e49c4c7953c9b69d4dc6c94604726c2d5fbbcfae4a88c39d22f11f0f6fe335db`.
+- ELF SHA256: `baa27813071f5976e305a3f45539451e1a650d0eee6da2be5cbcd394e81d821c`.
+
+Latest combined-profile manifest records this build. Board **NOT_RUN**.
