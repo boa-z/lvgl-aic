@@ -10,6 +10,7 @@
  * on first-use workers; SDK decoders keep their own additional references. */
 static unsigned users;
 static aicos_mutex_t gate;
+static const void *audio_owner;
 bool lv_aic_media_runtime_acquire(void)
 {
     if(users==UINT_MAX) return false;
@@ -29,4 +30,18 @@ bool lv_aic_media_runtime_enter(void)
 { return gate && aicos_mutex_take(gate,AICOS_WAIT_FOREVER)>=0; }
 void lv_aic_media_runtime_leave(void)
 { if(gate) aicos_mutex_give(gate); }
+bool lv_aic_media_audio_acquire(const void *owner)
+{
+    if(!owner || !lv_aic_media_runtime_enter()) return false;
+    bool ok=!audio_owner || audio_owner==owner;
+    if(ok) audio_owner=owner;
+    lv_aic_media_runtime_leave();return ok;
+}
+bool lv_aic_media_audio_release(const void *owner)
+{
+    if(!owner || !lv_aic_media_runtime_enter()) return false;
+    bool ok=audio_owner==owner;
+    if(ok) audio_owner=NULL;
+    lv_aic_media_runtime_leave();return ok;
+}
 #endif

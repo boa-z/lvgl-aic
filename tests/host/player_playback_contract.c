@@ -157,7 +157,6 @@ int main(void)
     assert(!lv_aic_player_playback_prepare(NULL,&options));
     fail_thread=1; assert(!lv_aic_player_playback_prepare("/test.mp4",&options)); fail_thread=0;
     lv_aic_player_playback_t *p=prepare(); wait_state(p,LV_AIC_PLAYBACK_READY);
-    assert(!lv_aic_player_playback_prepare("/test.mp4",&options));
     assert(!atomic_load(&starts) && !atomic_load(&gets));
     lv_aic_player_playback_close(p); finish(p);
     p=prepare(); assert(lv_aic_player_playback_pause(p,true)); assert(lv_aic_player_playback_volume(p,42));

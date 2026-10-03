@@ -31,11 +31,11 @@ struct lv_aic_player_playback {
     lv_aic_playback_status_t status;
     lv_aic_playback_options_t options;
     char uri[128];
-    bool closing, start_requested, pause_requested;
+    bool closing, start_requested, pause_requested, owns_audio;
     int volume_requested;
 };
 /* UI-owned reservation; released only after worker and readers finish. */
-static lv_aic_player_playback_t *active;
+static unsigned instances;
 static void lock(lv_aic_player_playback_t *p) { aicos_mutex_take(p->mutex,AICOS_WAIT_FOREVER); }
 static void unlock(lv_aic_player_playback_t *p) { aicos_mutex_give(p->mutex); }
 static void fault(lv_aic_player_playback_t *p)
@@ -46,6 +46,10 @@ static void fault(lv_aic_player_playback_t *p)
 static bool open_session(lv_aic_player_playback_t *p)
 {
     if(!lv_aic_player_session_open(&p->session,p->uri)) return false;
+    if(p->session.info.has_audio && !p->owns_audio) {
+        if(!lv_aic_media_audio_acquire(p)) return false;
+        p->owns_audio=true;
+    }
     p->events=lv_aic_player_events_create();
     if(!p->events || !lv_aic_player_events_attach(p->events,&p->session) ||
        !lv_aic_player_session_allocator(&p->session,lv_aic_player_allocator_sdk(p->allocator),p->options.extra_frames)) return false;
@@ -81,6 +85,10 @@ static void worker(void *argument)
             if(!pending && lv_aic_player_frames_idle(p->frames) && lv_aic_player_session_close(&p->session) &&
                lv_aic_player_events_destroy(p->events)) {
                 p->events=NULL;
+                if(p->owns_audio) {
+                    if(!lv_aic_media_audio_release(p)) { fault(p);aicos_msleep(5);continue; }
+                    p->owns_audio=false;
+                }
                 lock(p);
                 if(p->status.state!=LV_AIC_PLAYBACK_FAULT) p->status.state=LV_AIC_PLAYBACK_CLOSED;
                 p->status.finished=true; unlock(p);
@@ -170,7 +178,7 @@ static void worker(void *argument)
 }
 lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const lv_aic_playback_options_t *options)
 {
-    if(active || !uri || !uri[0] || strlen(uri)>=128 || !options || !options->cma_budget ||
+    if(instances>=LV_AIC_PLAYER_PLAYBACK_INSTANCES || !uri || !uri[0] || strlen(uri)>=128 || !options || !options->cma_budget ||
        options->extra_frames<2 || options->extra_frames>LV_AIC_PLAYER_LEASES ||
        options->color_space<LV_AIC_YUV_BT601_LIMITED || options->color_space>LV_AIC_YUV_BT709_FULL) return NULL;
     lv_aic_player_playback_t *p=lv_malloc_zeroed(sizeof(*p)); if(!p) return NULL;
@@ -187,9 +195,9 @@ lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const l
         lv_aic_player_frames_close(p->frames); (void)lv_aic_player_frames_destroy(p->frames);
         (void)lv_aic_player_allocator_destroy(p->allocator); aicos_mutex_delete(p->mutex); lv_free(p); return NULL;
     }
-    active=p;
+    instances++;
     if(!aicos_thread_create("aic_playback",8192,20,worker,p)) {
-        active=NULL; lv_aic_media_runtime_release(); lv_aic_player_frames_close(p->frames); (void)lv_aic_player_frames_destroy(p->frames);
+        instances--; lv_aic_media_runtime_release(); lv_aic_player_frames_close(p->frames); (void)lv_aic_player_frames_destroy(p->frames);
         (void)lv_aic_player_allocator_destroy(p->allocator); aicos_mutex_delete(p->mutex); lv_free(p); return NULL;
     }
     return p;
@@ -264,6 +272,6 @@ bool lv_aic_player_playback_destroy(lv_aic_player_playback_t *p)
     if(!lv_aic_player_allocator_destroy(p->allocator)) return false;
     p->allocator=NULL;
     if(!lv_aic_player_frames_destroy(p->frames)) return false;
-    aicos_mutex_delete(p->mutex); active=NULL; lv_aic_media_runtime_release(); lv_free(p); return true;
+    aicos_mutex_delete(p->mutex); instances--; lv_aic_media_runtime_release(); lv_free(p); return true;
 }
 #endif

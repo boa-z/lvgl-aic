@@ -6,6 +6,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+/* Closing instances count until every native reader releases. */
+#define LV_AIC_PLAYER_PLAYBACK_INSTANCES 4
 typedef struct lv_aic_player_playback lv_aic_player_playback_t;
 typedef enum {
     LV_AIC_PLAYBACK_OPENING, LV_AIC_PLAYBACK_READY, LV_AIC_PLAYBACK_PLAYING,
@@ -28,7 +30,10 @@ typedef struct {
     bool media_info_valid;
     lv_aic_media_info_t media_info;
 } lv_aic_playback_status_t;
-/* UI-owner API. Reserve one playback instance; both RGB/YUV decoders must be
+/* UI-owner API. Up to four independent instances, each with explicit budgets.
+ * At most one prepared audio-bearing source owns the shared SDK audio device;
+ * another faults asynchronously before start. No automatic mute/mixing.
+ * Both RGB/YUV decoders must be
  * initialized by caller before poll. Prepare runs blocking SDK work on an
  * independent OSAL worker. Native SDK URI, max 127 bytes; no LVGL drive mapping.
  * SDK get_frame already performs decode and A/V timing; do not layer another

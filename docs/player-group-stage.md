@@ -225,3 +225,26 @@ The new verifier rejected the previous unwrapped image at `ve_decode_jpeg`.
 Final ELF checks passed for `png_hardware_decode` and `ve_decode_jpeg`.
 H.264 was not linked into this profile, so its final call path is **NOT_RUN**
 for this build. Physical arbitration/decode execution also remains **NOT_RUN**.
+
+
+## Bounded media instances and audio admission (2026-10-03)
+
+Media playback now permits four independent sessions. Closing instances retain
+capacity until worker teardown and native readers finish. Each instance retains
+its own CMA budget, allocator, SDK callback mailbox, frame bridge and controls.
+This bound is admission policy, not a four-stream hardware throughput guarantee.
+
+SDK audio rendering uses a shared global device. One managed audio-bearing
+source therefore reserves an exclusive lease after metadata preparation and
+before SDK start. Another audio source faults asynchronously, without silent
+muting. The lease persists across seek/reopen, and is released only after SDK
+session teardown. Video-only sources coexist. Direct unmanaged SDK audio users
+are outside this lease; applications must not mix them with managed playback.
+Multi-source audio mixing remains unsupported.
+
+The new real-worker/mocked-SDK contract covers four concurrent sessions, fifth
+rejection, per-instance PTS, pause/seek and end callbacks, delayed native-reader
+cleanup without blocking peers, audio rejection before start, lease retention
+across seek and a deliberately blocked SDK stop, and reacquisition after close.
+CMA allocations/free counts balance. Host **43/43 PASS**, strict E907 **PASS**.
+Physical multi-codec, audio and mixed media/APNG group execution **NOT_RUN**.

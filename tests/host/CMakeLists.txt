@@ -357,6 +357,28 @@ if(AIC_SDK_ROOT)
     endif()
     add_test(NAME lvgl_aic_player_playback_contract COMMAND lvgl_aic_player_playback_contract)
     set_tests_properties(lvgl_aic_player_playback_contract PROPERTIES TIMEOUT 15)
+    add_executable(lvgl_aic_player_multi_contract player_multi_contract.c
+    "${AIC_ROOT}/port/lv_aic_media_runtime.c" media_runtime_stub.c
+        "${AIC_ROOT}/image/mpp/lv_aic_rgb_image.c" "${AIC_ROOT}/common/lv_aic_rgb_mpp.c"
+        "${AIC_ROOT}/port/lv_aic_player_playback.c" "${AIC_ROOT}/port/lv_aic_player_events.c"
+        "${AIC_ROOT}/port/lv_aic_player_frames.c" "${AIC_ROOT}/port/lv_aic_player_session.c"
+        "${AIC_ROOT}/port/lv_aic_player_allocator.c" "${AIC_ROOT}/common/lv_aic_yuv.c"
+        "${AIC_ROOT}/common/lv_aic_yuv_mpp.c" "${AIC_ROOT}/common/lv_aic_pixel_format.c"
+        "${AIC_ROOT}/image/mpp/lv_aic_yuv_image.c")
+    target_include_directories(lvgl_aic_player_multi_contract PRIVATE
+        "${AIC_ROOT}/compat" "${AIC_ROOT}/common" "${AIC_ROOT}/include"
+        "${CMAKE_CURRENT_LIST_DIR}/player_stubs" "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/middle_media/player/include"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+    target_compile_definitions(lvgl_aic_player_multi_contract PRIVATE AIC_LVGL_USE_PLAYER_SESSION=1
+        AIC_MPP_PLAYER_VIDEO_EXT_RENDER=1 AIC_LVGL_BSP_MPP=1 AIC_LVGL_BSP_RTTHREAD=0)
+    target_link_libraries(lvgl_aic_player_multi_contract PRIVATE lvgl Threads::Threads)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_player_multi_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_player_multi_contract COMMAND lvgl_aic_player_multi_contract)
+    set_tests_properties(lvgl_aic_player_multi_contract PROPERTIES TIMEOUT 15)
     add_executable(lvgl_aic_camera_capture_contract camera_capture_contract.c
         "${AIC_ROOT}/widgets/lv_aic_camera.c"
         "${AIC_ROOT}/port/lv_aic_camera_capture.c" "${AIC_ROOT}/port/lv_aic_vin_session.c"

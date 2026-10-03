@@ -7,17 +7,20 @@ APNG worker and other suffixes to SDK media, retaining the same image object,
 transforms and slave bindings across drained source replacement. APNG rate,
 zero-time replay, finite repeat and metadata use checked common commands.
 The standalone APNG widget remains usable without SDK media/audio.
-Host **42/42 PASS**, strict combined-feature E907 compile **PASS**, and clean
-combined firmware boot/app/static/image/manifest **PASS**; [artifact evidence](apng-stage.md).
+Host **43/43 PASS** and strict combined-feature E907 compile **PASS**.
+The previous arbitration-stage clean firmware passed boot/app/static/image/manifest;
+current multi-media firmware evidence is recorded in [group contract](player-group-stage.md).
 Physical validation remains **NOT_RUN**.
 
 Unified player group lifecycle, checked broadcast and publication barriers are
 now available; see [group contract](player-group-stage.md). Remaining player
-parity: media multi-instance decoder/resource handling and explicit lower video-plane ownership.
+parity: physical multi-decoder validation, audio mixing and explicit lower video-plane ownership.
 APNG now supports four independent instances with shared SDK decode serialization.
 Application linking also protects SDK VE arbitration failure; the final image's
-PNG/JPEG call sites are verified by disassembly. Media multi-instance remains pending,
-with physical synchronization evidence still pending. Group backpressure now
+PNG/JPEG call sites are verified by disassembly. Media now permits four independent
+explicit-budget instances, with one audio-bearing source reserved across seek/close.
+A second audio source faults before SDK start; no silent muting or mixing.
+Physical synchronization evidence is still pending. Group backpressure now
 preserves unconsumed media/APNG frames; it does not replace SDK A/V timing.
 Physical codec/timing/audio/multi-view acceptance remains pending. Arbitrary APNG time seek and
 video playback-rate changes are not supported by the SDK reference either.

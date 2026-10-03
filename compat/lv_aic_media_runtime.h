@@ -13,4 +13,9 @@ void lv_aic_media_runtime_release(void);
  * This does not serialize SDK media player's internal codec threads. */
 bool lv_aic_media_runtime_enter(void);
 void lv_aic_media_runtime_leave(void);
+/* Worker-only, registered runtime user. Current SDK audio device is global.
+ * One owner may reserve it before SDK start; retain through seek/reopen and
+ * release only after SDK session teardown. Wrong-owner release is rejected. */
+bool lv_aic_media_audio_acquire(const void *owner);
+bool lv_aic_media_audio_release(const void *owner);
 #endif

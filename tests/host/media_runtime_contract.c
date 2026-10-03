@@ -19,7 +19,13 @@ int main(void)
     fail=0;
     for(unsigned i=0;i<8;i++) assert(lv_aic_media_runtime_acquire());
     assert(opened==2 && !closed);
-    assert(lv_aic_media_runtime_enter());lv_aic_media_runtime_leave(); /* Mixed managed users share one SDK reference. */
+    assert(lv_aic_media_runtime_enter());lv_aic_media_runtime_leave();
+    int a,b;
+    assert(!lv_aic_media_audio_acquire(NULL));
+    assert(lv_aic_media_audio_acquire(&a) && lv_aic_media_audio_acquire(&a));
+    assert(!lv_aic_media_audio_acquire(&b) && !lv_aic_media_audio_release(&b));
+    assert(lv_aic_media_audio_release(&a) && !lv_aic_media_audio_release(&a));
+    assert(lv_aic_media_audio_acquire(&b) && lv_aic_media_audio_release(&b)); /* Mixed managed users share one SDK reference. */
     for(unsigned i=0;i<7;i++) lv_aic_media_runtime_release();
     assert(!closed);
     lv_aic_media_runtime_release();assert(closed==1);
