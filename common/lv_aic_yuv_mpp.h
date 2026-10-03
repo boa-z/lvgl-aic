@@ -13,5 +13,13 @@
  * eventual draw submission, not this metadata adapter. */
 bool lv_aic_yuv_to_mpp(const lv_aic_yuv_frame_t *frame, uint32_t address_floor,
                        struct mpp_buf *output);
+/* Borrow a CPU-addressable physical frame, applying an optional aligned crop.
+ * Caller supplies independently verified capacities from each plane base and
+ * explicit colorimetry. No allocation, cache maintenance or retain is implicit.
+ * Original visible spans must be valid even when a crop is requested. FD-backed
+ * buffers and unaligned chroma origins are rejected. Failure preserves output.
+ * A valid CPU crop may still lack padded rows required by to_mpp/GE. */
+bool lv_aic_yuv_from_mpp(const struct mpp_buf *buffer, const size_t capacities[3],
+                         lv_aic_yuv_color_space_t space, lv_aic_yuv_frame_t *output);
 #endif
 #endif

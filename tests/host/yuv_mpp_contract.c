@@ -12,6 +12,13 @@ static void reject(const lv_aic_yuv_frame_t *frame)
     assert(!lv_aic_yuv_to_mpp(frame,0x40000000,&out));
     assert(memcmp(&out,&saved,sizeof(out))==0);
 }
+static void reject_mpp(const struct mpp_buf *buffer, const size_t capacities[3])
+{
+    lv_aic_yuv_frame_t out, saved;
+    memset(&out, 0xa5, sizeof(out)); memcpy(&saved, &out, sizeof(out));
+    assert(!lv_aic_yuv_from_mpp(buffer, capacities, LV_AIC_YUV_BT601_LIMITED, &out));
+    assert(memcmp(&out, &saved, sizeof(out)) == 0);
+}
 int main(void)
 {
     const struct { lv_aic_yuv_format_t lv; enum mpp_pixel_format mpp; unsigned planes; } formats[] = {
@@ -39,6 +46,44 @@ int main(void)
                 assert(out.phy_addr[p] == (p < formats[f].planes ? 0x40001000+p*0x1000 : 0));
                 assert(out.stride[p] == (p < formats[f].planes ? 96U : 0U));
             }
+            size_t capacities[3] = {1536, 1536, 1536};
+            lv_aic_yuv_frame_t view;
+            assert(lv_aic_yuv_from_mpp(&out, capacities, s, &view));
+            assert(view.format == frame.format && view.width == 32 && view.height == 16);
+            assert(view.color_space == frame.color_space);
+            out.crop_en = 1; out.crop = (struct mpp_rect){2, 2, 15, 7};
+            assert(lv_aic_yuv_from_mpp(&out, capacities, s, &view));
+            assert(view.width == 15 && view.height == 7);
+            bool sub_x = frame.format != LV_COLOR_FORMAT_I400 && frame.format != LV_COLOR_FORMAT_I444;
+            bool sub_y = frame.format == LV_COLOR_FORMAT_I420 || frame.format == LV_COLOR_FORMAT_NV12 ||
+                         frame.format == LV_COLOR_FORMAT_NV21;
+            bool packed = frame.format == LV_COLOR_FORMAT_YUY2 || frame.format == LV_COLOR_FORMAT_UYVY;
+            for (unsigned p = 0; p < formats[f].planes; p++) {
+                size_t offset = (p && sub_y ? 96 : 192) +
+                                (packed ? 4 : p && sub_x && formats[f].planes == 3 ? 1 : 2);
+                assert((uintptr_t)view.planes[p].data == out.phy_addr[p] + offset);
+                assert(view.planes[p].capacity == capacities[p] - offset);
+                assert(view.planes[p].stride == 96);
+            }
+            out.crop.x = 1;
+            if (sub_x) reject_mpp(&out, capacities);
+            else assert(lv_aic_yuv_from_mpp(&out, capacities, s, &view));
+            out.crop.x = 2; out.crop.y = 1;
+            if (sub_y) reject_mpp(&out, capacities);
+            else assert(lv_aic_yuv_from_mpp(&out, capacities, s, &view));
+            out.crop.y = 2; out.crop.width = 31; reject_mpp(&out, capacities);
+            out.crop.width = 15; out.crop.height = 15; reject_mpp(&out, capacities);
+            out.crop.height = 7; out.crop.x = -1; reject_mpp(&out, capacities);
+            out.crop.x = 2; out.crop.width = 0; reject_mpp(&out, capacities);
+            out.crop_en = 0;
+            capacities[0] = 1; reject_mpp(&out, capacities); capacities[0] = 1536;
+            out.phy_addr[0] = 0xfffffff0; reject_mpp(&out, capacities);
+            out.phy_addr[0] = 0x40001000;
+            out.buf_type = MPP_DMA_BUF_FD; reject_mpp(&out, capacities); out.buf_type = MPP_PHY_ADDR;
+            assert(!lv_aic_yuv_from_mpp(&out, capacities, 99, &view));
+            assert(!lv_aic_yuv_from_mpp(&out, NULL, s, &view));
+            assert(!lv_aic_yuv_from_mpp(&out, capacities, s, NULL));
+            reject_mpp(NULL, capacities);
             lv_color_format_t lv;
             if(frame.format==LV_AIC_YUV_NV16 || frame.format==LV_AIC_YUV_NV61)
                 assert(!lv_aic_pixel_format_from_mpp(out.format,&lv));
@@ -75,5 +120,16 @@ int main(void)
     assert(!lv_aic_yuv_to_mpp(&frame,0x50000000,&out));
     assert(!lv_aic_yuv_to_mpp(&frame,0,NULL));
     reject(NULL);
+    /* Bottom/right crop preserves CPU-visible bytes but not full GE rows. */
+    size_t capacities[3] = {32*16, 0, 0};
+    memset(&out, 0, sizeof(out));
+    out.buf_type = MPP_PHY_ADDR; out.format = MPP_FMT_YUV400;
+    out.size = (struct mpp_size){32, 16}; out.stride[0] = 32;
+    out.phy_addr[0] = 0x40001000; out.crop_en = 1;
+    out.crop = (struct mpp_rect){2, 2, 30, 14};
+    assert(lv_aic_yuv_from_mpp(&out, capacities, LV_AIC_YUV_BT709_FULL, &frame));
+    assert(lv_aic_yuv_validate(&frame)); reject(&frame);
+    capacities[0]--; reject_mpp(&out, capacities);
+    out.format = MPP_FMT_RGB_888; reject_mpp(&out, capacities);
     return 0;
 }

@@ -30,6 +30,25 @@ SDK stop 销毁解码器，重新 start 会重新 set_uri/prepare，而不是使
 失败不修改输出值。SDK 当前 stop/destroy 返回成功，但主机测试也覆盖错误返回时
 保留资源的适配层行为；这不证明所有 SDK 内部错误都会传播出来。
 
+## Bounded MPP frame import / 有界帧转换
+
+`common/lv_aic_yuv_mpp.h` now provides `lv_aic_yuv_from_mpp` for ten YUV
+formats, with explicit colorimetry and independently verified per-plane
+capacities. It applies aligned planar, semiplanar and packed crops, preserving
+stride and reducing capacity by the actual plane offset. Invalid metadata,
+FD-backed frames, physical-address wrap and unaligned chroma origins fail
+without modifying the output. It performs no retain/release or cache operation.
+
+SDK mpp_buf 没有分配容量字段，不能用 stride × height 猜测实际分配容量。
+调用方必须从分配器取得容量，保证物理地址可由 CPU 直接访问，并保持帧租约有效。
+转换先验证原图可见跨度，再验证裁剪；颜色空间由调用方明确传入，不猜测 SDK flags。
+靠近右下边界的裁剪可能满足 CPU 可读范围，却缺少 GE 要求的完整 padding 行；
+此时现有 to_mpp 拒绝 GE，不能扩大容量绕过检查。本阶段尚未连接播放器分配器。
+
+Host contract covers all ten formats and four color spaces, crop offsets and
+remaining capacities, chroma alignment, invalid bounds/FD/format/colorimetry,
+transactional rejection and CPU-valid/GE-invalid bottom-right cropping.
+
 ## Evidence
 
 - Host **25/25 PASS**, actual SDK player/mpp_frame declarations, mocked player
