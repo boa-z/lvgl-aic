@@ -734,3 +734,17 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME lvgl_aic_apng_frames_contract COMMAND lvgl_aic_apng_frames_contract)
 set_tests_properties(lvgl_aic_apng_frames_contract PROPERTIES TIMEOUT 15)
+
+add_executable(lvgl_aic_apng_playback_contract apng_playback_contract.c
+    "${AIC_ROOT}/port/lv_aic_apng_playback.c" "${AIC_ROOT}/port/lv_aic_apng_frames.c"
+    "${AIC_ROOT}/image/mpp/lv_aic_rgb_image.c")
+target_include_directories(lvgl_aic_apng_playback_contract PRIVATE
+    "${AIC_ROOT}/compat" "${AIC_ROOT}/common" "${AIC_ROOT}/include"
+    "${CMAKE_CURRENT_LIST_DIR}/player_stubs")
+target_compile_definitions(lvgl_aic_apng_playback_contract PRIVATE AIC_LVGL_USE_APNG=1)
+target_link_libraries(lvgl_aic_apng_playback_contract PRIVATE lvgl Threads::Threads)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_apng_playback_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_apng_playback_contract COMMAND lvgl_aic_apng_playback_contract)
+set_tests_properties(lvgl_aic_apng_playback_contract PROPERTIES TIMEOUT 15)

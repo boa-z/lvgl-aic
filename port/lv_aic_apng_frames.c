@@ -93,6 +93,13 @@ void lv_aic_apng_frames_close(lv_aic_apng_frames_t *p)
     for(unsigned i=0;i<p->count;i++) if(p->slots[i].state==READY) p->slots[i].state=FREE;
     unlock(p);
 }
+void lv_aic_apng_frames_discard(lv_aic_apng_frames_t *p)
+{
+    if(!p) return;
+    lock(p);
+    for(unsigned i=0;i<p->count;i++) if(p->slots[i].state==READY) p->slots[i].state=FREE;
+    unlock(p);
+}
 bool lv_aic_apng_frames_destroy(lv_aic_apng_frames_t *p)
 {
     if(!p) return true;

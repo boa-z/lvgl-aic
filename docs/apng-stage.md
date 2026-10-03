@@ -213,3 +213,48 @@ Strict E907 compile **PASS**; `output/lvgl-apng-frames.o` SHA256:
 
 OSAL background orchestration, file loading and widget/backend selection still
 remain. This standalone bridge has no worker integration or board acceptance yet.
+
+## Asynchronous file playback (2026-10-03)
+
+`include/lv_aic_apng_playback.h` / `port/lv_aic_apng_playback.c` connect native
+file loading, the serialized stream and immutable publication through an OSAL
+worker (8 KiB stack, priority 20). Prepare returns immediately; the worker bounds
+file size, reads/checks the entire file, closes it, opens the stream and prepares
+the snapshot pool. The file loader temporarily holds another file-sized buffer
+in addition to the stream copy. Separate limits remain explicit; none claims to
+bound malloc overhead, SDK scratch/bookkeeping or LVGL decoded caches.
+
+UI-owner controls provide start, pause/resume, rational rate, replay, image poll,
+status, nonblocking close and retryable destroy. There is one active APNG
+instance, independently of the SDK audio/video player reservation. Application
+integration must still respect the SDK's shared VE/device ownership rules.
+No audio interface is required. Prepare does not auto-start; start at terminal
+does not rewind, while replay resets to frame zero preserving start/pause/rate.
+A replay request suppresses image polling until the worker discards old queued
+publication and resets the stream; already-retained images remain valid.
+
+Worker state/status uses a mutex-protected mailbox. File/MPP/compose never runs
+on the LVGL owner thread, and RGB image creation never runs on the worker.
+Every due frame is composed; full snapshot pools apply publication backpressure.
+The final canvas is retried while terminal if readers initially fill the pool.
+Normal completion holds the final picture and remains available for replay.
+Close waits for ordinary worker progress and retries outstanding SDK frame
+returns. `finished` means worker storage access ended, not that published image
+readers released; destroy remains false until those leases end. Faults remain
+observable after cleanup and cannot be resumed. Never force-free a stuck owner.
+
+Validation: **38/38 host contracts PASS**. New pthread-worker tests use real
+file loading, control/status mailbox, snapshot pool and LVGL RGB image leases
+with a deterministic stream substitute; they cover thread-create failure,
+one-instance reservation, missing/oversize files, prepare without auto-start,
+pause/rate/replay, terminal publication retry after pool exhaustion, close retry,
+late reader release and persistent decode-fault status. The separate stream
+contract continues to exercise actual parser/extractor/composition/timing and
+real-SDK-ABI MPP adapter with a mocked engine. These two layers do not establish
+physical VE timing or codec correctness.
+Strict E907 compile **PASS**; `output/lvgl-apng-playback.o` SHA256:
+`a5d1ec944a47823ff9cc46a1e63136ee0e654e6e446efd034dbd71836e7ee244`.
+
+Remaining: LVGL widget/backend selection, APNG seek/SDK command compatibility,
+media-enabled APNG link/image profile and physical validation. No new firmware
+image is claimed by this compile/host stage.

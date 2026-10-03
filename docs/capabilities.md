@@ -180,3 +180,10 @@ native ARGB conversion, latest unconsumed frame replacement, owner-thread LVGL
 image creation and delayed native/GE reader release. Host **37/37 PASS**, strict
 E907 compile **PASS**. Worker/file/widget integration and board acceptance remain
 open; see the [APNG stage record](apng-stage.md).
+
+APNG now provides an asynchronous native-file playback API under
+`AIC_LVGL_USE_APNG`: worker preparation, start/pause/rate/replay, immutable image
+polling, coherent status and deferred cleanup. Final publication retries after
+reader backpressure. Host **38/38 PASS** and strict E907 compile **PASS**;
+widget/backend selection, seek compatibility, APNG firmware linkage and physical
+codec/timing validation are still open. See [APNG stage record](apng-stage.md).

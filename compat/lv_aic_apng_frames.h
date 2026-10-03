@@ -21,5 +21,8 @@ bool lv_aic_apng_frames_poll(lv_aic_apng_frames_t *p,lv_aic_rgb_image_t **image,
 /* Close publication, discard unconsumed frames. Destroy only after producer
  * and poll calls stop; false while readers/active calls still own a slot. */
 void lv_aic_apng_frames_close(lv_aic_apng_frames_t *p);
+/* Discard only unconsumed publication, e.g. at a worker replay boundary.
+ * Producer must be idle; retained images remain valid. Does not reopen close. */
+void lv_aic_apng_frames_discard(lv_aic_apng_frames_t *p);
 bool lv_aic_apng_frames_destroy(lv_aic_apng_frames_t *p);
 #endif
