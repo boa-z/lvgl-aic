@@ -9,7 +9,7 @@ phase documents are historical; source presence and switches are not board proof
 | Integration | App-owned pins; LV_OS_CUSTOM RT events | Board regression after app/OS refactor |
 | Display | One framebuffer, DIRECT, PAN/VSync; whole-screen 90/180/270 GE copy with software fallback before submission | GE target/board rotation acceptance, SPI/multi-display, extended cache/VSync tests; see [rotation stage](display-rotation-stage.md) |
 | Touch / input | Touch worker, mapping, diagnostics and optional recovery; application-owned encoder and mouse providers create native LVGL indevs | Board-specific encoder/USB mouse sampling and board acceptance remain application scope |
-| Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership; SDK L-drive .fake pseudo-fills; immutable YUV frame publication | New AICP/BMP/fake/YUV board probes NOT_RUN; media device integration remains absent |
+| Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership; SDK L-drive .fake pseudo-fills; immutable RGB/YUV frame publication | New AICP/BMP/fake/YUV board probes NOT_RUN; media device integration remains absent |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
 | GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded transformed tiling, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, arbitrary-angle plus scale, recolor/masks; YUV uses the separate frame path below |
@@ -117,9 +117,10 @@ bridge transfers session/allocator leases to LVGL readers and returns frames
 only on its worker, with delayed close and failed-put retry. A pauseable media
 clock and coherent SDK callback mailbox now provide timing/event primitives;
 PLAY_END remains an ambiguous terminal notification, not clean EOS evidence.
-Host ABI contracts and target compilation pass; the background player,
-widget, PTS/audio-video timing, APNG, group/slave and video-plane integration remain
-open. No media-enabled image or physical playback has been verified.
+The background playback worker now supports prepare/start/pause/volume,
+RGB/YUV publication and deferred close, using SDK get_frame synchronization.
+Host ABI contracts and target compilation pass; widget/seek/repeat controls,
+real A/V timing, APNG, group/slave and video-plane integration remain open. No media-enabled image or physical playback has been verified.
 
 Native RGB frame publication now covers the D13x MJPEG RGB565/RGB888/ARGB8888
 output path at the adapter level, including bounded crops and immutable decoder

@@ -10,7 +10,8 @@ an SDK-owned video renderer must not compete with the application for frames.
 The application still owns audio/codec configuration. No SDK core is changed.
 
 会话必须零初始化一次，随后只能由同一串行 worker 使用；prepare、start、取帧和
-stop 都可能阻塞，不能直接从 LVGL UI 调用。本阶段尚未创建播放 worker 或控件。
+stop 都可能阻塞，不能直接从 LVGL UI 调用。下述 playback worker 已接入这些接口；
+播放器 widget 仍待实现。
 URI 是 SDK 原生路径，限制为 SDK 的 128 字节（含终止符），不自动解释 LVGL 盘符。
 
 基础能力：打开并同步准备、媒体信息、开始、幂等暂停/恢复、停止后重新准备并启动、
@@ -104,10 +105,10 @@ allocator pin，再调用 SDK put_frame。put 失败保留 SDK 租约，可重�
 未发布帧，已存在的读者仍阻止 teardown。销毁桥前必须让 worker 停止使用它；
 仅看到 idle 不能授权与 worker 并发释放。GE 隔离读者可能持续到重启，不能强拆。
 
-This bridge does not implement a playback scheduler: feeding raw decoded
-frames as fast as possible would skip through a movie. PTS pacing, audio/video
-clock selection, pause/seek/repeat and source replacement belong to the pending
-background player. SDK PLAY_END also represents some decoder errors, so it
+The bridge does not implement a playback scheduler. The integrated worker
+below consumes SDK external-render get_frame, which already performs PTS
+wait/drop and audio/video synchronization. Do not add a second sleep/drop
+scheduler. Seek/repeat and source replacement remain to be integrated. SDK PLAY_END also represents some decoder errors, so it
 must not be treated as proof of clean EOS. Native RGB publication is now supported as described below; error-marked frames
 still fail without consuming their lease.
 
@@ -130,14 +131,16 @@ mailbox destruction refuses until the associated SDK session has been closed.
 Create a fresh mailbox for a new session; terminal/format failure flags are
 sticky, not an implicitly reset seek epoch.
 
-SDK 的纯视频 get_play_time 依赖内部 video renderer 的 PTS；外部渲染模式不能靠
-它自动走时。带音频模式优先使用 PLAY_TIME 回调：其值是音频帧 PTS 减去音频设备
-缓存时长，可能为负。回调的两个 32 位片段按无符号位模式重组，不从另一线程直接
-读取 SDK 未同步的 64 位字段。后台 worker 仍需选择主时钟并把样本接入 timeline，
-不能把单元测试的 clock helper 当成已完成音视频同步。
+进一步核对 SDK mm_vdec_component.c 后修正早期判断：external-render 的
+mm_vdec_get_buffer 已执行解码、等待/丢帧和音视频同步，并发送视频 PTS。它可能
+阻塞；不能把它误当无时序的原始解码队列，也不能在其后叠加第二套时钟延时。
+当前 worker 直接采用 SDK 的同步结果；clock helper 保留为独立算法，并未作为
+当前 SDK 的额外调度器。纯视频状态取已接收帧的 PTS；带音频取 PLAY_TIME 回调，
+其值为音频 PTS 减设备缓存时长，可能为负。两个 32 位片段安全重组，不读取 SDK
+被其他线程更新的未同步 64 位字段。真实音视频同步质量仍需上板验证。
 
 SDK PLAY_END 也用于解码器错误和资源不足，邮箱只记录 terminal 通知，不声明
-正常 EOS。帧错误、EOS 帧标志与 terminal 事件必须由后续播放状态机分别处理。
+正常 EOS。worker 分别保留 video_eos 和 sdk_terminal，FRAME_FLAG_ERROR 则进入 FAULT。
 另外 D13x 的 MJPEG external-render 路径按 framebuffer 格式请求 RGB 输出；
 下述 RGB bridge 已覆盖原生 RGB565/RGB888/ARGB8888 发布；真实 MJPEG 播放仍待集成验证。
 ARGB1555 与非原生 BGR/RGBA 字节顺序不在发布范围，不能冒充相近的 LVGL 格式。
@@ -160,9 +163,36 @@ bitblt/rotate/emit/sync 失败时保留租约直到重启；dispatcher 保留 IN
 任务和目标 layer，停止后续绘制，不做软件重放。这样 decoder close 不会导致
 播放器归还仍可能被 DMA 使用的缓冲。普通和 tiled 路径采用相同保护。
 
+## Background playback worker / 后台播放状态机
+
+`include/lv_aic_player_playback.h` exposes UI-owner prepare/start/pause/volume/
+poll/status/close/destroy APIs. `port/lv_aic_player_playback.c` uses one exclusive
+OSAL worker (8 KiB stack, priority 20), owning the SDK session, event mailbox,
+CMA allocator and frame return. LVGL publication/destruction remains on the UI
+thread via `include/lv_aic_player_image.h`; no SDK types enter that public handle.
+
+准备不开始播放；可以在 OPENING 时排队 start/pause/volume。状态依次报告
+OPENING、READY、PLAYING/PAUSED、TERMINAL 或 FAULT，close 为 CLOSING/CLOSED。
+选项要求显式 CMA 字节预算、2..8 个额外 decoder 帧和 YUV 色彩空间；同一数目
+限制应用同时借出的帧，避免把 decoder 的整个帧池占满。最新未发布帧可替换，
+已发布 RGB/YUV 读者仍独立持有租约。frames_received/frames_queued 仅记录
+接收与邮箱提交，不能作为面板显示或播放流畅性的证明。
+
+PLAY_END 或纯视频 EOS 标记进入 TERMINAL，并保留最后图像供 UI 取出；它不是
+正常播完的认证。终止状态不接受直接 start/pause，当前重播/换源流程为
+close → destroy → new prepare。状态中的 position_us 是最新视频帧或音频回调
+样本，不是额外外推的播放时钟。prepare/start/get/put/pause/stop 的 SDK 调用
+全部留在 worker，UI close 只发送请求，不能中断正在进行的 SDK 阻塞调用。
+
+关闭会停止新发布、归还未发布帧，等全部 decoder/GE 读者释放，重试失败的归还，
+再销毁 SDK 和事件邮箱。只有 finished 后 destroy 才尝试释放桥和 CMA allocator；
+仍有 DMA 隔离租约时永久保留到重启，不能强杀 worker。启动、事件注册、预算分配、
+帧错误和控制失败进入可观察的 FAULT，清理成功后仍保留 FAULT 状态供 UI 读取。
+调用方必须先完成排队 draw task 再销毁图像，随后定期重试 destroy。
+
 ## Evidence
 
-- Host **30/30 PASS**, actual SDK player/mpp_frame declarations, mocked player
+- Host **31/31 PASS**, actual SDK player/mpp_frame declarations, mocked player
   operations. New checks cover setup/metadata/start/pause/resume/seek failures,
   idempotent pause, frame saturation, stale tickets across reopen, transactional
   getters, held-frame stop/seek/close refusal, return retry, stop/destroy retry,
@@ -191,11 +221,21 @@ bitblt/rotate/emit/sync 失败时保留租约直到重启；dispatcher 保留 IN
   borrowed/copied storage and injected bitblt/emit/sync failures; dispatcher
   tests keep both RGB and YUV DMA-fault tasks in progress. These are mocked GE
   tests, not physical DMA validation.
+- Playback integration contract runs the actual worker/session/allocator/
+  events/RGB-YUV bridge with real pthread synchronization and mocked SDK. It
+  covers thread creation failure, prepare without start, early/idempotent
+  pause, volume, exclusive instance, blocked-get close, image-reader delayed
+  shutdown, failed-put retry, terminal-with/without EOS, pause racing final
+  frame, frame errors, callback/start/CMA-budget failure and audio-only signed
+  position. All blocking SDK calls assert worker identity. SDK decode timing,
+  codec output pixels, real audio and target concurrency remain unverified.
 - `tools/sdk/check-player-session.ps1`: D13x E907 double-float ABI, real SDK
   player/allocator/frame bridge/events/clock and RT-Thread pthread headers, -Wall -Wextra -Werror: PASS.
   The script uses the SDK's Newlib/POSIX defines from compiler/pthread
   SConscript, including _POSIX_C_SOURCE=1 and _SYS__PTHREADTYPES_H_. It does not
   change SDK configuration or substitute host pthread declarations for target.
+- SDK output/lvgl-player-playback.o SHA256:
+  5e7013dc45439f43ca0b25808c0fc3c2514c4c86b08e8d1b48222e064915dba3.
 - SDK output/lvgl-player-session.o SHA256:
   812cec2ad03ed380e9a8d5fa7a664481918c3f6adce9a34c3f8ee94e66272d49.
 - SDK output/lvgl-player-allocator.o SHA256:
@@ -231,8 +271,7 @@ SDK tooling still reports its existing short-version/pywin32 environment warning
 
 ## Remaining SDK parity
 
-Integrate background command/event handling (including EOS/error/seek), PTS
-pacing and audio/video synchronization using the clock and event primitives, player widget controls, source replacement, repeat/rate behavior, slave and group
+Implement player widget controls and seek with reader/decoder flushing, source replacement, repeat/rate behavior, slave and group
 lifetimes, APNG backend, and explicit video-plane composition/ownership.
 Do not report this internal session as a complete player widget or as tested
 hardware decoding. All physical verification remains deferred.

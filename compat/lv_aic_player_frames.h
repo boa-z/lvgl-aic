@@ -5,6 +5,7 @@
 #include "lv_aic_player_allocator.h"
 #include "lv_aic_yuv_image.h"
 #include "lv_aic_rgb_image.h"
+#include "lv_aic_player_image.h"
 typedef struct lv_aic_player_frames lv_aic_player_frames_t;
 /* UI-owner create/poll/close/destroy, serialized playback-worker submit/drain.
  * Session and allocator storage must outlive the bridge and every image reader.
@@ -23,17 +24,10 @@ bool lv_aic_player_frames_submit(lv_aic_player_frames_t *frames,uint64_t lease);
  * only on success. Detach image and finish queued draws before owner destroy. */
 /* Legacy YUV-only poll leaves a ready RGB frame pending. */
 lv_aic_yuv_image_t *lv_aic_player_frames_poll(lv_aic_player_frames_t *frames,int64_t *pts);
-typedef struct {
-    lv_aic_yuv_image_t *yuv;
-    lv_aic_rgb_image_t *rgb;
-    int64_t pts;
-} lv_aic_player_image_t;
 /* Initialize output to zero; detach/destroy each image before reusing output.
  * Initialize both RGB and YUV decoders before polling mixed-format media.
  * Failure preserves output; frame publication failure queues worker return. */
 bool lv_aic_player_frames_poll_image(lv_aic_player_frames_t *frames,lv_aic_player_image_t *output);
-const lv_image_dsc_t *lv_aic_player_image_source(const lv_aic_player_image_t *image);
-void lv_aic_player_image_destroy(lv_aic_player_image_t *image);
 /* Worker only. Releases pins then calls potentially blocking SDK put_frame.
  * A failed put retains its SDK lease and can be retried by subsequent drain.
  * A failed pin release quarantines the mailbox, retaining resources. */
