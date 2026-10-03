@@ -404,3 +404,15 @@ retires. Strict E907 compile **PASS**; widget object SHA256:
 Command adapter SHA256:
 `d5c78bf0e3c68aba5190ef8834ae8774a56714ddeab7ac6acdbbf777fa1961e5`.
 Physical shared-frame display acceptance remains **NOT_RUN**.
+
+Shared-slave combined firmware validation: boot/app/static/image/manifest
+**PASS**, recorded source states clean. SDK
+`f67b7f2c7c0390b8dec872fe2d19d08636756973`, lvgl-aic
+`0f21acf68f6ea158cc1f968f58452be61d5494da`, LVGL
+`80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+Latest image at the same combined-profile path has SHA256
+`4f93b353edf958fb68be983b0b7940ad3027aaf5f286f59fc7e371ab01c6538c`;
+ELF SHA256 `c17d8f4a03d6b97053c0a0283e92c5ec820231458a5717d48dfa193e37ba5325`.
+The map now also verifies APNG slave creation/binding and the shared command
+adapter as live symbols. `lv_aic_apng_test show` opens the master/slave test pair.
+No flashing or physical acceptance was performed.
