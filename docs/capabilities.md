@@ -57,7 +57,7 @@ phase documents are historical; source presence and switches are not board proof
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
 | Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
-| AIC canvas | Owned ARGB8888 CMA buffer; bounded peak allocation; positioned and clearing centered text; host pixels/lifecycle and target live-link gates | Board CMA/cache/display validation; standalone packed-RGB fill helper implemented, native YUV fill still pending |
+| AIC canvas | Owned ARGB8888 CMA buffer; bounded peak allocation; positioned and clearing centered text; host pixels/lifecycle and target live-link gates | Board CMA/cache/display validation; standalone packed-RGB/linear-YUV fill helper implemented; board gradient/CSC probes pending |
 | Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu have host interaction contracts, a manual page and target linkage gates; physical input/rendering and direct video-window composition remain pending; camera/player use separate opt-in adapters |
 
 SDK image roller is now optional via AIC_LVGL_USE_IMG_ROLLER: application-owned
@@ -669,3 +669,13 @@ owners and failed-sync retention. Tiled YUV layouts are not accepted as fill
 destinations. These checks establish descriptors and ownership only; color-space
 conversion, gradient endpoints and YUV pixels require board numeric probes.
 Board NOT_RUN; ordinary LVGL YUV drawing remains its separate frame path.
+
+
+#### Linear YUV fill firmware evidence
+
+Host **52/52 PASS**. Full GE/fonts/GIF/widgets/AICP/player/APNG
+boot/app/static/image/manifest gates PASS. Clean component
+`801edb6237fcdd0a8c4bc35c002fe21f6b317239`, SDK
+`fb3a70ddbbc2a01e2080444c7bbb5911241b0c5a`.
+SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `102632cc744f95a5d9567030ec3d1f5b94279f9f9526e3e8827c57511729e72e`. Board **NOT_RUN**.
