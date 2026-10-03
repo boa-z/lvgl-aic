@@ -47,3 +47,28 @@ Image SHA256:
 `cfab814c0a890f0ddb8d686248655dc69979ea863c495f0c7685e07650f4ebd9`.
 Physical display/input acceptance remains NOT_RUN. Host PASS
 does not establish hardware rendering, DMA/cache behavior or performance.
+
+## Reentrant child replacement during transition events (2026-10-04)
+
+SCROLL_BEGIN/SCROLL_END handlers can delete a child, add a replacement and start
+another animation before the original callback returns. The old count/switching
+checks could mistake the restored four-child/new-animation state for their own
+transition and continue or emit a stale VALUE_CHANGED completion.
+
+Each transition now carries a generation; child deletion invalidates it. After
+begin/end notification the old call verifies that its generation still owns the
+transition, so a replacement animation retains its guard and completion event.
+No user-visible API changes are required. Normal nested requests without child
+removal remain rejected while switching; deletion from events remains supported.
+
+New tests reproduce the bug before the fix (completion count assertion failure)
+and replace/restart from both event boundaries. After the fix **70/70 host PASS**;
+only the replacement animation emits completion. Existing direct/animated,
+forward/backward, object deletion and cancellation cases remain covered.
+Strict D13x compilation PASS. SDK object
+`output/swipe-generation-lv_swipe_v1.o` SHA256:
+`3b99caa1f262f44101d771f6a97d4b196b3647f087f55e34e27642749d009919`.
+Logs: component `output/swipe-generation-before.log`,
+`output/swipe-generation-build.log`, `output/swipe-generation-tests.log`,
+`output/swipe-generation-target.log`. Full firmware refresh for this change and
+physical input/rendering acceptance remain pending; hardware **NOT_RUN**.

@@ -27,6 +27,7 @@ typedef struct {
     lv_obj_t obj;
     child_t children[4];
     uint16_t count, duration;
+    uint32_t generation;
     bool switching;
     lv_anim_path_cb_t path;
 } swipe_t;
@@ -149,8 +150,12 @@ static void progress(void *var, int32_t value)
 static void finish(lv_obj_t *obj)
 {
     swipe_t *s = (swipe_t *)obj;
+    uint32_t generation = s->generation;
     /* Retain the guard during SCROLL_END to reject nested transitions. */
     if (lv_obj_send_event(obj, LV_EVENT_SCROLL_END, obj) != LV_RESULT_OK) return;
+    /* Child deletion may cancel us, restore four children and start a new
+     * transition inside the callback. Never finish that replacement here. */
+    if (s->generation != generation || !s->switching) return;
     s->switching = false;
     lv_obj_send_event(obj, LV_EVENT_VALUE_CHANGED, obj);
 }
@@ -166,9 +171,10 @@ static void transition(lv_obj_t *obj, bool next, lv_anim_enable_t enable)
     swipe_t *s = (swipe_t *)obj;
     if (s->count != 4 || s->switching) return;
     s->switching = true;
+    uint32_t generation = ++s->generation;
     if (lv_obj_send_event(obj, LV_EVENT_SCROLL_BEGIN, obj) != LV_RESULT_OK) return;
     /* A callback may remove a child and cancel this transition. */
-    if (s->count != 4 || !s->switching) return;
+    if (s->count != 4 || !s->switching || s->generation != generation) return;
     lv_obj_update_layout(obj);
     for (uint16_t i = 0; i < 4; i++) {
         child_t *c = &s->children[i];
@@ -263,6 +269,7 @@ static void child_event(lv_event_t *e)
     if (i == s->count) return;
     if (lv_event_get_code(e) == LV_EVENT_DELETE) {
         lv_anim_delete(s, progress);
+        s->generation++;
         s->switching = false;
         lv_free(s->children[i].sources);
         for (; i + 1 < s->count; i++) s->children[i] = s->children[i + 1];

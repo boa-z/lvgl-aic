@@ -8,6 +8,14 @@ static void advance(void)
 }
 static void count_change(lv_event_t *e) { (void)e; changed++; }
 static void destroy(lv_event_t *e) { lv_obj_delete(lv_event_get_target_obj(e)); }
+static void replace_and_restart(lv_event_t *e)
+{
+    lv_obj_t *s=lv_event_get_target_obj(e);
+    lv_obj_remove_event_cb(s,replace_and_restart);
+    lv_obj_delete(lv_swipe_v1_get_child(s,0));
+    lv_swipe_v1_child_add_state_src(s,0,(void *)LV_SYMBOL_OK,(void *)LV_SYMBOL_CLOSE);
+    lv_swipe_v1_set_next(s,LV_ANIM_ON);
+}
 static lv_obj_t *create(void)
 {
     lv_obj_t *s = lv_swipe_v1_create(lv_screen_active());
@@ -67,6 +75,17 @@ int main(void)
             lv_swipe_v1_set_next(s, animate ? LV_ANIM_ON : LV_ANIM_OFF);
             advance();
         }
+    }
+    for(unsigned event=0;event<2;event++) {
+        lv_obj_t *widget=create();
+        unsigned before=changed;
+        lv_obj_add_event_cb(widget,count_change,LV_EVENT_VALUE_CHANGED,NULL);
+        lv_obj_add_event_cb(widget,replace_and_restart,
+            event?LV_EVENT_SCROLL_END:LV_EVENT_SCROLL_BEGIN,NULL);
+        lv_swipe_v1_set_next(widget,LV_ANIM_ON);
+        advance();advance();
+        assert(changed==before+1); /* Only replacement transition completes. */
+        lv_obj_delete(widget);
     }
     lv_obj_t *s = create();
     lv_swipe_v1_set_next(s, LV_ANIM_ON);
