@@ -24,7 +24,10 @@ phase documents are historical; source presence and switches are not board proof
 SDK image roller is now optional via AIC_LVGL_USE_IMG_ROLLER: application-owned
 carousel, looping, direction, zoom and active selection. Host lifecycle/layout
 contracts pass; board acceptance is pending. See [image roller](image-roller-stage.md).
-SDK swipe_v1 and media widgets remain missing.
+SDK swipe_v1 is optional via AIC_LVGL_USE_SWIPE_V1, with four-position
+transitions, stable IDs, state-source cycling and lifecycle contracts.
+See [swipe_v1](swipe-stage.md). Target/manual acceptance is pending;
+SDK media widgets remain missing.
 
 Declined drawing normally stays with software. Unsupported compressed resources
 do not imply another decoder can read them. Whole-screen rotation and IMAGE

@@ -28,4 +28,5 @@ reordering and teardown during animation. Physical drag feel, panel rendering
 and GE interaction remain pending consolidated board validation.
 
 This is the SDK image carousel; native LVGL's text roller is a separate widget.
-SDK swipe_v1 and camera/player/video-window remain separate pending ports.
+SDK swipe_v1 now has a separate [adaptation](swipe-stage.md).
+Camera/player/video-window remain pending ports.
