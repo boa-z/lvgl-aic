@@ -108,7 +108,7 @@ allocator pin，再调用 SDK put_frame。put 失败保留 SDK 租约，可重�
 The bridge does not implement a playback scheduler. The integrated worker
 below consumes SDK external-render get_frame, which already performs PTS
 wait/drop and audio/video synchronization. Do not add a second sleep/drop
-scheduler. Seek/repeat and source replacement remain to be integrated. SDK PLAY_END also represents some decoder errors, so it
+scheduler. Seek, guarded repeat and source replacement are integrated below. SDK PLAY_END also represents some decoder errors, so it
 must not be treated as proof of clean EOS. Native RGB publication is now supported as described below; error-marked frames
 still fail without consuming their lease.
 
@@ -272,7 +272,7 @@ SDK tooling still reports its existing short-version/pywin32 environment warning
 
 ## Remaining SDK parity
 
-Implement repeat/rate behavior and multi-player group
+Implement backend-specific rate behavior and multi-player group
 lifetimes, APNG backend, and explicit video-plane composition/ownership.
 Do not report the current widget as complete SDK player parity or as tested
 hardware decoding. All physical verification remains deferred.
@@ -292,8 +292,8 @@ readers and the worker finish. Run LVGL timers until pending_cleanup is zero
 before lv_deinit, and close/delete live widgets too. GE fault quarantine must
 never be force-released. VALUE_CHANGED reports state/applied volume; callbacks
 can delete the widget or replace its source. TERMINAL remains an SDK terminal
-notification, not proof of clean EOF. Seek is implemented in the following stage; repeat/rate and video-plane output
-remain unimplemented.
+notification, not proof of clean EOF. Seek and guarded auto-restart are implemented in the following stages; backend-specific rate and video-plane output
+remain open.
 
 Host regression: **32/32 PASS**. The widget contract uses real LVGL/decoders and
 mock playback, checks displayed RGB/YUV pixels, reader-delayed replacement,
@@ -338,7 +338,7 @@ feature configuration before their guards; SCons also tracks this dependency.
 No SDK core modification was needed. This repairs VIN build selection but does
 not certify camera configuration or physical capture.
 
-Worker seek is now implemented below. Repeat/rate, multi-player group lifetime and APNG/video-plane integration need
+Worker seek and guarded auto-restart are implemented below. Backend-specific rate, multi-player group lifetime and APNG/video-plane integration need
 separate implementation and evidence. The new native API does not claim binary
 or full source compatibility with SDK `lv_aic_player_set_cmd`.
 
@@ -438,5 +438,34 @@ SDK parity clarification: packages/artinchip/lvgl-ui/aic_widgets/aic_player/
 player_backend/aic_backend_ops.c explicitly rejects PLAYER_CMD_SET_PLAYBACK_RATE
 with "AIC backend does not support playback rate control". Rate parity must be
 assessed per backend (for example the pending APNG backend), not reported as a
-working SDK video feature that this port alone lacks. Auto-restart, backend
+working SDK video feature that this port alone lacks. Guarded auto-restart is implemented below. Backend
 selection/APNG, groups and video-plane composition remain separate work.
+
+## Guarded auto-restart (2026-10-03)
+
+`lv_aic_player_set_auto_restart(obj, true)` opts into repeating the current URI;
+default is off. It persists across source replacement/manual replay. The getter
+reports this preference; `lv_aic_player_get_auto_restart_count` counts accepted
+automatic seek requests over the widget lifetime, not successfully displayed
+loops. The counter does not wrap. Controls remain on the master; slaves follow
+its source retirement/new frames automatically.
+
+A terminal VALUE_CHANGED event is delivered on its own timer pass. Applications
+may disable repeat, stop, replace the URI or delete the widget in that handler.
+On a later safe pass, repeat requires seekable media and either a fresh queued
+video frame plus video EOS, or an audio-only valid timestamp from this epoch.
+It uses asynchronous seek-to-zero, preserving pause and volume intent and
+waiting for normal draw/native-reader release. Disabling repeat after that seek
+was accepted prevents future repeats but does not cancel the in-flight seek.
+
+This deliberately differs from SDK's unconditional PLAY_END -> seek(0): its
+PLAY_END also represents decoder errors, and it provides no clean-audio-EOF
+signal. Faults, unseekable media and terminal-without-progress do not retry.
+An audio timestamp or video EOS still cannot certify clean completion of all
+streams; the opt-in behavior is documented rather than labeled successful EOF.
+
+Host **32/32 PASS** includes three repeat cycles, native readers surviving
+retirement, no EOS/no fresh frames/unseekable suppression, disabling from the
+terminal event, audio-only progress gating and callback deletion. Strict target
+compilation **PASS**. Real media loop continuity, repeated decode resource
+behavior and A/V synchronization remain **NOT_RUN** pending board validation.

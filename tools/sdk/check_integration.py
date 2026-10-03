@@ -278,6 +278,7 @@ def main():
         text = map_path.read_text(encoding="utf-8", errors="replace")
         for symbol in ("lv_aic_player_create", "lv_aic_player_set_src", "lv_aic_player_start",
                        "lv_aic_player_seek", "lv_aic_player_playback_seek",
+                       "lv_aic_player_set_auto_restart", "lv_aic_player_get_auto_restart_count",
                        "lv_aic_slave_player_create", "lv_aic_slave_player_set_master",
                        "lv_aic_player_playback_prepare", "lv_aic_player_frames_poll_image",
                        "lv_aic_player_allocator_create", "aic_player_create", "aic_player_get_frame"):

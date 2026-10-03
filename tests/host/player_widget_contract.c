@@ -19,7 +19,7 @@ lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const l
     assert(options->cma_budget && options->extra_frames==3);
     if(active || fail_prepare) return NULL;
     strcpy(last_uri,uri); active=calloc(1,sizeof(*active)); assert(active); created++;
-    active->status=(lv_aic_playback_status_t){.state=LV_AIC_PLAYBACK_OPENING,.volume=-1}; return active;
+    active->status=(lv_aic_playback_status_t){.state=LV_AIC_PLAYBACK_OPENING,.volume=-1,.has_video=true,.seekable=true,.duration_us=1000000}; return active;
 }
 bool lv_aic_player_playback_start(lv_aic_player_playback_t *p)
 { if(!p || p->closing) return false; p->status.state=LV_AIC_PLAYBACK_PLAYING; return true; }
@@ -42,7 +42,7 @@ static void release(void *ctx) { producer_t *p=ctx; assert(p->player->readers); 
 bool lv_aic_player_playback_poll(lv_aic_player_playback_t *p,lv_aic_player_image_t *out)
 {
     if(!frames) return false;
-    frames--; producer_t *data=calloc(1,sizeof(*data)); assert(data); data->player=p;
+    frames--; p->status.frames_received++; p->status.frames_queued++; producer_t *data=calloc(1,sizeof(*data)); assert(data); data->player=p;
     if(rgb) {
         memset(data->rgb,pixel,sizeof(data->rgb));
         lv_aic_rgb_frame_t f={.width=4,.height=4,.stride=12,.format=LV_COLOR_FORMAT_RGB888,
@@ -68,6 +68,12 @@ void lv_aic_player_image_destroy(lv_aic_player_image_t *p)
 static void tick(void) { lv_tick_inc(25); lv_timer_handler(); }
 static void flush(lv_display_t *d,const lv_area_t *a,uint8_t *p) { (void)a;(void)p;lv_display_flush_ready(d); }
 static void delete_on_event(lv_event_t *e) { lv_obj_delete(lv_event_get_target_obj(e)); }
+static void disable_repeat_on_terminal(lv_event_t *e)
+{
+    lv_obj_t *o=lv_event_get_target_obj(e);
+    if(lv_aic_player_get_state(o)==LV_AIC_PLAYER_TERMINAL)
+        assert(lv_aic_player_set_auto_restart(o,false)==LV_RESULT_OK);
+}
 static void replace_on_event(lv_event_t *e)
 {
     lv_obj_t *o=lv_event_get_target_obj(e);
@@ -198,6 +204,50 @@ int main(void)
     assert(lv_image_get_src(s1)); assert(lv_aic_player_seek(o,1)==LV_RESULT_OK); tick();
     assert(!lv_image_get_src(s1));
     lv_obj_delete(o); lv_obj_delete(s1); tick(); tick();
+    /* Repeat publishes terminal first, then uses normal asynchronous seek. */
+    o=make(); assert(!lv_aic_player_get_auto_restart(o));
+    assert(lv_aic_player_set_auto_restart(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"loop.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);
+    for(unsigned loop=0;loop<3;loop++) {
+        rgb=false; frames=1; active->status.video_eos=true; active->status.state=LV_AIC_PLAYBACK_TERMINAL;
+        tick(); assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_TERMINAL);
+        assert(lv_aic_player_get_auto_restart_count(o)==loop);
+        reader=lv_aic_yuv_image_acquire(lv_image_get_src(o),&view); assert(reader);
+        tick(); assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_SEEKING && !lv_image_get_src(o));
+        assert(lv_aic_player_get_auto_restart_count(o)==loop+1 && active->status.seek_target_us==0);
+        assert(view->planes[0].data[0]==235); lv_aic_yuv_image_release_lease(reader);
+        active->status.seek_pending=false; active->status.seeks_completed++; active->status.video_eos=false;
+        active->status.state=LV_AIC_PLAYBACK_PLAYING; tick();
+    }
+    /* Neither a terminal without EOS nor one without fresh frames can loop. */
+    active->status.state=LV_AIC_PLAYBACK_TERMINAL; tick(); tick();
+    assert(lv_aic_player_get_auto_restart_count(o)==3);
+    active->status.video_eos=true; tick(); assert(lv_aic_player_get_auto_restart_count(o)==3);
+    active->status.seekable=false; frames=1; tick(); tick();
+    assert(lv_aic_player_get_auto_restart_count(o)==3); active->status.seekable=true;
+    /* Applications can disable repeat in the terminal event before restart. */
+    active->status.state=LV_AIC_PLAYBACK_PLAYING; tick();
+    lv_obj_add_event_cb(o,disable_repeat_on_terminal,LV_EVENT_VALUE_CHANGED,NULL);
+    active->status.state=LV_AIC_PLAYBACK_TERMINAL; frames=1; tick(); tick();
+    assert(!lv_aic_player_get_auto_restart(o) && lv_aic_player_get_auto_restart_count(o)==3);
+    lv_obj_delete(o); tick();
+    /* Audio-only terminal needs a timestamp; default/no-progress never loops. */
+    o=make(); assert(lv_aic_player_set_src(o,"audio.mp3")==LV_RESULT_OK);
+    assert(lv_aic_player_set_auto_restart(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);
+    active->status.has_video=false; active->status.has_audio=true;
+    active->status.state=LV_AIC_PLAYBACK_TERMINAL; tick(); tick();
+    assert(!lv_aic_player_get_auto_restart_count(o)); active->status.position_valid=true;
+    tick(); assert(lv_aic_player_get_auto_restart_count(o)==1);
+    /* Disabling does not mutate the already accepted seek transaction. */
+    assert(lv_aic_player_set_auto_restart(o,false)==LV_RESULT_OK && active->status.seek_pending);
+    lv_obj_delete(o); tick();
+    /* Terminal callback deletion remains safe even with repeat enabled. */
+    o=make(); assert(lv_aic_player_set_src(o,"delete.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_set_auto_restart(o,true)==LV_RESULT_OK);
+    active->status.state=LV_AIC_PLAYBACK_TERMINAL; active->status.video_eos=true; frames=1;
+    lv_obj_add_event_cb(o,delete_on_event,LV_EVENT_VALUE_CHANGED,NULL); tick(); tick();
     assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
     lv_display_delete(d); assert(lv_aic_yuv_image_decoder_deinit()); assert(lv_aic_rgb_image_decoder_deinit()); lv_deinit();
     return 0;

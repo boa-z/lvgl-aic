@@ -119,7 +119,7 @@ clock and coherent SDK callback mailbox now provide timing/event primitives;
 PLAY_END remains an ambiguous terminal notification, not clean EOS evidence.
 The background playback worker now supports prepare/start/pause/volume,
 RGB/YUV publication, asynchronous seek and deferred close, using SDK get_frame synchronization.
-Host ABI contracts and target compilation pass; repeat controls,
+Host ABI contracts and target compilation pass;
 real A/V timing, APNG, multi-player groups and video-plane integration remain open. The media-enabled image now passes build/link checks; physical playback remains unverified.
 
 Native RGB frame publication now covers the D13x MJPEG RGB565/RGB888/ARGB8888
@@ -132,7 +132,7 @@ The optional native `lv_aic_player` image widget now connects the background
 worker to LVGL: explicit configuration, prepare/start/pause/resume, volume,
 seek, stop/close/replay and deferred source replacement/deletion. Host contracts
 verify RGB/YUV rendering and frame-reader lifetimes; strict target compilation
-passes. Repeat/rate, multi-player groups and video-plane output remain gaps. Seek currently drains readers and rebuilds the SDK session to isolate callback generations; exact media seeking still requires board validation.
+passes. Backend-specific rate, multi-player groups and video-plane output remain gaps. Seek currently drains readers and rebuilds the SDK session to isolate callback generations; exact media seeking still requires board validation.
 Media firmware linkage is validated by the optional `-WithPlayer` profile. Physical playback remains NOT_RUN; see the exact image and clean source manifest in [player-stage.md](player-stage.md).
 
 Native display-only slave players now share the master's immutable image and
@@ -145,3 +145,8 @@ certified. See [player-stage.md](player-stage.md).
 Rate support is backend-specific: the official AIC video backend rejects
 PLAYER_CMD_SET_PLAYBACK_RATE. Its absence here is not a video-backend regression;
 rate behavior for the pending APNG backend still needs comparison and porting.
+
+Optional auto-restart now uses asynchronous seek-to-zero after a terminal event
+and observed stream progress. It does not retry faults, unseekable media or
+terminal-without-progress; applications can disable it in the terminal callback.
+SDK audio termination remains ambiguous, so this is not clean-EOF certification.

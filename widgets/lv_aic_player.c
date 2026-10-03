@@ -23,7 +23,9 @@ struct player_binding {
     lv_aic_player_state_t state,reported;
     char uri[128];
     int volume,reported_volume;
-    uint64_t reported_seek;
+    uint64_t reported_seek,auto_restarts;
+    uint32_t repeat_frames;
+    bool auto_restart;
     bool configured,closing,stopped,reopen,start_requested;
 };
 typedef struct { lv_image_t image; player_binding_t *binding; } player_widget_t;
@@ -133,7 +135,7 @@ static bool prepare(player_binding_t *b)
     b->playback=lv_aic_player_playback_prepare(b->uri,&b->options);
     b->status=lv_aic_player_playback_status(NULL);
     if(!b->playback) { b->state=LV_AIC_PLAYER_FAULT; return false; }
-    b->state=LV_AIC_PLAYER_OPENING; b->stopped=false;
+    b->state=LV_AIC_PLAYER_OPENING; b->stopped=false; b->repeat_frames=0;
     if((b->volume>=0 && !lv_aic_player_playback_volume(b->playback,b->volume)) ||
        (b->start_requested && !lv_aic_player_playback_start(b->playback))) {
         lv_aic_player_playback_close(b->playback); b->state=LV_AIC_PLAYER_FAULT; return false;
@@ -179,6 +181,18 @@ static void tick(lv_timer_t *timer)
                     release_frame(old);
                 } else lv_aic_player_image_destroy(&next);
             }
+        }
+    }
+    /* Notify terminal on a separate tick first, so its handler can disable
+     * repeat, replace source, stop or delete without post-event object access. */
+    if(b->obj && !b->closing && b->state==LV_AIC_PLAYER_TERMINAL &&
+       b->reported==LV_AIC_PLAYER_TERMINAL && b->auto_restart &&
+       b->status.seekable && b->auto_restarts<UINT64_MAX &&
+       ((b->status.has_video && b->status.video_eos && b->status.frames_queued!=b->repeat_frames) ||
+        (!b->status.has_video && b->status.has_audio && b->status.position_valid))) {
+        if(lv_aic_player_playback_seek(b->playback,0)) {
+            b->repeat_frames=b->status.frames_queued; b->auto_restarts++;
+            b->state=LV_AIC_PLAYER_SEEKING; retire(b);
         }
     }
     /* Final action only: callback can delete the widget or replace its source. */
@@ -270,7 +284,24 @@ lv_result_t lv_aic_player_seek(lv_obj_t *obj,uint64_t position_us)
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
     if(b->closing || !lv_aic_player_playback_seek(b->playback,position_us)) return LV_RESULT_INVALID;
+    b->repeat_frames=lv_aic_player_playback_status(b->playback).frames_queued;
     b->state=LV_AIC_PLAYER_SEEKING; lv_timer_resume(b->timer); return LV_RESULT_OK;
+}
+lv_result_t lv_aic_player_set_auto_restart(lv_obj_t *obj,bool enabled)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    b->auto_restart=enabled; return LV_RESULT_OK;
+}
+bool lv_aic_player_get_auto_restart(lv_obj_t *obj)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return false);
+    return ((player_widget_t *)obj)->binding->auto_restart;
+}
+uint64_t lv_aic_player_get_auto_restart_count(lv_obj_t *obj)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return 0);
+    return ((player_widget_t *)obj)->binding->auto_restarts;
 }
 lv_result_t lv_aic_player_set_volume(lv_obj_t *obj,int volume)
 {

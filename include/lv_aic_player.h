@@ -41,6 +41,16 @@ lv_result_t lv_aic_player_resume(lv_obj_t *obj);
 /* One asynchronous seek at a time; old image is retired on an idle draw pass.
  * Keeps playback/pause intent; see playback_seek for decoder-reset semantics. */
 lv_result_t lv_aic_player_seek(lv_obj_t *obj,uint64_t position_us);
+/* Opt-in repeat, default false. Terminal VALUE_CHANGED is emitted first; the
+ * next safe timer pass seeks to zero if seekable and video EOS plus a fresh
+ * queued frame (or audio-only timestamp) exists. Ambiguous/error-only terminal
+ * without that progress remains stopped. SDK notifications still cannot prove
+ * clean audio completion. Reuses seek teardown; pause intent is preserved.
+ * Disabling prevents future repeats; it does not cancel an accepted seek.
+ * Counter is lifetime accepted automatic seek requests, not completed loops. */
+lv_result_t lv_aic_player_set_auto_restart(lv_obj_t *obj,bool enabled);
+bool lv_aic_player_get_auto_restart(lv_obj_t *obj);
+uint64_t lv_aic_player_get_auto_restart_count(lv_obj_t *obj);
 lv_result_t lv_aic_player_set_volume(lv_obj_t *obj,int volume);
 lv_aic_player_state_t lv_aic_player_get_state(lv_obj_t *obj);
 lv_aic_playback_status_t lv_aic_player_get_status(lv_obj_t *obj);

@@ -164,6 +164,6 @@ config AIC_LVGL_USE_PLAYER
     depends on AIC_LVGL_USE_PLAYER_SESSION
     help
         RGB/YUV image widget with deferred source replacement, playback,
-        pause/resume, seek, stop/replay, volume, shared-frame slave widgets and
+        pause/resume, seek, stop/replay, guarded auto-restart, volume, slave widgets and
         asynchronous deletion cleanup.
         Explicit CMA budget and RGB/YUV decoder initialization required.
