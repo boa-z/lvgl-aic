@@ -37,9 +37,10 @@ D13x compile **PASS** with `-std=c99 -Wall -Wextra -Werror
 -march=rv32imafdcpzpsfoperand_xtheade -mabi=ilp32d -I include`;
 SDK `output/lvgl-spi-frame-standalone.o` defines `lv_aic_spi_pack_rgb565`.
 
-Still missing: exclusive SPI device/session ownership, bounded DMA transmit
-allocation, completion/error handling, panel initialization adapters, LVGL 9.6
-flush/claim integration, per-panel statistics and multi-display acceptance.
+At the frame-packer stage these items were pending; subsequent sections record
+implemented session ownership, bounded CMA allocation and checked completion.
+Currently pending: concrete panel initialization, LVGL 9.6 display/worker and
+blit-producer integration, power/TE handling, statistics and multi-display acceptance.
 No sensor/panel hardware is inferred or initialized. No camera/SPI final firmware
 link, physical SPI transfer, panel output or performance acceptance is claimed
 by this stage; hardware status is **NOT_RUN**.
@@ -287,3 +288,36 @@ Logs: `output/spi-script-tests.log`, `output/spi-script-target.log`.
 This is the reusable sequence executor, not a specific panel's initialization
 script. LVGL display/worker integration, device-specific configuration and actual
 SPI execution remain open. Hardware **NOT_RUN**.
+
+
+## Full regression and display-worker integration requirements
+
+The standard GE/fonts/GIF/widgets/AICP/player/APNG/barcode profile completed
+bootloader build, application link, static integration checks, image checks and
+provenance generation with clean component `0623fafa229e3c6358564e8ee16fcd3fcbe46a86`
+and SDK `ff711ba970a6c492ec0b2317ae3ec64a202d1cac`. Image SHA256:
+`7857af1e1078c07d7e09c2966229c7a188ea3e78c2b9728ee060b61506eb9867`.
+Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode/manifest.json`.
+This profile disables SPI transport: enabled SPI evidence remains the separate
+real-header compile/partial link and host contracts, not final device linkage.
+
+The SDK reference `aic_widgets/aic_spi/lv_aic_spi.c` uses `display_sem` and
+`sync_ready` to hand a frame to `disp_thread`, two transmit buffers, a separate
+blit producer claim, and per-panel timing/TE/power handling. The next integration
+must implement the following, rather than treating callback registration as parity:
+
+- Keep the LVGL source frame alive until the worker has finished reading it;
+  release flush ownership exactly once, including validation and transport errors.
+- Give one worker exclusive session access; bound queued work and prevent overwrite
+  while packing or DMA is active. Keep large transforms outside LVGL refresh.
+- Preserve source/command/tx lifetime on failure; completion of LVGL source use
+  is distinct from successful physical presentation and must be recorded separately.
+- Stop admission and join/drain a worker before deleting its display, session,
+  command context or buffers. Faulted DMA resources cannot be force-released.
+- Support an explicit exclusive direct-blit producer and prevent simultaneous
+  LVGL ownership; validate geometry/stride and rotation at the boundary.
+- Bind panel power, TE and initialization through explicit application configuration,
+  and report submitted/completed/failed frame counts and per-panel timing.
+
+Host concurrency/lifetime tests, enabled target compilation/final linkage and
+multi-display board testing remain required. Hardware **NOT_RUN**.

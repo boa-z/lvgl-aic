@@ -935,18 +935,24 @@ Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barc
 Board execution remains **NOT_RUN**; no flashing performed.
 
 
-### SPI display foundation
+### SPI display migration status
 
-SDK SPI display parity remains open. The new [SPI stage](spi-stage.md) starts
-with application-owned RGB565 transmit-frame preparation: padded immutable
-input, explicit byte order, orthogonal rotation and nearest resize into bounded
-caller storage. Host **58/58 PASS**, strict D13x compile **PASS**. Device/session,
-DMA completion, panel configuration and LVGL multi-display integration are
-still missing; no SPI output or hardware acceptance is implied.
+The [SPI stage](spi-stage.md) now includes immutable RGB565 frame preparation,
+orthogonal rotation/nearest resize, checked transfer lifetime, component bus/tx
+claims, cache handoff, budgeted owned CMA storage, exact-count SDK submission and
+checked completion. Reusable panel command sequences provide explicit D/C,
+cache cleaning and synchronous command completion with sticky fault retention.
+Host **62/62 PASS** and enabled-path D13x compile/component partial link **PASS**.
 
+Still missing for SDK parity: LVGL display/worker and direct-blit producer
+integration, concrete panel initialization/power/TE configuration, per-panel
+statistics and multi-display acceptance. Ordinary firmware regression keeps SPI
+transport disabled; it does not establish active SPI linkage or physical output.
 
-SPI migration now includes a composed SDK session: component bus/tx claims,
-cache-bounded frame packing, exact-count submission and checked completion with
-sticky fault retention. Host **61/61 PASS**, D13x compile/partial link **PASS**.
-Panel initialization and LVGL SPI display integration remain open; see
-[SPI stage](spi-stage.md). This is not board acceptance.
+Full GE/fonts/GIF/widgets/AICP/player/APNG/barcode regression after the SPI stages:
+boot/app/static/image/manifest **PASS**, clean component
+`0623fafa229e3c6358564e8ee16fcd3fcbe46a86`, SDK
+`ff711ba970a6c492ec0b2317ae3ec64a202d1cac`.
+Image SHA256 `7857af1e1078c07d7e09c2966229c7a188ea3e78c2b9728ee060b61506eb9867`.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
+Board validation **NOT_RUN**; no flashing performed.
