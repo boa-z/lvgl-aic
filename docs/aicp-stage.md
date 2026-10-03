@@ -46,4 +46,11 @@ hits without another allocation. Expect BEGIN AICP resource probes followed
 by PASS AICP file-memory parity and cache lifecycle. Non-V31 explicitly logs
 SKIP for the alpha fixture. FILE/RAW agreement is not an independent pixel
 oracle; visual/reference-image acceptance remains necessary.
+
+Probe-enabled cross-build PASS: component b355764 / SDK 2527e785, using
+the same profile. Current evidence directory now contains this newer build.
+Image SHA256:
+`03e8fc3dca628bf4e06523ad480111bf160b91ed6d54beb61a0c8bb7a148af20`.
+Boot/app build, codec/config gates, image integrity and manifest pass.
+Board probes remain NOT_RUN; no hardware pixel or cache result is claimed.
 Do not enable the codec in a release solely on the basis of these host tests.
