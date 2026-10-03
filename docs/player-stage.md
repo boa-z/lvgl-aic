@@ -421,3 +421,22 @@ producer allocation, deferred detach during queued drawing, rebind, master-
 first/slave-first deletion, reader survival after master deletion, and seek
 retirement. E907 strict compilation **PASS**. Physical multi-view GE rendering,
 memory pressure and lifecycle stress remain **NOT_RUN**.
+
+### Slave firmware evidence and backend parity boundary
+
+Standard `-WithPlayer` profile: boot/app/static/image/manifest **PASS**, including
+live slave create/attach symbols. Clean sources: SDK `445a6b02`, component
+`6adbd62`, LVGL `80ca777e`. No physical board execution.
+
+- Evidence remains `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player`.
+- Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img` SHA256:
+  `3e6e1fd45a387f4371de88765ba5b29f7a9a24f807ac731f19a2767b4ec773e6`.
+- ELF SHA256: `462d1ef7fbdd0cf4005ecff2238af23e6fba19c8ac712bb1dc8c71bd7e081136`.
+- This replaces the previous seek-stage image in that evidence directory.
+
+SDK parity clarification: packages/artinchip/lvgl-ui/aic_widgets/aic_player/
+player_backend/aic_backend_ops.c explicitly rejects PLAYER_CMD_SET_PLAYBACK_RATE
+with "AIC backend does not support playback rate control". Rate parity must be
+assessed per backend (for example the pending APNG backend), not reported as a
+working SDK video feature that this port alone lacks. Auto-restart, backend
+selection/APNG, groups and video-plane composition remain separate work.

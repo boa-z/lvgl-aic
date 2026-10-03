@@ -141,3 +141,7 @@ automatic unlink on master deletion. They use no additional decoder session or
 full-frame pixel copy. Host rendering/lifetime contracts and target compilation
 pass; physical multi-view composition and simultaneous panel scanout are not
 certified. See [player-stage.md](player-stage.md).
+
+Rate support is backend-specific: the official AIC video backend rejects
+PLAYER_CMD_SET_PLAYBACK_RATE. Its absence here is not a video-backend regression;
+rate behavior for the pending APNG backend still needs comparison and porting.
