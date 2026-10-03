@@ -549,3 +549,22 @@ gates PASS, including live canvas entry points. Clean sources: component
 `6166afaec164143c7eefe6faa172b3b1346983e6`.
 SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
 SHA256 `b0a49d708eebaa446403078990c76c5ce85f0daf73b12842eaf81cbaa066880f`. Board **NOT_RUN**.
+
+
+### AIC canvas acceptance page (2026-10-04)
+
+The widget-enabled manual UI adds a final `AIC canvas` page (6/6 in the full
+GE profile). Its transparent text buffer sits over a blue-to-red background.
+`Replace text` alternates long/short text using the clearing centered helper;
+`Rebuild buffer` replaces storage and redraws the same text. The generation
+counter and text choice survive page changes. The host pointer contract exercises
+both buttons and checks buffer replacement, retained state and create/delete
+cycles. An 800x480 software screenshot was visually inspected for clipping and
+control overlap; it is not evidence of CMA, cache or hardware blending correctness.
+
+Deferred board procedure: reach this page with Next, confirm the background is
+visible around glyphs, alternate text repeatedly (no ghost glyphs), rebuild
+repeatedly (no corruption), and leave/return (same generation/text). Record serial
+logs and image identity with the visual result. No board result is claimed here.
+Host snapshot: set `AIC_CANVAS_PAGE_PPM` to an output path when running the manual
+page contract to save the software frame after replace/rebuild interactions.

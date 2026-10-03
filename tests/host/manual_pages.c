@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_aic_manual_test.h"
 #include "lv_aic_font_test.h"
+#include "lv_aic_canvas.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -92,9 +93,9 @@ int main(int argc, char **argv)
         assert(lv_aic_manual_test_create() == LV_AIC_ERR_INVALID_STATE);
         int count = lv_aic_manual_page_count();
 #if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1
-        assert(count == 4 + (LV_USE_LIST && LV_USE_MENU));
+        assert(count == 4 + (LV_USE_LIST && LV_USE_MENU) + AIC_LVGL_USE_CANVAS);
 #else
-        assert(count == 3);
+        assert(count == 3 + AIC_LVGL_USE_CANVAS);
 #endif
         assert(lv_obj_get_child_count(screen) == initial + (uint32_t)count);
         lv_obj_t *baseline = lv_obj_get_child(screen, initial);
@@ -114,8 +115,8 @@ int main(int argc, char **argv)
         for (int i = 1; i <= count * 4; i++) { click(indev, next); check_page(screen, nav, initial, i % count); }
         for (int i = 1; i <= count * 4; i++) { click(indev, prev); check_page(screen, nav, initial, (count - i % count) % count); }
 #if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1
-        lv_aic_manual_page_request(count - 1 - (LV_USE_LIST && LV_USE_MENU)); lv_aic_manual_page_poll();
-        lv_obj_t *widgets = lv_obj_get_child(screen, initial + count - 1 - (LV_USE_LIST && LV_USE_MENU));
+        lv_aic_manual_page_request(count - 1 - (LV_USE_LIST && LV_USE_MENU) - AIC_LVGL_USE_CANVAS); lv_aic_manual_page_poll();
+        lv_obj_t *widgets = lv_obj_get_child(screen, initial + count - 1 - (LV_USE_LIST && LV_USE_MENU) - AIC_LVGL_USE_CANVAS);
         lv_obj_t *advance = find_button(widgets, "Next icon");
         assert(advance);
         click(indev, advance);
@@ -125,8 +126,8 @@ int main(int argc, char **argv)
 #if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1 && LV_USE_LIST && LV_USE_MENU
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-        lv_aic_manual_page_request(count-1);lv_aic_manual_page_poll();
-        lv_obj_t *legacy=lv_obj_get_child(screen,initial+count-1);
+        lv_aic_manual_page_request(count-1-AIC_LVGL_USE_CANVAS);lv_aic_manual_page_poll();
+        lv_obj_t *legacy=lv_obj_get_child(screen,initial+count-1-AIC_LVGL_USE_CANVAS);
         lv_obj_t *list=lv_obj_get_child(legacy,0);
         lv_obj_update_layout(list);assert(lv_obj_get_scroll_y(list)==0);
         lv_area_t list_area;lv_obj_get_coords(list,&list_area);
@@ -139,8 +140,8 @@ int main(int argc, char **argv)
         pressed=false;lv_tick_inc(20);lv_indev_read(indev);
         for(unsigned step=0;step<40;step++) { lv_tick_inc(20);lv_timer_handler(); }
         int32_t scrolled=lv_obj_get_scroll_y(list);assert(scrolled>0);
-        click(indev,prev);check_page(screen,nav,initial,count-2);
-        click(indev,next);check_page(screen,nav,initial,count-1);
+        click(indev,prev);check_page(screen,nav,initial,count-2-AIC_LVGL_USE_CANVAS);
+        click(indev,next);check_page(screen,nav,initial,count-1-AIC_LVGL_USE_CANVAS);
         assert(lv_obj_get_scroll_y(list)==scrolled);
         assert(lv_obj_get_scroll_y(legacy)==0);
         lv_obj_t *menu=lv_obj_get_child(legacy,1);
@@ -151,6 +152,40 @@ int main(int argc, char **argv)
         assert(lv_menu_get_cur_main_page(menu)==home);
         lv_aic_manual_page_request(0);lv_aic_manual_page_poll();
 #pragma GCC diagnostic pop
+#endif
+#if AIC_LVGL_USE_CANVAS
+        lv_aic_manual_page_request(count-1);lv_aic_manual_page_poll();
+        check_page(screen,nav,initial,count-1);
+        lv_obj_t *canvas_page=lv_obj_get_child(screen,initial+count-1);
+        lv_obj_t *canvas=lv_obj_get_child(lv_obj_get_child(canvas_page,1),0);
+        lv_obj_t *status=lv_obj_get_child(canvas_page,4);
+        lv_obj_t *replace=find_button(canvas_page,"Replace text");
+        lv_obj_t *rebuild=find_button(canvas_page,"Rebuild buffer");
+        assert(replace && rebuild);
+        assert(!strcmp(lv_label_get_text(status),"Buffer 1 / long text"));
+        click(indev,replace);
+        assert(!strcmp(lv_label_get_text(status),"Buffer 1 / short text"));
+        const void *old=lv_canvas_get_draw_buf(canvas)->data;
+        click(indev,rebuild);
+        assert(lv_canvas_get_draw_buf(canvas)->data!=old);
+        assert(!strcmp(lv_label_get_text(status),"Buffer 2 / short text"));
+        click(indev,prev);click(indev,next);
+        assert(!strcmp(lv_label_get_text(status),"Buffer 2 / short text"));
+        assert(lv_obj_get_scroll_y(canvas_page)==0);
+        /* Optional software screenshot for layout review, not target evidence. */
+        const char *snapshot=getenv("AIC_CANVAS_PAGE_PPM");
+        if(snapshot && !cycle) {
+            lv_refr_now(display);
+            FILE *file=fopen(snapshot,"wb");assert(file);
+            fprintf(file,"P6\n800 480\n255\n");
+            for(unsigned i=0;i<800U*480U;i++) {
+                uint16_t pixel=(uint16_t)pixels[2*i]|((uint16_t)pixels[2*i+1]<<8);
+                const uint8_t rgb[3]={((pixel>>11)&31)*255/31,((pixel>>5)&63)*255/63,(pixel&31)*255/31};
+                assert(fwrite(rgb,1,3,file)==3);
+            }
+            assert(fclose(file)==0);
+        }
+        lv_aic_manual_page_request(0);lv_aic_manual_page_poll();
 #endif
         lv_aic_manual_page_request(-1); lv_aic_manual_page_request(99);
         lv_aic_manual_page_poll(); check_page(screen, nav, initial, 0);

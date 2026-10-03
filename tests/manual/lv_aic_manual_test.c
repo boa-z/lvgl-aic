@@ -14,6 +14,7 @@
 #include "lv_aic_plane_test.h"
 #include "lv_img_roller.h"
 #include "lv_swipe_v1.h"
+#include "lv_aic_canvas.h"
 
 #if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1
 #define LV_AIC_WIDGET_TEST 1
@@ -159,12 +160,78 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
     lv_obj_set_x(lv_aic_manual_marker, 24 + lv_aic_manual_marker_x);
 }
 
+#if AIC_LVGL_USE_CANVAS
+static lv_obj_t *canvas_root, *canvas_image, *canvas_status;
+static unsigned canvas_generation;
+static bool canvas_alternate;
+static void canvas_text(void)
+{
+    lv_draw_label_dsc_t label;
+    lv_draw_label_dsc_init(&label); label.color=lv_color_white();
+    lv_aic_canvas_draw_text_to_center(canvas_image,&label,
+        canvas_alternate ? "Short" : "Transparent canvas text");
+    lv_label_set_text_fmt(canvas_status,"Buffer %u / %s text",canvas_generation,
+                         canvas_alternate ? "short" : "long");
+}
+static void canvas_button_event(lv_event_t *e)
+{
+    if(lv_event_get_user_data(e)) {
+        lv_draw_buf_t *buffer=lv_canvas_get_draw_buf(canvas_image);
+        if(lv_aic_canvas_alloc_buffer(canvas_image,buffer->header.w,buffer->header.h)!=LV_RESULT_OK) {
+            lv_label_set_text(canvas_status,"Buffer allocation failed; old canvas retained");
+            return;
+        }
+        canvas_generation++;
+    }
+    else canvas_alternate=!canvas_alternate;
+    canvas_text();
+}
+static int canvas_page_create(lv_display_t *display)
+{
+    int32_t width=lv_display_get_horizontal_resolution(display);
+    int32_t height=lv_display_get_vertical_resolution(display)-64;
+    int32_t cw=LV_MIN(width-48,480), ch=LV_MIN(height-180,160);
+    if(cw<32 || ch<32) return LV_AIC_ERR_UNSUPPORTED;
+    canvas_root=lv_obj_create(lv_screen_active());
+    if(!canvas_root) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_pos(canvas_root,0,64);lv_obj_set_size(canvas_root,width,height);
+    lv_obj_set_style_pad_all(canvas_root,0,0);lv_obj_set_scrollable(canvas_root,false);
+    lv_obj_t *hint=lv_label_create(canvas_root);
+    lv_obj_t *backdrop=lv_obj_create(canvas_root);
+    if(!hint || !backdrop) return LV_AIC_ERR_NO_MEMORY;
+    lv_label_set_text(hint,"Replace text: no old glyphs. Rebuild: same image. Background stays visible.");
+    lv_obj_set_width(hint,width-32);lv_obj_set_pos(hint,16,16);
+    lv_obj_set_size(backdrop,cw,ch);lv_obj_set_pos(backdrop,(width-cw)/2,72);
+    lv_obj_set_style_pad_all(backdrop,0,0);lv_obj_set_style_border_width(backdrop,0,0);
+    lv_obj_set_style_radius(backdrop,0,0);lv_obj_set_scrollable(backdrop,false);
+    lv_obj_set_style_bg_color(backdrop,lv_color_hex(0x245b80),0);
+    lv_obj_set_style_bg_grad_color(backdrop,lv_color_hex(0x803c50),0);
+    lv_obj_set_style_bg_grad_dir(backdrop,LV_GRAD_DIR_HOR,0);
+    canvas_image=lv_aic_canvas_create(backdrop);
+    if(!canvas_image || !lv_aic_canvas_set_budget(canvas_image,1024U*1024U) ||
+       lv_aic_canvas_alloc_buffer(canvas_image,cw,ch)!=LV_RESULT_OK) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_pos(canvas_image,0,0);
+    for(unsigned i=0;i<2;i++) {
+        lv_obj_t *button=lv_button_create(canvas_root);
+        if(!button) return LV_AIC_ERR_NO_MEMORY;
+        lv_obj_set_size(button,160,44);lv_obj_set_pos(button,width/2-172+(int32_t)i*184,height-108);
+        lv_obj_add_event_cb(button,canvas_button_event,LV_EVENT_CLICKED,(void *)(uintptr_t)i);
+        lv_obj_t *label=lv_label_create(button);if(!label) return LV_AIC_ERR_NO_MEMORY;
+        lv_label_set_text(label,i?"Rebuild buffer":"Replace text");lv_obj_center(label);
+    }
+    canvas_status=lv_label_create(canvas_root);if(!canvas_status) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_pos(canvas_status,16,height-44);
+    canvas_generation=1;canvas_alternate=false;canvas_text();
+    lv_obj_set_hidden(canvas_root,true);return LV_AIC_OK;
+}
+#endif
+
 int lv_aic_manual_page_count(void)
 {
 #if LV_AIC_GE2D_IMAGE_TEST
-    return 3 + LV_AIC_WIDGET_TEST + LV_AIC_NAV_TEST;
+    return 3 + LV_AIC_WIDGET_TEST + LV_AIC_NAV_TEST + AIC_LVGL_USE_CANVAS;
 #else
-    return 1 + LV_AIC_WIDGET_TEST + LV_AIC_NAV_TEST;
+    return 1 + LV_AIC_WIDGET_TEST + LV_AIC_NAV_TEST + AIC_LVGL_USE_CANVAS;
 #endif
 }
 
@@ -177,13 +244,18 @@ static void lv_aic_nav_update(void)
 {
     static const char *const titles[] = {"Overview", "Image rotation", "Rotation + scale"};
     if (!lv_aic_nav_title) return;
+#if AIC_LVGL_USE_CANVAS
+    if(lv_aic_manual_page_active==lv_aic_manual_page_count()-1)
+        lv_label_set_text(lv_aic_nav_title,"AIC canvas");
+    else
+#endif
 #if LV_AIC_WIDGET_TEST
 #if LV_AIC_NAV_TEST
-    if(lv_aic_manual_page_active==lv_aic_manual_page_count()-1)
+    if(lv_aic_manual_page_active==lv_aic_manual_page_count()-1-AIC_LVGL_USE_CANVAS)
         lv_label_set_text(lv_aic_nav_title,"List / menu compatibility");
     else
 #endif
-    if (lv_aic_manual_page_active == lv_aic_manual_page_count() - 1 - LV_AIC_NAV_TEST)
+    if (lv_aic_manual_page_active == lv_aic_manual_page_count() - 1 - LV_AIC_NAV_TEST - AIC_LVGL_USE_CANVAS)
         lv_label_set_text(lv_aic_nav_title, "SDK widgets");
     else
 #endif
@@ -205,12 +277,15 @@ void lv_aic_manual_page_poll(void)
     lv_aic_manual_page_pending = -1;
     if (page >= lv_aic_manual_page_count()) return;
     lv_aic_manual_page_active = page;
+#if AIC_LVGL_USE_CANVAS
+    lv_obj_set_hidden(canvas_root,page!=lv_aic_manual_page_count()-1);
+#endif
     lv_obj_set_hidden(lv_aic_manual_root, page != 0);
 #if LV_AIC_WIDGET_TEST
-    lv_obj_set_hidden(lv_aic_widget_root, page != lv_aic_manual_page_count() - 1 - LV_AIC_NAV_TEST);
+    lv_obj_set_hidden(lv_aic_widget_root, page != lv_aic_manual_page_count() - 1 - LV_AIC_NAV_TEST - AIC_LVGL_USE_CANVAS);
 #endif
 #if LV_AIC_NAV_TEST
-    lv_obj_set_hidden(lv_aic_legacy_root,page!=lv_aic_manual_page_count()-1);
+    lv_obj_set_hidden(lv_aic_legacy_root,page!=lv_aic_manual_page_count()-1-AIC_LVGL_USE_CANVAS);
 #endif
 #if LV_AIC_GE2D_IMAGE_TEST
     lv_obj_set_hidden(lv_aic_rotation_root, page != 1);
@@ -773,6 +848,9 @@ int lv_aic_manual_test_create(void)
     if(lv_aic_legacy_page_create(display)!=LV_AIC_OK) goto fail;
 #endif
 #endif
+#if AIC_LVGL_USE_CANVAS
+    if(canvas_page_create(display)!=LV_AIC_OK) goto fail;
+#endif
     if (lv_aic_nav_create(display) != LV_AIC_OK) goto fail;
 
 #if LV_USE_FREETYPE && AIC_LVGL_BSP_RTTHREAD
@@ -796,6 +874,10 @@ const char *lv_aic_manual_test_status_text(void)
 
 void lv_aic_manual_test_deinit(void)
 {
+#if AIC_LVGL_USE_CANVAS
+    if(canvas_root) lv_obj_delete(canvas_root);
+    canvas_root=canvas_image=canvas_status=NULL;
+#endif
 #if LV_AIC_PLANE_TEST_ENABLED
     lv_aic_plane_test_deinit();
 #endif
