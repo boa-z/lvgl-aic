@@ -60,3 +60,21 @@ outputs, reassignment, duplicate add, group-first/member-first and parent-group
 deletion. Strict E907 combined-feature compilation **PASS**. Mocks establish
 owner/lifecycle behavior, not hardware decode concurrency. Physical acceptance
 **NOT_RUN**. See the firmware evidence below when available.
+
+## Combined firmware evidence (2026-10-03)
+
+Boot/app/static/image/manifest **PASS**, all recorded source states clean.
+- sdk: `8c62260a57e29be9da760bf698aa02742d50a34b`.
+- lvgl-aic: `a855c61cf096f11b568907a40fbe0b0c9e6eef2f`.
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+
+Artifact under the isolated SDK worktree:
+`output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`.
+Image SHA256: `259bda2c0dbcb8bc6f66a9bf89ed018942a23885fe4b9ab6375e34bb3136f3ff`.
+ELF SHA256: `9437ac309f3dce721ef6b626714e4159f0af6d1b32960f51fea550760564de33`.
+
+The linker map verifies group lifecycle/control and member attach/query roots.
+Hardware execution **NOT_RUN**; this build does not establish multi-decoder or
+multi-view device behavior. The existing APNG overlay remains a standalone
+master/slave test; group behavior was exercised by host contracts. Evidence-only
+follow-up commits do not alter these firmware source identities.

@@ -19,7 +19,8 @@ physical codec/timing/audio/multi-view acceptance. Arbitrary APNG time seek and
 video playback-rate changes are not supported by the SDK reference either.
 See [current command contract](player-command-compat.md). The milestone notes
 below record historical checkpoints; older “remaining” items for APNG worker,
-widget, command, metadata and automatic backend selection are superseded here.
+widget, command, metadata, automatic backend selection and group lifecycle
+are superseded here. Multi-instance groups remain incomplete.
 
 Maintained inventory, 2026-10-03. Development branch: codex/sdk-basic-capabilities.
 Comparison: the SDK's ArtInChip LVGL 9.1.0 implementation. Earlier
