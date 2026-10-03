@@ -120,19 +120,22 @@ pixel. Its DMA allocations remain pinned after a hardware failure.
 Target validation: PASS, full ge2d-fonts-gif-widgets-aicp profile.
 
 - Command: tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -Jobs 8.
-- SDK: 14351ec2; component: 0d3859b; LVGL: 80ca777e.
+- SDK: cbaf5779; component: 8132f95; LVGL: 80ca777e.
 - Boot/app builds, static checks, image checks and manifest: PASS.
 - Allocated target text contains conversion/metadata/probe code, source leases,
   lv_draw_aic_ge2d_yuv and lv_draw_aic_ge2d_prepare_yuv_cache; these are not
   merely discarded source objects.
 - Evidence: SDK output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp.
 - Image: images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
-- SHA256: 2aed74d90d49c776484d85dc8c349a07ae67c93162ae55706c7f2b259cdd1793.
+- SHA256: 5f68739c4430a9ee2eea5226e19b616456b737f65c30d4a2e820b92dbbfef60a.
 - Manifest records clean source states; later documentation commits are
   excluded from this build, and the profile directory is reused by later builds.
 - Physical board execution: NOT_RUN.
 
-This image adds corrected combined rotation and seven scaled board probes to
+This image adds native-size YUV tiling and its clipped 2x2 board probe to
+the combined-rotation 0d3859b candidate
+(SHA256 2aed74d90d49c776484d85dc8c349a07ae67c93162ae55706c7f2b259cdd1793).
+That image added corrected combined rotation and seven scaled board probes to
 the unrotated-scaling 1b3e5b2 candidate
 (SHA256 bff582369c94d5d8dd0182c8a99058c0eacaeb44a34b261df2825494bda6b608).
 Earlier stages include the native-rotation f709dd6 candidate
