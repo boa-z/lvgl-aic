@@ -237,6 +237,18 @@ endif()
 # Optional real-decoder contract test; SDK headers, mocked engine/OSAL only.
 set(AIC_SDK_ROOT "" CACHE PATH "Luban-Lite SDK for MPP ABI tests")
 if(AIC_SDK_ROOT)
+    add_executable(lvgl_aic_player_session_contract player_session_contract.c
+        "${AIC_ROOT}/port/lv_aic_player_session.c")
+    target_include_directories(lvgl_aic_player_session_contract PRIVATE
+        "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/middle_media/player/include"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+    target_compile_definitions(lvgl_aic_player_session_contract PRIVATE AIC_LVGL_USE_PLAYER_SESSION=1 AIC_MPP_PLAYER_VIDEO_EXT_RENDER=1)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_player_session_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_player_session_contract COMMAND lvgl_aic_player_session_contract)
     add_executable(lvgl_aic_vin_session_contract vin_session_contract.c
         "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/port/lv_aic_vin_frame.c"
         "${AIC_ROOT}/port/lv_aic_vin_session.c")

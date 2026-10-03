@@ -146,3 +146,11 @@ config AIC_LVGL_USE_CAMERA
         Camera control with worker-owned VIN capture and immutable YUV images.
         Explicit application colorimetry and YUV decoder initialization required.
         Uses LVGL composition, not the SDK lower video plane or barcode backend.
+
+config AIC_LVGL_USE_PLAYER_SESSION
+    bool "Build application-owned media player session support"
+    default n
+    depends on AIC_LVGL_PORT && AIC_MPP_PLAYER_INTERFACE && AIC_MPP_PLAYER_VIDEO_EXT_RENDER
+    help
+        Serialized worker-side playback/decoder-frame ownership adapter.
+        This is not yet the player widget, event mailbox or video-plane owner.

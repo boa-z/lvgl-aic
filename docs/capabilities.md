@@ -106,3 +106,10 @@ enabled image linking and board execution remain unverified or missing.
 
 This sequence supersedes the old instruction to stop after 3C5. It does not
 waive hardware verification or authorize flashing.
+
+The [player session foundation](player-stage.md) now wraps SDK preparation,
+playback/pause/restart, seek/volume/time and decoder-frame leases. It uses
+external video rendering and refuses destructive controls while readers hold
+frames. Host ABI contracts and target compilation pass; the background player,
+widget, frame publication, APNG, group/slave and video-plane integration remain
+open. No media-enabled image or physical playback has been verified.
