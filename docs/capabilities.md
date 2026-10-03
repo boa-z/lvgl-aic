@@ -738,3 +738,12 @@ directions at lengths 1/2/8/17/4096, with boundary guards. Full host suite:
 **54/54 PASS**. This establishes command generation, not hardware pixels.
 The older diagnostic image above remains historical evidence; board numeric
 acceptance and YUV CSC probes are still pending.
+
+#### Corrected CMDQ firmware evidence
+
+Clean component `5e65ff6f2b6b04e3c4f48821137ef003a36db9f4`, SDK `a97c270ea066ee18279f3ab3994d973449b0d8b9`.
+Full GE/fonts/GIF/widgets/AICP/player/APNG boot/app/static/image/manifest gates
+PASS, including the final ELF operations-table routing check. Generated backend
+and provenance are included in the evidence manifest.
+Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `c2d01c894d3da24b539d613394e1ac34eba0f3e19f428c67fed7e0d298b69464`. Board **NOT_RUN**.
