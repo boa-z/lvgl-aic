@@ -671,6 +671,8 @@ endif()
 
 if(AIC_BUILD_WIDGET_TESTS)
     target_compile_definitions(lvgl PUBLIC
+        LV_USE_LIST=1
+        LV_USE_MENU=1
         LV_USE_CANVAS=1
         LV_USE_CHART=1
         LV_USE_DROPDOWN=1

@@ -57,7 +57,7 @@ phase documents are historical; source presence and switches are not board proof
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
 | Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
-| Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu and direct video-window composition remain outside this profile; camera/player use separate opt-in adapters |
+| Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu now have host compatibility contracts; target retention and direct video-window composition need separate validation; camera/player use separate opt-in adapters |
 
 SDK image roller is now optional via AIC_LVGL_USE_IMG_ROLLER: application-owned
 carousel, looping, direction, zoom and active selection. Host lifecycle/layout
@@ -345,3 +345,15 @@ Production RGB565 color-key fallback is unchanged. Board probe execution NOT_RUN
 - lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
 - images/d13x.elf SHA256: 0bba2eab3d1419d6b778dad56790a149aace0cdc76032d21786bbcd067a7d53f
 - images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: 301cb15429509edd83f764449bcf2f17448d0982bf2b21315c28258b6971685f
+
+
+## Legacy list/menu compatibility (2026-10-04)
+
+LVGL 9.6 retains upstream list/menu implementations with deprecation annotations.
+They are not missing port implementations. The native-widget host profile now
+explicitly enables them and exercises list label/button replacement, menu page
+creation, click-driven navigation, return navigation and subtree deletion.
+Full host 49/49 PASS. Deprecation warnings are suppressed only around this
+intentional compatibility test. New UI should prefer flex containers and explicit
+page navigation as upstream recommends. This does not prove target live linkage,
+touch input, layout or board rendering, and no new firmware image is claimed.

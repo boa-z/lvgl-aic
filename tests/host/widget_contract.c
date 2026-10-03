@@ -12,6 +12,40 @@
 #include "lvgl/widgets/lv_tabview.h"
 #include "lvgl/widgets/lv_textarea.h"
 #include "lvgl/widgets/lv_tileview.h"
+#include "lvgl/widgets/lv_list.h"
+#include "lvgl/widgets/lv_menu.h"
+
+/* Legacy SDK applications can still use upstream compatibility widgets.
+ * Suppress deprecation only in this deliberate compatibility contract. */
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+static void legacy_navigation(lv_obj_t *screen)
+{
+    lv_obj_t *list=lv_list_create(screen);assert(list);
+    assert(lv_list_add_text(list,"Settings"));
+    lv_obj_t *button=lv_list_add_button(list,LV_SYMBOL_SETTINGS,"Display");assert(button);
+    assert(strcmp(lv_list_get_button_text(list,button),"Display")==0);
+    lv_obj_delete(button);
+    button=lv_list_add_button(list,NULL,"Audio");assert(button);
+    assert(strcmp(lv_list_get_button_text(list,button),"Audio")==0);
+    lv_obj_delete(list);
+
+    lv_obj_t *menu=lv_menu_create(screen);assert(menu);
+    lv_obj_t *home=lv_menu_page_create(menu,"Home");
+    lv_obj_t *details=lv_menu_page_create(menu,"Details");assert(home && details);
+    lv_obj_t *entry=lv_menu_cont_create(home);assert(entry);
+    lv_menu_set_load_page_event(menu,entry,details);
+    lv_menu_set_page(menu,home);assert(lv_menu_get_cur_main_page(menu)==home);
+    lv_obj_send_event(entry,LV_EVENT_CLICKED,NULL);
+    assert(lv_menu_get_cur_main_page(menu)==details);
+    lv_menu_set_page(menu,home);assert(lv_menu_get_cur_main_page(menu)==home);
+    lv_obj_delete(menu);
+}
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 int main(void)
 {
@@ -90,6 +124,7 @@ int main(void)
     lv_tileview_set_tile_by_index(tileview, 1, 0, LV_ANIM_OFF);
     assert(lv_tileview_get_tile_active(tileview) == tile1);
 
+    legacy_navigation(screen);
     lv_obj_delete(screen);
     lv_display_delete(display);
     lv_deinit();
