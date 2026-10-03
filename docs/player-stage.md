@@ -213,6 +213,22 @@ bitblt/rotate/emit/sync 失败时保留租约直到重启；dispatcher 保留 IN
 - Media-enabled image linking, real demux/codec/audio playback, physical DMA
   lifetime and board execution: **NOT_RUN**. The current GE image has no player.
 
+## GE regression image after RGB integration
+
+`build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -Jobs 8`:
+boot/app builds, static check, image check and provenance manifest **PASS**.
+Clean sources: SDK `17277cfb`, component `5045856`, LVGL `80ca777e`.
+The rebuild explicitly checks YUV span-validation return values before overlap
+arithmetic, eliminating the component's optimizer uninitialized-span warning.
+SDK tooling still reports its existing short-version/pywin32 environment warnings.
+
+- Evidence directory: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp`.
+- Image: `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`.
+- SHA256: `6b0cb4feed18ffe4c2832a0661625e93b40c1109d46feac7b4cd3e112196c279`.
+- This replaces that profile's previous image/evidence. It verifies target GE
+  integration/linking, not player execution: player/VIN remain disabled and
+  physical board validation is **NOT_RUN**. No flashing was performed.
+
 ## Remaining SDK parity
 
 Integrate background command/event handling (including EOS/error/seek), PTS
