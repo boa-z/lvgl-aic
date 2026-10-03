@@ -435,7 +435,7 @@ if(AIC_SDK_ROOT)
         "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/vin_stubs"
         "${AIC_SDK_ROOT}/packages/artinchip/mpp/include" "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi"
         "${AIC_SDK_ROOT}/bsp/artinchip/hal/dvp/v1")
-    target_compile_definitions(lvgl_aic_camera_capture_contract PRIVATE AIC_LVGL_USE_VIN=1 AIC_LVGL_USE_CAMERA=1
+    target_compile_definitions(lvgl_aic_camera_capture_contract PRIVATE AIC_LVGL_USE_BARCODE=1 AIC_LVGL_USE_VIN=1 AIC_LVGL_USE_CAMERA=1
         AIC_IOCTL_HEADER="${AIC_SDK_ROOT}/kernel/rt-thread/components/libc/compilers/common/include/sys/ioctl.h")
     target_link_libraries(lvgl_aic_camera_capture_contract PRIVATE lvgl Threads::Threads)
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")

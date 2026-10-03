@@ -23,6 +23,13 @@ struct lv_aic_camera_capture {
     lv_aic_yuv_color_space_t space;
     lv_aic_capture_state_t state;
     lv_aic_camera_input_status_t input;
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+    uint8_t barcode_data[4096];
+    size_t barcode_length;
+    lv_aic_barcode_result_t barcode_result;
+    uint32_t barcode_generation;
+    bool barcode_enabled, barcode_only, barcode_ready;
+#endif
     bool input_inflight;
     bool closing, pause_requested, start_requested, finished;
 };
@@ -64,6 +71,30 @@ static bool invalidate_frame(const lv_aic_yuv_frame_t *f)
         aicos_dcache_invalid_range((unsigned long *)aligned,(unsigned long)(((end+31)&~UINT64_C(31))-aligned));
     }
     return true;
+}
+/* Worker-only scratch is context-owned: no large decoder buffer on stack.
+ * UI reads only after ready is published under mutex; worker never overwrites
+ * an unread result. Generation prevents stale completion after reconfiguration. */
+static void scan_frame(lv_aic_camera_capture_t *c, const lv_aic_yuv_frame_t *frame)
+{
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+    lock(c);
+    bool scan=c->barcode_enabled && !c->barcode_ready && !c->closing &&
+        c->input.state!=LV_AIC_INPUT_PENDING;
+    uint32_t generation=c->barcode_generation;
+    unlock(c);
+    if(!scan) return;
+    size_t length=0;
+    lv_aic_barcode_result_t result=lv_aic_barcode_decode(frame,c->barcode_data,
+        sizeof(c->barcode_data),&length);
+    lock(c);
+    if(generation==c->barcode_generation && !c->closing) {
+        c->barcode_length=length; c->barcode_result=result; c->barcode_ready=true;
+    }
+    unlock(c);
+#else
+    (void)c; (void)frame;
+#endif
 }
 static void worker(void *argument)
 {
@@ -145,10 +176,14 @@ static void worker(void *argument)
         if(!lv_aic_vin_frame_view(&c->vin,index,c->space,&s->frame) || !invalidate_frame(&s->frame)) {
             lock(c); s->state=RETURN; unlock(c); fault(c); continue;
         }
+        scan_frame(c,&s->frame);
         lock(c);
         /* Latest unpublished frame wins; published readers retain their slots. */
         for(unsigned i=0;i<VIN_MAX_BUF_NUM;i++) if(c->slots[i].state==READY) c->slots[i].state=RETURN;
         s->state=c->closing || c->input.state==LV_AIC_INPUT_PENDING ? RETURN : READY;
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+        if(c->barcode_enabled && c->barcode_only) s->state=RETURN;
+#endif
         unlock(c);
     }
 }
@@ -176,12 +211,50 @@ lv_aic_camera_capture_t *lv_aic_camera_capture_prepare(const char *camera,uint32
     }
     return c;
 }
+bool lv_aic_camera_capture_barcode_configure(lv_aic_camera_capture_t *c,bool enabled,bool only)
+{
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+    if(!c) return false;
+    lock(c);
+    bool accepted=!c->closing && !c->finished;
+    if(accepted) {
+        c->barcode_generation++; c->barcode_ready=false;
+        c->barcode_enabled=enabled; c->barcode_only=only;
+        if(enabled && only) for(unsigned i=0;i<VIN_MAX_BUF_NUM;i++)
+            if(c->slots[i].state==READY) c->slots[i].state=RETURN;
+    }
+    unlock(c); return accepted;
+#else
+    (void)c; (void)enabled; (void)only; return false;
+#endif
+}
+bool lv_aic_camera_capture_barcode_poll(lv_aic_camera_capture_t *c,
+    uint8_t *output,size_t capacity,size_t *length,lv_aic_barcode_result_t *result)
+{
+    if(length) *length=0;
+    if(!c || !length || !result) return false;
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+    lock(c);
+    bool ready=!c->closing && c->barcode_ready;
+    if(ready && c->barcode_length && (!output || capacity<c->barcode_length)) ready=false;
+    if(ready) {
+        if(c->barcode_length) memcpy(output,c->barcode_data,c->barcode_length);
+        *length=c->barcode_length; *result=c->barcode_result; c->barcode_ready=false;
+    }
+    unlock(c); return ready;
+#else
+    (void)output; (void)capacity; return false;
+#endif
+}
 bool lv_aic_camera_capture_select_input(lv_aic_camera_capture_t *c,uint32_t input)
 {
     if(!c || input>3) return false;
     lock(c);
     bool accepted=!c->closing && !c->finished && c->input.state!=LV_AIC_INPUT_PENDING;
     if(accepted) {
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+        c->barcode_generation++; c->barcode_ready=false;
+#endif
         c->input.sequence++; c->input.requested=input; c->input.state=LV_AIC_INPUT_PENDING;
         for(unsigned i=0;i<VIN_MAX_BUF_NUM;i++)
             if(c->slots[i].state==READY) c->slots[i].state=RETURN;

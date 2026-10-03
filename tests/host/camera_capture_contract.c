@@ -121,6 +121,57 @@ static void wait_input(lv_aic_camera_capture_t *capture,lv_aic_camera_input_stat
     }
     assert(!"input state timed out");
 }
+static atomic_int scan_calls, scan_blocked;
+static int scan_hold;
+lv_aic_barcode_result_t lv_aic_barcode_decode(const lv_aic_yuv_frame_t *frame,
+    uint8_t *output,size_t capacity,size_t *length)
+{
+    worker_only(); assert(frame->format==LV_AIC_YUV_NV16 && capacity>=3);
+    atomic_fetch_add(&scan_calls,1);
+    pthread_mutex_lock(&gate);
+    while(scan_hold) { atomic_store(&scan_blocked,1); pthread_cond_wait(&wake,&gate); }
+    atomic_store(&scan_blocked,0); pthread_mutex_unlock(&gate);
+    output[0]='A'; output[1]=0; output[2]='Z'; *length=3;
+    return LV_AIC_BARCODE_OK;
+}
+static void test_barcode(void)
+{
+    lv_aic_camera_capture_t *c=lv_aic_camera_capture_open("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED);
+    assert(c); wait_count(&blocked,1);
+    assert(lv_aic_camera_capture_barcode_configure(c,true,true));
+    pthread_mutex_lock(&gate); scan_hold=1; pthread_mutex_unlock(&gate);
+    wake_worker(1,false); wait_count(&scan_blocked,1);
+    int returns=atomic_load(&returned);
+    uint8_t output[3]={9,9,9}; size_t length=99; lv_aic_barcode_result_t result;
+    assert(!lv_aic_camera_capture_barcode_poll(c,output,3,&length,&result) && length==0);
+    assert(!lv_aic_camera_capture_poll(c));
+    /* Disable during decode is nonblocking and invalidates that completion. */
+    assert(lv_aic_camera_capture_barcode_configure(c,false,false));
+    assert(atomic_load(&returned)==returns);
+    pthread_mutex_lock(&gate); scan_hold=0; pthread_cond_signal(&wake); pthread_mutex_unlock(&gate);
+    wait_count(&blocked,1);
+    assert(!lv_aic_camera_capture_barcode_poll(c,output,3,&length,&result));
+    assert(lv_aic_camera_capture_barcode_configure(c,true,true));
+    wake_worker(1,false); wait_count(&scan_calls,2); wait_count(&blocked,1);
+    assert(!lv_aic_camera_capture_poll(c));
+    assert(!lv_aic_camera_capture_barcode_poll(c,output,2,&length,&result));
+    assert(output[0]==9 && length==0);
+    /* Backpressure: an unread result is preserved across subsequent frames. */
+    wake_worker(1,false); wait_count(&returned,returns+3); wait_count(&blocked,1);
+    assert(atomic_load(&scan_calls)==2);
+    assert(lv_aic_camera_capture_barcode_poll(c,output,3,&length,&result));
+    assert(result==LV_AIC_BARCODE_OK && length==3 && output[0]=='A' && !output[1] && output[2]=='Z');
+    assert(!lv_aic_camera_capture_barcode_poll(c,output,3,&length,&result));
+    pthread_mutex_lock(&gate); scan_hold=1; pthread_mutex_unlock(&gate);
+    wake_worker(1,false); wait_count(&scan_blocked,1);
+    lv_aic_camera_capture_close(c);
+    assert(!lv_aic_camera_capture_destroy(c));
+    assert(!lv_aic_camera_capture_barcode_configure(c,true,true));
+    pthread_mutex_lock(&gate); scan_hold=0; pthread_cond_signal(&wake); pthread_mutex_unlock(&gate);
+    wait_count(&done,1); pthread_join(thread,NULL);
+    assert(!lv_aic_camera_capture_barcode_poll(c,output,3,&length,&result));
+    assert(lv_aic_camera_capture_destroy(c));
+}
 int main(void)
 {
     lv_init(); assert(lv_aic_yuv_image_decoder_init());
@@ -264,5 +315,6 @@ int main(void)
     wake_worker(0,true); wait_count(&done,1); pthread_join(thread,NULL);
     lv_tick_inc(25); lv_timer_handler();
     assert(!lv_aic_camera_pending_cleanup()); lv_display_delete(display);
+    test_barcode();
     assert(lv_aic_yuv_image_decoder_deinit()); lv_deinit(); return 0;
 }

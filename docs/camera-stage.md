@@ -268,7 +268,7 @@ leaves caller output unchanged and clears result length. Host contracts use
 mocked vendor entrypoints and cover padded rows, source immutability, result
 guards, initialization failure/retry, empty/oversized results and reentrancy.
 `build.ps1 -WithBarcode` adds a separate opt-in link-evidence profile; it never
-starts decoding or capture. Camera worker scheduling and SDK-shaped barcode
+starts decoding or capture. The capture worker mailbox is implemented below; SDK-shaped widget barcode
 callbacks/only mode remain to be integrated. Real barcode decoding is NOT_RUN.
 
 Barcode foundation evidence: **57/57 host PASS**; full GE/fonts/GIF/widgets/
@@ -279,3 +279,29 @@ component `18af8cd3969cf9315efe08b6809d40159fda0ccf`, SDK
 `9524bfe6d1b376f7f2a99862e1c91665f51e6d714f76fe7fd4071cf8da637913`.
 This image does not enable capture or invoke decoding. Barcode runtime and
 physical board acceptance remain **NOT_RUN**.
+
+
+### Capture worker barcode mailbox
+
+`lv_aic_camera_capture_barcode_configure()` enables worker-side decoding;
+`lv_aic_camera_capture_barcode_poll()` copies one completed result on the UI
+owner. Both are available with VIN; configure returns false without BARCODE.
+A single 4096-byte context mailbox preserves unread results and skips further
+decodes until consumed. Capacity failure preserves the result for retry.
+The status includes EMPTY/BUSY/decoder failures; these do not fault VIN.
+The worker holds its dequeued VIN frame until synchronous decode finishes,
+then publishes preview or returns the buffer in barcode-only mode. Existing
+published image readers retain their leases. Decode never holds the mailbox
+mutex. Disable/reconfigure and sensor selection invalidate in-flight results
+by generation; close prevents polling and waits for decode through the normal
+asynchronous shutdown path. No thread termination or UI callback occurs here.
+
+Validation: **57/57 host PASS**, including real pthread worker tests for decode
+in progress, disable/close responsiveness, buffer retention, binary results,
+short output retry, unread-result backpressure and preview suppression.
+`check-vin-session.ps1 -WithVideoPlane -WithBarcode`: **PASS** strict D13x
+compile and capture-to-decoder undefined-symbol check. Logs are
+`output/camera-barcode-tests.log` and `output/camera-barcode-target.log`.
+This is compile/host evidence only: camera-enabled final firmware linking,
+SDK-shaped widget callbacks, sensor configuration, scan latency/stack budget
+and physical decoding acceptance remain **NOT_RUN** or incomplete.

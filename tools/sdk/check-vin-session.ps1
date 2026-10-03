@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Compile-only D13x E907 double-float ABI check. Does not enable/open a camera.
-param([string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT,[switch]$WithVideoPlane)
+param([string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT,[switch]$WithVideoPlane,[switch]$WithBarcode)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
@@ -25,6 +25,7 @@ foreach ($path in @($component,(Join-Path $component 'include'),$lvgl,(Join-Path
     $arguments+=('-I'+$path)
 }
 $arguments+=@('-include',(Join-Path $component 'compat/lvgl_aic_build_config.h'))
+if ($WithBarcode) { $arguments+='-DAIC_LVGL_USE_BARCODE=1' }
 if ($WithVideoPlane) {
     $override=Join-Path $sdk 'output/lvgl-camera-plane-config.h'
     New-Item -ItemType Directory -Force (Split-Path $override) | Out-Null
@@ -68,5 +69,9 @@ if ($WithVideoPlane) {
     foreach($symbol in @('lv_aic_plane_window_present','lv_aic_plane_window_close')) {
         if(-not ($symbols -match ('\bU\s+'+$symbol+'$'))) { throw "Camera plane path absent: $symbol" }
     }
+}
+if ($WithBarcode) {
+    $symbols=& $nm (Join-Path $sdk 'output/lvgl-camera-capture.o')
+    if(-not ($symbols -match '\bU\s+lv_aic_barcode_decode$')) { throw 'Capture barcode decode path absent' }
 }
 Write-Output 'PASS compile-only VIN session/frame/capture/widget; no camera link or hardware execution'

@@ -2,6 +2,7 @@
 #ifndef LV_AIC_CAMERA_CAPTURE_H
 #define LV_AIC_CAMERA_CAPTURE_H
 #include "lv_aic_yuv_image.h"
+#include "lv_aic_barcode.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,6 +26,16 @@ typedef struct {
  * Close cancels a queued request; an already executing driver call completes. */
 bool lv_aic_camera_capture_select_input(lv_aic_camera_capture_t *capture,uint32_t input);
 lv_aic_camera_input_status_t lv_aic_camera_capture_get_input(lv_aic_camera_capture_t *capture);
+/* UI-owner barcode mailbox. Requires AIC_LVGL_USE_BARCODE; otherwise configure
+ * returns false. Every configure invalidates pending/in-flight results. Decode
+ * runs on the VIN worker before publication, never while holding its mutex.
+ * only=true suppresses preview publication. Poll consumes one binary result;
+ * insufficient capacity preserves it for retry. No callbacks run on worker.
+ * Close and sensor selection discard pending results. */
+bool lv_aic_camera_capture_barcode_configure(lv_aic_camera_capture_t *capture,
+    bool enabled, bool only);
+bool lv_aic_camera_capture_barcode_poll(lv_aic_camera_capture_t *capture,
+    uint8_t *output, size_t capacity, size_t *length, lv_aic_barcode_result_t *result);
 /* UI-owner API. Initialize the YUV decoder first. Device operations run on
  * an independent worker; exclusively reserve SDK VIN for this capture. */
 lv_aic_camera_capture_t *lv_aic_camera_capture_open(const char *camera, uint32_t channel,
