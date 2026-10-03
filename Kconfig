@@ -128,4 +128,12 @@ config AIC_LVGL_USE_VIDEO_WINDOW
         Alpha-zero replacement rectangle for a lower video layer. This widget
         does not open a camera, start a player or configure a display layer.
 
+config AIC_LVGL_USE_VIN
+    bool "Build application-owned VIN capture session support"
+    default n
+    depends on AIC_LVGL_PORT && AIC_MPP_VIN && AIC_DVP_DRV
+    help
+        Internal capture lifecycle and explicit frame leases. The application
+        must exclusively own VIN; camera widget integration is a separate layer.
+
 endmenu

@@ -92,5 +92,9 @@ native LVGL widgets or accepting .fake strings does not supply those devices.
 The broad goal still includes GE extensions, but they must not be reported
 as missing SDK functionality when the SDK itself declines them.
 
+The [camera capture session](camera-stage.md) now provides tested VIN setup,
+buffer ownership and stop/close handling. It has strict target compilation
+evidence, but no camera-enabled image or widget integration yet.
+
 This sequence supersedes the old instruction to stop after 3C5. It does not
 waive hardware verification or authorize flashing.

@@ -237,6 +237,19 @@ endif()
 # Optional real-decoder contract test; SDK headers, mocked engine/OSAL only.
 set(AIC_SDK_ROOT "" CACHE PATH "Luban-Lite SDK for MPP ABI tests")
 if(AIC_SDK_ROOT)
+    add_executable(lvgl_aic_vin_session_contract vin_session_contract.c
+        "${AIC_ROOT}/port/lv_aic_vin_session.c")
+    target_include_directories(lvgl_aic_vin_session_contract PRIVATE
+        "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/vin_stubs"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi"
+        "${AIC_SDK_ROOT}/bsp/artinchip/hal/dvp/v1")
+    target_compile_definitions(lvgl_aic_vin_session_contract PRIVATE AIC_LVGL_USE_VIN=1
+        AIC_IOCTL_HEADER="${AIC_SDK_ROOT}/kernel/rt-thread/components/libc/compilers/common/include/sys/ioctl.h")
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_vin_session_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_vin_session_contract COMMAND lvgl_aic_vin_session_contract)
     add_executable(lvgl_aic_ge2d_yuv_contract ge2d_yuv_contract.c
         "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_scale.c"
         "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/common/lv_aic_yuv_mpp.c"
