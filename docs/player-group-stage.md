@@ -248,3 +248,11 @@ cleanup without blocking peers, audio rejection before start, lease retention
 across seek and a deliberately blocked SDK stop, and reacquisition after close.
 CMA allocations/free counts balance. Host **43/43 PASS**, strict E907 **PASS**.
 Physical multi-codec, audio and mixed media/APNG group execution **NOT_RUN**.
+
+Multi-media stage clean firmware boot/app/static/image/manifest **PASS**.
+Sources: SDK `cc369ed149c8c657fda8f6c82b0392edf20cd3c8`, lvgl-aic `4fee7b7d8400b7969cb6312512826f1c702bd2e4`,
+LVGL `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+Image SHA256: `58c2c82daef875aa6008ec1a23fcae3cf557ccf8914579f4ae06de49e1387edb`.
+ELF SHA256: `208232d5f4bf916164e33950693c09c6cc259bec2d0da381ee95ff267c9c7b14`.
+The same combined-profile evidence directory contains the manifest and logs;
+board validation remains **NOT_RUN**.
