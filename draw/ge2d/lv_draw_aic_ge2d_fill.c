@@ -25,7 +25,7 @@
 #include <aic_core.h>
 #include <mpp_ge.h>
 
-lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
+static lv_result_t fill_core(lv_draw_task_t *task, bool replace, uint32_t argb)
 {
     const lv_draw_fill_dsc_t *dsc;
     const lv_draw_buf_t *draw_buf;
@@ -52,13 +52,13 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
     if (dsc->radius != 0 || dsc->grad.dir != LV_GRAD_DIR_NONE) {
         return LV_RESULT_INVALID;
     }
-    if (dsc->opa <= LV_OPA_MIN) {
+    if (!replace && dsc->opa <= LV_OPA_MIN) {
         return LV_RESULT_OK;
     }
     cf = (lv_color_format_t)draw_buf->header.cf;
     if (!lv_draw_aic_ge2d_dst_format_supported(cf) ||
         !lv_draw_aic_ge2d_buf_address_valid(draw_buf) ||
-        (dsc->opa < LV_OPA_MAX && cf == LV_COLOR_FORMAT_ARGB8888)) {
+        (!replace && dsc->opa < LV_OPA_MAX && cf == LV_COLOR_FORMAT_ARGB8888)) {
         return LV_RESULT_INVALID;
     }
     dst_width = lv_area_get_width(&layer->buf_area);
@@ -101,6 +101,7 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
         fill.start_color = (fill.start_color & 0x00ffffffU) |
                            ((uint32_t)dsc->opa << 24);
     }
+    if (replace) fill.start_color = argb;
     fill.end_color = 0U;
 
     fill.dst_buf.buf_type = MPP_PHY_ADDR;
@@ -117,7 +118,7 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
     fill.dst_buf.crop.height = lv_area_get_height(&blend_area);
 
     /* GE_PD_NONE is straight alpha (sa, 1-sa); SRC_OVER is premultiplied. */
-    fill.ctrl.alpha_en = dsc->opa < LV_OPA_MAX;
+    fill.ctrl.alpha_en = !replace && dsc->opa < LV_OPA_MAX;
     fill.ctrl.alpha_rules = GE_PD_NONE;
     fill.ctrl.src_alpha_mode = 0U;
 
@@ -135,6 +136,16 @@ lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
     }
 
     return LV_RESULT_OK;
+}
+
+lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task)
+{
+    return fill_core(task, false, 0);
+}
+
+lv_result_t lv_draw_aic_ge2d_fill_replace(lv_draw_task_t *task, uint32_t argb)
+{
+    return fill_core(task, true, argb);
 }
 
 #endif /* AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP */

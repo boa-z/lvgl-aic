@@ -112,6 +112,14 @@ void lv_draw_aic_ge2d_stats_reset(void);
 lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task);
 
 /**
+ * Replace a solid FILL region with the exact ARGB value, without alpha blending.
+ * Used by SDK pseudo-images with blend=0, including zero-alpha clears.
+ * Descriptor opacity is ignored; clipping, format/address validation and
+ * synchronous failure handling are identical to the normal fill executor.
+ */
+lv_result_t lv_draw_aic_ge2d_fill_replace(lv_draw_task_t *task, uint32_t argb);
+
+/**
  * @brief How a dispatched image-shaped task's pixels were produced.
  *
  * The executors report this so the dispatcher can count what actually happened

@@ -97,6 +97,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 enable_testing()
+add_executable(lvgl_aic_fake_image_contract fake_image_contract.c
+    "${AIC_ROOT}/common/lv_aic_fake_image.c")
+target_include_directories(lvgl_aic_fake_image_contract PRIVATE "${AIC_ROOT}/common")
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_fake_image_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_fake_image_contract COMMAND lvgl_aic_fake_image_contract)
 add_executable(lvgl_aic_bmp_header_contract bmp_header_contract.c
     "${AIC_ROOT}/image/mpp/lv_aic_bmp_header.c")
 target_include_directories(lvgl_aic_bmp_header_contract PRIVATE "${AIC_ROOT}/image/mpp")

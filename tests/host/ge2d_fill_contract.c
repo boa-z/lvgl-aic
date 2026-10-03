@@ -107,6 +107,30 @@ int main(void)
         assert(submits == 1 && emits == (fail_at >= 2) && syncs == (fail_at >= 3));
     }
     fail_at = 0; task.draw_dsc = NULL; rejected(&task); task.draw_dsc = &d;
+    /* SDK blend=0 must write alpha exactly, including zero; it is not a
+     * source-over fill and must not disappear at LV_OPA_MIN/MAX thresholds. */
+    for (unsigned f = 0; f < sizeof(formats)/sizeof(formats[0]); f++) {
+        assert(lv_draw_buf_init(&dst,32,32,formats[f],160,output,sizeof(output)) == LV_RESULT_OK);
+        for (unsigned alpha = 0; alpha <= 255; alpha++) {
+            uint32_t argb = (alpha << 24) | 0x123456;
+            d.opa = alpha;
+            reset_calls();
+            assert(lv_draw_aic_ge2d_fill_replace(&task, argb) == LV_RESULT_OK);
+            assert(submits == 1 && emits == 1 && syncs == 1 && caches == 1);
+            assert(captured.start_color == argb && !captured.ctrl.alpha_en);
+        }
+    }
+    for (fail_at = 1; fail_at <= 3; fail_at++) {
+        reset_calls();
+        assert(lv_draw_aic_ge2d_fill_replace(&task, 0x00123456) == LV_RESULT_INVALID);
+        assert(submits == 1 && emits == (fail_at >= 2) && syncs == (fail_at >= 3));
+    }
+    fail_at = 0;
+    allowed_dst = NULL;
+    reset_calls();
+    assert(lv_draw_aic_ge2d_fill_replace(&task, 0) == LV_RESULT_INVALID);
+    assert(submits == 0 && caches == 0);
+    allowed_dst = output;
     task.type = LV_DRAW_TASK_TYPE_IMAGE; rejected(&task); rejected(NULL);
     lv_deinit(); return 0;
 }
