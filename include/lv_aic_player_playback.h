@@ -9,7 +9,7 @@ typedef struct lv_aic_player_playback lv_aic_player_playback_t;
 typedef enum {
     LV_AIC_PLAYBACK_OPENING, LV_AIC_PLAYBACK_READY, LV_AIC_PLAYBACK_PLAYING,
     LV_AIC_PLAYBACK_PAUSED, LV_AIC_PLAYBACK_TERMINAL, LV_AIC_PLAYBACK_CLOSING,
-    LV_AIC_PLAYBACK_CLOSED, LV_AIC_PLAYBACK_FAULT
+    LV_AIC_PLAYBACK_CLOSED, LV_AIC_PLAYBACK_FAULT, LV_AIC_PLAYBACK_SEEKING
 } lv_aic_playback_state_t;
 typedef struct {
     size_t cma_budget;
@@ -21,6 +21,8 @@ typedef struct {
     bool finished, has_video, has_audio, seekable, video_eos, sdk_terminal, position_valid;
     uint32_t width, height, frames_received, frames_queued;
     int64_t duration_us, position_us;
+    bool seek_pending;
+    uint64_t seek_target_us, seeks_completed; /* Request acknowledgement, not displayed PTS. */
     int volume; /* -1 until a requested volume has been applied. */
 } lv_aic_playback_status_t;
 /* UI-owner API. Reserve one playback instance; both RGB/YUV decoders must be
@@ -32,6 +34,13 @@ lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const l
 bool lv_aic_player_playback_start(lv_aic_player_playback_t *playback);
 bool lv_aic_player_playback_pause(lv_aic_player_playback_t *playback,bool paused);
 bool lv_aic_player_playback_volume(lv_aic_player_playback_t *playback,int volume);
+/* Nonblocking, one seek at a time after READY; reject unknown/unseekable or
+ * out-of-range targets. Retire published image owners/finish draws to unblock.
+ * Worker drains old readers, recreates the SDK session/event mailbox, seeks
+ * before start and preserves requested start/pause/volume. This decoder reset
+ * costs prepare latency but prevents old callbacks crossing the seek boundary.
+ * Completion means SDK seek accepted, not exact-frame positioning/display. */
+bool lv_aic_player_playback_seek(lv_aic_player_playback_t *playback,uint64_t position_us);
 bool lv_aic_player_playback_poll(lv_aic_player_playback_t *playback,lv_aic_player_image_t *image);
 lv_aic_playback_status_t lv_aic_player_playback_status(lv_aic_player_playback_t *playback);
 /* Nonblocking close. Pending SDK calls must return normally, then readers and

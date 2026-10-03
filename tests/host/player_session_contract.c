@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <frame_allocator.h>
 #include <string.h>
-struct aic_player { int live; };
+struct aic_player { int live; bool paused; };
 static struct aic_player instance;
 static int created, destroyed, stops, prepares, starts, pauses, resumes, seeks, gets, puts;
 static int failure, returned_volume=70, controls;
@@ -14,7 +14,7 @@ static struct av_media_info media={.has_video=1,.has_audio=1,.seek_able=1,.durat
     .video_stream={32,16}};
 enum { CREATE=1,URI,PREPARE,INFO,START,PAUSE,PLAY,STOP,DESTROY,GET,PUT,SEEK,VOLUME,ALLOCATOR,COUNT };
 struct aic_player *aic_player_create(char *uri)
-{ assert(!uri && !instance.live); if(failure==CREATE) return NULL; instance.live=1; created++; return &instance; }
+{ assert(!uri && !instance.live); if(failure==CREATE) return NULL; instance.live=1; instance.paused=false; created++; return &instance; }
 s32 aic_player_set_uri(struct aic_player *p,char *uri)
 { assert(p->live && !strcmp(uri,"/media/test.mp4")); return failure==URI ? -1 : 0; }
 s32 aic_player_prepare_sync(struct aic_player *p)
@@ -24,9 +24,9 @@ s32 aic_player_get_media_info(struct aic_player *p,struct av_media_info *info)
 s32 aic_player_start(struct aic_player *p)
 { assert(p->live); starts++; return failure==START ? -1 : 0; }
 s32 aic_player_pause(struct aic_player *p)
-{ assert(p->live); pauses++; return failure==PAUSE ? -1 : 0; }
+{ assert(p->live); pauses++; if(failure==PAUSE) return -1; p->paused=!p->paused; return 0; }
 s32 aic_player_play(struct aic_player *p)
-{ assert(p->live); resumes++; return failure==PLAY ? -1 : 0; }
+{ assert(p->live); resumes++; if(failure==PLAY) return -1; p->paused=false; return 0; }
 s32 aic_player_stop(struct aic_player *p)
 { assert(p->live); stops++; return failure==STOP ? -1 : 0; }
 s32 aic_player_destroy(struct aic_player *p)
@@ -36,7 +36,7 @@ s32 aic_player_get_frame(struct aic_player *p,struct mpp_frame *frame)
 s32 aic_player_put_frame(struct aic_player *p,struct mpp_frame *frame)
 { assert(p->live && frame->pts==123); puts++; return failure==PUT ? -1 : 0; }
 s32 aic_player_seek(struct aic_player *p,u64 us)
-{ assert(p->live && us<=1000000); seeks++; return failure==SEEK ? -1 : 0; }
+{ assert(p->live && us<=1000000); seeks++; if(failure==SEEK) return -1; p->paused=false; return 0; }
 s32 aic_player_set_volum(struct aic_player *p,s32 volume)
 { assert(p->live && volume>=0 && volume<=100); return failure==VOLUME ? -1 : 0; }
 s32 aic_player_get_volum(struct aic_player *p,s32 *volume)
@@ -105,7 +105,10 @@ int main(void)
     assert(lv_aic_player_session_start(&s));
     assert(lv_aic_player_session_acquire(&s,&lease,&frame)); assert(lease>old);
     assert(!lv_aic_player_session_release(&s,old)); assert(lv_aic_player_session_release(&s,lease));
+    assert(lv_aic_player_session_pause(&s,true)); before=pauses;
     assert(lv_aic_player_session_seek(&s,500000));
+    assert(s.paused && instance.paused && pauses==before+1); /* SDK seek auto-resumes, wrapper re-pauses. */
+    assert(lv_aic_player_session_pause(&s,false));
     assert(!lv_aic_player_session_seek(&s,1000001));
     assert(lv_aic_player_session_volume(&s,100)); assert(!lv_aic_player_session_volume(&s,101));
     int vol=22; assert(lv_aic_player_session_get_volume(&s,&vol) && vol==70);
@@ -117,6 +120,10 @@ int main(void)
     failure=STOP; assert(!lv_aic_player_session_close(&s) && s.player);
     failure=DESTROY; assert(!lv_aic_player_session_close(&s) && s.player);
     failure=0; assert(lv_aic_player_session_close(&s)); assert(created==destroyed);
+    assert(lv_aic_player_session_open(&s,"/media/test.mp4"));
+    assert(lv_aic_player_session_start(&s) && lv_aic_player_session_pause(&s,true));
+    failure=PAUSE; assert(!lv_aic_player_session_seek(&s,1) && s.faulted);
+    failure=0; assert(lv_aic_player_session_close(&s));
     const int faults[]={START,PAUSE,PLAY,SEEK};
     for(unsigned i=0;i<sizeof(faults)/sizeof(faults[0]);i++) {
         assert(lv_aic_player_session_open(&s,"/media/test.mp4"));

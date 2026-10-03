@@ -9,7 +9,7 @@ extern const lv_obj_class_t lv_aic_player_class;
 typedef enum {
     LV_AIC_PLAYER_CLOSED, LV_AIC_PLAYER_OPENING, LV_AIC_PLAYER_READY,
     LV_AIC_PLAYER_PLAYING, LV_AIC_PLAYER_PAUSED, LV_AIC_PLAYER_TERMINAL,
-    LV_AIC_PLAYER_STOPPING, LV_AIC_PLAYER_STOPPED, LV_AIC_PLAYER_FAULT
+    LV_AIC_PLAYER_STOPPING, LV_AIC_PLAYER_STOPPED, LV_AIC_PLAYER_FAULT, LV_AIC_PLAYER_SEEKING
 } lv_aic_player_state_t;
 /* LVGL owner only, outside draw callbacks. Image subclass: use native image
  * scale/rotation/pivot/alignment APIs; do not call lv_image_set_src directly.
@@ -27,6 +27,9 @@ lv_result_t lv_aic_player_stop(lv_obj_t *obj);
 lv_result_t lv_aic_player_close(lv_obj_t *obj);
 lv_result_t lv_aic_player_pause(lv_obj_t *obj);
 lv_result_t lv_aic_player_resume(lv_obj_t *obj);
+/* One asynchronous seek at a time; old image is retired on an idle draw pass.
+ * Keeps playback/pause intent; see playback_seek for decoder-reset semantics. */
+lv_result_t lv_aic_player_seek(lv_obj_t *obj,uint64_t position_us);
 lv_result_t lv_aic_player_set_volume(lv_obj_t *obj,int volume);
 lv_aic_player_state_t lv_aic_player_get_state(lv_obj_t *obj);
 lv_aic_playback_status_t lv_aic_player_get_status(lv_obj_t *obj);

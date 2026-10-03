@@ -93,6 +93,9 @@ bool lv_aic_player_session_seek(lv_aic_player_session_t *s,uint64_t us)
     if(!usable(s) || !s->prepared || s->held || !s->info.seek_able ||
        us>INT64_MAX || (s->info.duration>0 && us>(uint64_t)s->info.duration)) return false;
     if(aic_player_seek(s->player,us)) { s->faulted=true; return false; }
+    /* SDK seek resumes an already-paused player. Restore the serialized
+     * session contract, and fault if that restoration fails. */
+    if(s->started && s->paused && aic_player_pause(s->player)) { s->faulted=true; return false; }
     return true;
 }
 bool lv_aic_player_session_volume(lv_aic_player_session_t *s,int volume)

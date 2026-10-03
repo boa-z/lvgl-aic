@@ -118,8 +118,8 @@ only on its worker, with delayed close and failed-put retry. A pauseable media
 clock and coherent SDK callback mailbox now provide timing/event primitives;
 PLAY_END remains an ambiguous terminal notification, not clean EOS evidence.
 The background playback worker now supports prepare/start/pause/volume,
-RGB/YUV publication and deferred close, using SDK get_frame synchronization.
-Host ABI contracts and target compilation pass; seek/repeat controls,
+RGB/YUV publication, asynchronous seek and deferred close, using SDK get_frame synchronization.
+Host ABI contracts and target compilation pass; repeat controls,
 real A/V timing, APNG, group/slave and video-plane integration remain open. The media-enabled image now passes build/link checks; physical playback remains unverified.
 
 Native RGB frame publication now covers the D13x MJPEG RGB565/RGB888/ARGB8888
@@ -130,7 +130,7 @@ physical DMA acceptance. See [player-stage.md](player-stage.md).
 
 The optional native `lv_aic_player` image widget now connects the background
 worker to LVGL: explicit configuration, prepare/start/pause/resume, volume,
-stop/close/replay and deferred source replacement/deletion. Host contracts
+seek, stop/close/replay and deferred source replacement/deletion. Host contracts
 verify RGB/YUV rendering and frame-reader lifetimes; strict target compilation
-passes. Seek, repeat/rate, groups/slaves and video-plane output remain gaps.
+passes. Repeat/rate, groups/slaves and video-plane output remain gaps. Seek currently drains readers and rebuilds the SDK session to isolate callback generations; exact media seeking still requires board validation.
 Media firmware linkage is validated by the optional `-WithPlayer` profile. Physical playback remains NOT_RUN; see the exact image and clean source manifest in [player-stage.md](player-stage.md).

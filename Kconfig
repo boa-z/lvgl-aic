@@ -155,8 +155,8 @@ config AIC_LVGL_USE_PLAYER_SESSION
         Worker-side playback session, bounded CMA allocator and immutable
         RGB/YUV frame publication bridge with deferred decoder-frame return,
         coherent SDK events and an asynchronous prepare/start/pause/volume/
-        close worker. Uses SDK external-render timing, not a second scheduler.
-        Does not provide seek or lower video-plane ownership.
+        close/seek worker. Uses SDK external-render timing, not a second scheduler.
+        Seek drains readers and rebuilds the SDK session. No video-plane ownership.
 
 config AIC_LVGL_USE_PLAYER
     bool "Build asynchronous LVGL player widget"
@@ -164,5 +164,5 @@ config AIC_LVGL_USE_PLAYER
     depends on AIC_LVGL_USE_PLAYER_SESSION
     help
         RGB/YUV image widget with deferred source replacement, playback,
-        pause/resume, stop/replay, volume and asynchronous deletion cleanup.
+        pause/resume, seek, stop/replay, volume and asynchronous deletion cleanup.
         Explicit CMA budget and RGB/YUV decoder initialization required.

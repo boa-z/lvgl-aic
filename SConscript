@@ -68,7 +68,7 @@ group += DefineGroup('Application-LVGL-AIC', src, depend=['AIC_LVGL_PORT'], CPPP
 # 媒体构建配置保留完整控件入口，验证链接闭包；不自动播放或占用设备。
 if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_PLAYER'):
     for api in ('create', 'configure', 'set_src', 'start', 'stop', 'close',
-                'pause', 'resume', 'set_volume', 'get_state', 'get_status', 'pending_cleanup'):
+                'pause', 'resume', 'seek', 'set_volume', 'get_state', 'get_status', 'pending_cleanup'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_player_' + api])
 
 # 打包素材变更必须使最终镜像失效，避免复用旧素材。

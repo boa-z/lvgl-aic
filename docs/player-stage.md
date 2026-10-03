@@ -272,7 +272,7 @@ SDK tooling still reports its existing short-version/pywin32 environment warning
 
 ## Remaining SDK parity
 
-Implement seek with reader/decoder flushing, repeat/rate behavior, slave and group
+Implement repeat/rate behavior, slave and group
 lifetimes, APNG backend, and explicit video-plane composition/ownership.
 Do not report the current widget as complete SDK player parity or as tested
 hardware decoding. All physical verification remains deferred.
@@ -292,8 +292,8 @@ readers and the worker finish. Run LVGL timers until pending_cleanup is zero
 before lv_deinit, and close/delete live widgets too. GE fault quarantine must
 never be force-released. VALUE_CHANGED reports state/applied volume; callbacks
 can delete the widget or replace its source. TERMINAL remains an SDK terminal
-notification, not proof of clean EOF. Seek/repeat/rate and video-plane output
-are not implemented.
+notification, not proof of clean EOF. Seek is implemented in the following stage; repeat/rate and video-plane output
+remain unimplemented.
 
 Host regression: **32/32 PASS**. The widget contract uses real LVGL/decoders and
 mock playback, checks displayed RGB/YUV pixels, reader-delayed replacement,
@@ -338,8 +338,40 @@ feature configuration before their guards; SCons also tracks this dependency.
 No SDK core modification was needed. This repairs VIN build selection but does
 not certify camera configuration or physical capture.
 
-Next parity work: worker seek must first drain immutable readers and queued
-frames, reset SDK callback/timestamp state, and handle paused/terminal sources.
-Then repeat/rate, slave/group lifetime and APNG/video-plane integration need
+Worker seek is now implemented below. Repeat/rate, slave/group lifetime and APNG/video-plane integration need
 separate implementation and evidence. The new native API does not claim binary
 or full source compatibility with SDK `lv_aic_player_set_cmd`.
+
+## Asynchronous seek (2026-10-03)
+
+`lv_aic_player_seek(obj, position_us)` and `lv_aic_player_playback_seek` accept
+one request at a time after media metadata is ready. Unknown/unseekable media,
+out-of-range timestamps and concurrent seeks are rejected without changing the
+current stream. READY remains prepared without automatic playback; PLAYING,
+PAUSED and TERMINAL can seek while preserving requested start/pause/volume.
+The widget retires its old image only once queued draw tasks have finished.
+Native/decoder/GE readers can delay seek indefinitely; never force-release them.
+
+SDK aic_player_seek resumes a paused player and provides no generation-tagged
+callback completion. The worker therefore drains old frames, closes the old SDK
+session, destroys its event mailbox, reopens the same URI and seeks before
+starting its new decoder. The application allocator/bridge remain bounded and
+session lease tickets stay monotonic. This costs demux/decoder reprepare latency
+and reopens the URI (applications must keep media content stable), but prevents
+old audio/terminal notifications from being accepted in the new timeline.
+No UI-thread SDK calls or changes to SDK core are needed.
+
+Status SEEKING/seek_pending reports the transaction. seeks_completed counts SDK
+seek acceptance after reopening, not exact frame presentation. position_valid
+is cleared until a new frame/audio callback arrives. Close cancels a pending
+request; failures enter FAULT and retain resources until normal cleanup can
+finish. The lower session adapter also restores pause after SDK seek and faults
+if that restoration fails. Native widget VALUE_CHANGED includes seek completion.
+
+Host regression **32/32 PASS** includes real worker and mocked SDK tests for
+reader-delayed seek, blocked-get exit, old terminal disposal, repeated paused
+seek, terminal seek, no-auto-start prepared seek, close cancellation, rejection
+of unseekable/out-of-range targets, seek failure and audio time reset. Widget
+contracts exercise image retirement and pending-seek rejection. Strict target
+compilation: **PASS**. Real demux seek accuracy, post-seek A/V sync, reprepare
+latency and DMA behavior remain **NOT_RUN** pending board validation.

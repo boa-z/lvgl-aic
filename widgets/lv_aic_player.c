@@ -17,6 +17,7 @@ typedef struct {
     lv_aic_player_state_t state,reported;
     char uri[128];
     int volume,reported_volume;
+    uint64_t reported_seek;
     bool configured,closing,stopped,reopen,start_requested;
 } player_binding_t;
 typedef struct { lv_image_t image; player_binding_t *binding; } player_widget_t;
@@ -61,12 +62,14 @@ static void tick(lv_timer_t *timer)
     }
     else if(b->playback) {
         b->status=lv_aic_player_playback_status(b->playback);
+        if(b->status.seek_pending) retire(b);
         switch(b->status.state) {
         case LV_AIC_PLAYBACK_OPENING: b->state=LV_AIC_PLAYER_OPENING; break;
         case LV_AIC_PLAYBACK_READY: b->state=LV_AIC_PLAYER_READY; break;
         case LV_AIC_PLAYBACK_PLAYING: b->state=LV_AIC_PLAYER_PLAYING; break;
         case LV_AIC_PLAYBACK_PAUSED: b->state=LV_AIC_PLAYER_PAUSED; break;
         case LV_AIC_PLAYBACK_TERMINAL: b->state=LV_AIC_PLAYER_TERMINAL; break;
+        case LV_AIC_PLAYBACK_SEEKING: b->state=LV_AIC_PLAYER_SEEKING; break;
         case LV_AIC_PLAYBACK_FAULT: b->state=LV_AIC_PLAYER_FAULT; break;
         default: break;
         }
@@ -81,8 +84,8 @@ static void tick(lv_timer_t *timer)
         }
     }
     /* Final action only: callback can delete the widget or replace its source. */
-    if(b->obj && (b->state!=b->reported || b->status.volume!=b->reported_volume)) {
-        b->reported=b->state; b->reported_volume=b->status.volume;
+    if(b->obj && (b->state!=b->reported || b->status.volume!=b->reported_volume || b->status.seeks_completed!=b->reported_seek)) {
+        b->reported=b->state; b->reported_volume=b->status.volume; b->reported_seek=b->status.seeks_completed;
         lv_obj_send_event(b->obj,LV_EVENT_VALUE_CHANGED,NULL);
     }
 }
@@ -159,6 +162,13 @@ static lv_result_t request_pause(lv_obj_t *obj,bool paused)
 }
 lv_result_t lv_aic_player_pause(lv_obj_t *obj) { return request_pause(obj,true); }
 lv_result_t lv_aic_player_resume(lv_obj_t *obj) { return request_pause(obj,false); }
+lv_result_t lv_aic_player_seek(lv_obj_t *obj,uint64_t position_us)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    if(b->closing || !lv_aic_player_playback_seek(b->playback,position_us)) return LV_RESULT_INVALID;
+    b->state=LV_AIC_PLAYER_SEEKING; lv_timer_resume(b->timer); return LV_RESULT_OK;
+}
 lv_result_t lv_aic_player_set_volume(lv_obj_t *obj,int volume)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);

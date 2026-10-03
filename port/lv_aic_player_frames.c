@@ -168,6 +168,14 @@ bool lv_aic_player_frames_idle(lv_aic_player_frames_t *f)
     for(unsigned i=0;i<LV_AIC_PLAYER_LEASES;i++) if(f->slots[i].state!=EMPTY) idle=false;
     unlock(f); return idle;
 }
+bool lv_aic_player_frames_reopen(lv_aic_player_frames_t *f)
+{
+    if(!f) return false;
+    lock(f); bool ready=f->closing && !f->quarantined;
+    for(unsigned i=0;i<LV_AIC_PLAYER_LEASES;i++) if(f->slots[i].state!=EMPTY) ready=false;
+    if(ready) f->closing=false;
+    unlock(f); return ready;
+}
 bool lv_aic_player_frames_destroy(lv_aic_player_frames_t *f)
 {
     if(!f) return true;

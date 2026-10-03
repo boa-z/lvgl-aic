@@ -18,7 +18,9 @@ static unsigned tokens;
 static bool timeout_requested;
 static atomic_int done,blocked,gets,puts,starts,pauses,resumes,stops,freed,allocated,fail_put,next_flags;
 static int fail_thread,fail_start,fail_callback;
-static bool audio_only;
+static bool audio_only,unseekable;
+static atomic_int seeks,fail_seek;
+static atomic_ullong seek_target;
 static event_handler notify;
 static void *notify_context;
 static struct frame_allocator *sdk_allocator;
@@ -58,7 +60,7 @@ s32 aic_player_set_uri(struct aic_player *p,char *uri)
 s32 aic_player_prepare_sync(struct aic_player *p) { worker_only(); assert(p->live); return 0; }
 s32 aic_player_get_media_info(struct aic_player *p,struct av_media_info *info)
 { worker_only(); assert(p->live); *info=(struct av_media_info){.has_video=!audio_only,.has_audio=audio_only,
-  .duration=1000000,.seek_able=1,.video_stream={audio_only?0:8,audio_only?0:16}}; return 0; }
+  .duration=1000000,.seek_able=!unseekable,.video_stream={audio_only?0:8,audio_only?0:16}}; return 0; }
 s32 aic_player_control(struct aic_player *p,enum aic_player_command cmd,void *data)
 {
     worker_only(); assert(p->live);
@@ -113,7 +115,12 @@ s32 aic_player_put_frame(struct aic_player *p,struct mpp_frame *f)
 }
 s32 aic_player_pause(struct aic_player *p) { worker_only(); assert(p->live); atomic_fetch_add(&pauses,1); return 0; }
 s32 aic_player_play(struct aic_player *p) { worker_only(); assert(p->live); atomic_fetch_add(&resumes,1); return 0; }
-s32 aic_player_seek(struct aic_player *p,u64 pts) { (void)p; (void)pts; assert(!"unexpected seek"); return -1; }
+s32 aic_player_seek(struct aic_player *p,u64 pts)
+{
+    worker_only(); assert(p->live && !held && !pool_count);
+    atomic_store(&seek_target,pts); atomic_fetch_add(&seeks,1);
+    return atomic_load(&fail_seek)?-1:0;
+}
 s32 aic_player_set_volum(struct aic_player *p,s32 volume) { worker_only(); assert(p->live && volume==42); return 0; }
 s32 aic_player_get_volum(struct aic_player *p,s32 *volume) { (void)p; (void)volume; assert(!"unexpected getter"); return -1; }
 s64 aic_player_get_play_time(struct aic_player *p) { (void)p; assert(!"unsynchronized SDK time getter"); return -1; }
@@ -192,10 +199,53 @@ int main(void)
     fail_callback=1; p=prepare(); wait_state(p,LV_AIC_PLAYBACK_FAULT); finish(p); fail_callback=0;
     fail_start=1; p=prepare(); assert(lv_aic_player_playback_start(p)); wait_state(p,LV_AIC_PLAYBACK_FAULT); finish(p); fail_start=0;
     options.cma_budget=256; p=prepare(); assert(lv_aic_player_playback_start(p)); wait_state(p,LV_AIC_PLAYBACK_FAULT); finish(p); options.cma_budget=4096;
+    /* Seek closes the old epoch only after native readers and blocked get exit. */
+    p=prepare(); assert(lv_aic_player_playback_start(p)); wait_count(&blocked,1);
+    wake_worker(1,false);
+    for(unsigned i=0;i<3000 && !lv_aic_player_playback_poll(p,&image);i++) aicos_msleep(1);
+    assert(image.rgb); reader=lv_aic_rgb_image_acquire(lv_aic_player_image_source(&image),&view); assert(reader);
+    wait_count(&blocked,1);
+    assert(!lv_aic_player_playback_seek(p,1000001));
+    assert(lv_aic_player_playback_seek(p,500000));
+    assert(!lv_aic_player_playback_seek(p,400000));
+    assert(!lv_aic_player_playback_poll(p,&(lv_aic_player_image_t){0}));
+    assert(lv_aic_player_playback_pause(p,true));
+    wake_worker(0,true); lv_aic_player_image_destroy(&image); aicos_msleep(15);
+    assert(!atomic_load(&seeks) && lv_aic_player_playback_status(p).seek_pending);
+    /* Old terminal and audio notifications must die with the old mailbox. */
+    assert(!notify(notify_context,AIC_PLAYER_EVENT_PLAY_END,0,0));
+    lv_aic_rgb_image_release_lease(reader); wait_count(&seeks,1); wait_state(p,LV_AIC_PLAYBACK_PAUSED);
+    assert(atomic_load(&seek_target)==500000 && lv_aic_player_playback_status(p).seeks_completed==1);
+    assert(!lv_aic_player_playback_status(p).sdk_terminal && !lv_aic_player_playback_status(p).position_valid);
+    /* A second paused seek doesn't wait for first-frame completion in old SDK. */
+    assert(lv_aic_player_playback_seek(p,0)); wait_count(&seeks,2); wait_state(p,LV_AIC_PLAYBACK_PAUSED);
+    assert(lv_aic_player_playback_pause(p,false)); wait_count(&blocked,1);
+    atomic_store(&next_flags,FRAME_FLAG_EOS); wake_worker(1,false); wait_state(p,LV_AIC_PLAYBACK_TERMINAL);
+    assert(lv_aic_player_playback_seek(p,200000)); wait_count(&seeks,3); wait_count(&blocked,1);
+    lv_aic_player_playback_close(p); wake_worker(0,true); finish(p);
+    /* Prepared seek preserves the no-auto-start contract. */
+    p=prepare(); wait_state(p,LV_AIC_PLAYBACK_READY); int before_starts=atomic_load(&starts);
+    assert(lv_aic_player_playback_seek(p,123)); wait_count(&seeks,4); wait_state(p,LV_AIC_PLAYBACK_READY);
+    assert(atomic_load(&starts)==before_starts); lv_aic_player_playback_close(p); finish(p);
+    atomic_store(&fail_seek,1); p=prepare(); wait_state(p,LV_AIC_PLAYBACK_READY);
+    assert(lv_aic_player_playback_seek(p,123)); wait_state(p,LV_AIC_PLAYBACK_FAULT); finish(p); atomic_store(&fail_seek,0);
+    /* Close wins while a seek waits for a blocked old get. */
+    p=prepare(); assert(lv_aic_player_playback_start(p)); wait_count(&blocked,1);
+    int before_seek=atomic_load(&seeks);
+    assert(lv_aic_player_playback_seek(p,456)); lv_aic_player_playback_close(p);
+    wake_worker(0,true); finish(p); assert(atomic_load(&seeks)==before_seek);
+    unseekable=true; p=prepare(); wait_state(p,LV_AIC_PLAYBACK_READY);
+    assert(!lv_aic_player_playback_seek(p,0)); lv_aic_player_playback_close(p); finish(p); unseekable=false;
     audio_only=true; p=prepare(); assert(lv_aic_player_playback_start(p)); wait_state(p,LV_AIC_PLAYBACK_PLAYING);
     assert(!notify(notify_context,AIC_PLAYER_EVENT_PLAY_TIME,-1,-5000));
     for(unsigned i=0;i<3000 && !lv_aic_player_playback_status(p).position_valid;i++) aicos_msleep(1);
     assert(lv_aic_player_playback_status(p).position_us==-5000);
+    before_seek=atomic_load(&seeks); assert(lv_aic_player_playback_seek(p,700000));
+    wait_count(&seeks,before_seek+1); wait_state(p,LV_AIC_PLAYBACK_PLAYING);
+    assert(!lv_aic_player_playback_status(p).position_valid);
+    assert(!notify(notify_context,AIC_PLAYER_EVENT_PLAY_TIME,0,700000));
+    for(unsigned i=0;i<3000 && !lv_aic_player_playback_status(p).position_valid;i++) aicos_msleep(1);
+    assert(lv_aic_player_playback_status(p).position_us==700000);
     assert(!notify(notify_context,AIC_PLAYER_EVENT_PLAY_END,0,0)); wait_state(p,LV_AIC_PLAYBACK_TERMINAL);
     lv_aic_player_playback_close(p); finish(p);
     assert(lv_aic_rgb_image_decoder_deinit() && lv_aic_yuv_image_decoder_deinit()); lv_deinit(); return 0;

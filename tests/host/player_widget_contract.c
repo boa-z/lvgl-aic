@@ -54,6 +54,11 @@ bool lv_aic_player_playback_poll(lv_aic_player_playback_t *p,lv_aic_player_image
     }
     return true;
 }
+bool lv_aic_player_playback_seek(lv_aic_player_playback_t *p,uint64_t target)
+{
+    if(!p || p->closing || p->status.seek_pending || target>1000000) return false;
+    p->status.seek_pending=true; p->status.seek_target_us=target; p->status.state=LV_AIC_PLAYBACK_SEEKING; return true;
+}
 const lv_image_dsc_t *lv_aic_player_image_source(const lv_aic_player_image_t *p)
 { return p->rgb?lv_aic_rgb_image_source(p->rgb):lv_aic_yuv_image_source(p->yuv); }
 void lv_aic_player_image_destroy(lv_aic_player_image_t *p)
@@ -95,6 +100,13 @@ int main(void)
         for(unsigned y=0;y<4;y++) for(unsigned x=0;x<12;x++) assert(pixels[y*48+x]==255);
         assert(retained-released==1);
     }
+    assert(lv_aic_player_seek(o,1000001)==LV_RESULT_INVALID);
+    assert(lv_aic_player_seek(o,500000)==LV_RESULT_OK);
+    assert(lv_aic_player_seek(o,400000)==LV_RESULT_INVALID);
+    tick(); assert(!lv_image_get_src(o) && retained==released);
+    assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_SEEKING);
+    active->status.seek_pending=false; active->status.seeks_completed++;
+    active->status.state=LV_AIC_PLAYBACK_PLAYING; tick();
     assert(lv_aic_player_pause(o)==LV_RESULT_OK); tick(); assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
     assert(lv_aic_player_resume(o)==LV_RESULT_OK); rgb=false; frames=1; tick();
     const lv_aic_yuv_frame_t *view;

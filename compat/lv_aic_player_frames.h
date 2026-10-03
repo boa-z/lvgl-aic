@@ -32,6 +32,9 @@ bool lv_aic_player_frames_poll_image(lv_aic_player_frames_t *frames,lv_aic_playe
  * A failed put retains its SDK lease and can be retried by subsequent drain.
  * A failed pin release quarantines the mailbox, retaining resources. */
 bool lv_aic_player_frames_drain(lv_aic_player_frames_t *frames);
+/* Worker only, after closed+idle and SDK session replacement; UI must not
+ * poll during the seek transaction. Existing readers prohibit reopening. */
+bool lv_aic_player_frames_reopen(lv_aic_player_frames_t *frames);
 /* Close rejects new publication and retires unpublished images. Existing
  * image/decoder/GE leases delay drain; never force release quarantined DMA. */
 void lv_aic_player_frames_close(lv_aic_player_frames_t *frames);
