@@ -35,7 +35,7 @@ geometry/angle, stride overflow, insufficient capacities and source/destination
 overlap. Log: `output/spi-frame-tests.log`.
 D13x compile **PASS** with `-std=c99 -Wall -Wextra -Werror
 -march=rv32imafdcpzpsfoperand_xtheade -mabi=ilp32d -I include`;
-`output/lvgl-spi-frame.o` defines `lv_aic_spi_pack_rgb565`.
+SDK `output/lvgl-spi-frame-standalone.o` defines `lv_aic_spi_pack_rgb565`.
 
 Still missing: exclusive SPI device/session ownership, bounded DMA transmit
 allocation, completion/error handling, panel initialization adapters, LVGL 9.6
@@ -71,3 +71,15 @@ wait-before-rewrite with retained byte snapshots, invalid submission, callback
 reentry, submission failure and completion failure with sticky retention.
 Real SDK SPI adapter, device exclusivity, panel setup, LVGL flush integration,
 DMA timing and board output remain incomplete/NOT_RUN.
+
+
+Transfer-core target regression: boot/app/static/image/manifest **PASS** after
+moving the earlier standalone compile object out of the component source tree.
+Target object defines all four transfer APIs. Clean component
+`0bbe23786e801375fd1ee46f5597dfc847e3e6c2`, SDK
+`d8ffb50f5ae0e0db4e1c4e07b9256c81d1e0e989`. Image SHA256
+`a18bec5557969d8cef200b7e635443881b3140657b9e7c5235796e35b3b3f3e8`.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
+Unused SPI APIs may be discarded from the final firmware; this regression
+establishes target compilation/general integration, not SPI device linkage or
+physical output. Hardware remains **NOT_RUN**.
