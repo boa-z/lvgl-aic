@@ -102,3 +102,15 @@ and a metadata-only fake-window decoder. They cover movement, paused resize,
 hide/show, native slaves, seek, replacement, deletion and fault recovery. They
 do not prove transparent pixels, physical placement, DMA or scanout. The prior
 session firmware evidence above remains historical until a new manifest is recorded.
+
+
+Player binding firmware boot/app/static/image/manifest **PASS**, including the
+linked `lv_aic_player_set_video_plane` API. Source identities:
+
+- sdk: `5f8e627198025b54a4a2189430fad77924e29443`.
+- lvgl-aic: `83eac9071bec7278a759ea3eb9ed314ca2eacea6`.
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `fa68573db421119936dbf811ff7a1fcb34f1fa6ae20a164a4c4871631f0124fe`.
+- ELF SHA256: `4c90d9075b8b68517adcd0ec9b85d538154f0b9bae5ddf0e669c3d681b5c11c6`.
+
+The combined-profile evidence directory now contains this build. Board **NOT_RUN**.
