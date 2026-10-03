@@ -192,8 +192,9 @@ static bool lv_draw_aic_ge2d_accepts_image(const lv_draw_task_t *task)
         return false;
     }
 
-    /* A tiled image is many blits with its own helper; not this step. */
-    if (dsc->tile != 0) {
+    /* Initial tiled path uses native spacing; transformed tiles remain SW. */
+    if (dsc->tile && (dsc->rotation != 0 || dsc->scale_x != LV_SCALE_NONE ||
+                     dsc->scale_y != LV_SCALE_NONE)) {
         return false;
     }
 

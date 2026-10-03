@@ -172,7 +172,9 @@ int main(void)
         d.scale_x = 384; d.scale_y = 384; d.rotation = 170; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.scale_x = d.scale_y = LV_SCALE_NONE; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 900; assert(lv_draw_aic_ge2d_accepts_image(&task));
-        d.rotation = 0; d.tile = 1; assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        d.rotation = 0; d.tile = 1; assert(lv_draw_aic_ge2d_accepts_image(&task));
+        d.rotation = 900; assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        d.rotation = 0;
         d.tile = 0; d.recolor_opa = 128; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         assert(submits == before);
     }
@@ -315,6 +317,32 @@ int main(void)
             assert(flags == MPP_ROTATION_90 && crop.x1 == 0 && crop.y1 == 0);
             assert(phase_x == 0 && phase_y == 0);
         }
+    }
+    {
+        assert(lv_draw_buf_init(&src, 32, 32, LV_COLOR_FORMAT_ARGB8888, 128,
+                                pixels, sizeof(pixels)) == LV_RESULT_OK);
+        decoder.decoded = &src;
+        lv_draw_image_dsc_init(&d);
+        d.src = &src; d.header = src.header; d.tile = 1; d.opa = 128;
+        d.image_area = (lv_area_t){90, 190, 121, 221};
+        task.type = LV_DRAW_TASK_TYPE_IMAGE;
+        task.draw_dsc = &d;
+        task.area = (lv_area_t){90, 190, 153, 253};
+        task.clip_area = (lv_area_t){95, 195, 148, 248};
+        task.target_layer = &layer;
+        allowed_src = pixels; allowed_dst = output;
+        fail_at = 0;
+        int before = submits;
+        assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder) == 1);
+        assert(submits == before + 4);
+        assert(captured.src_buf.crop.width == 27 && captured.src_buf.crop.height == 27);
+        assert(captured.ctrl.src_global_alpha == 128);
+        before = submits; fail_at = 1;
+        assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder) == -1);
+        assert(submits == before + 1 && !s_blit_validate_only);
+        fail_at = 0; before = submits; allowed_src = NULL;
+        assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder) == 0);
+        assert(submits == before && !s_blit_validate_only);
     }
     lv_deinit();
     return 0;

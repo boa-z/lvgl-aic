@@ -78,6 +78,7 @@
 static bool s_blit_called;
 static bool s_blit_ok;
 static bool s_blit_failed;
+static bool s_blit_validate_only;
 
 static int lv_draw_aic_ge2d_angle_2_12(int32_t angle, bool cosine)
 {
@@ -125,6 +126,7 @@ static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
         return false;
     }
 
+    if (s_blit_validate_only) return true;
     lv_draw_aic_ge2d_prepare_src_cache(src, &src_area);
     lv_draw_aic_ge2d_prepare_dst_cache(dst, &dst_area);
 
@@ -366,6 +368,7 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     }
 
     /* Source is read by the engine, so write back; destination is written. */
+    if (s_blit_validate_only) return true;
     lv_draw_aic_ge2d_prepare_src_cache(src, &src_area);
     lv_draw_aic_ge2d_prepare_dst_cache(dst, &dst_area);
 
@@ -495,6 +498,45 @@ static void lv_draw_aic_ge2d_image_cb(lv_draw_task_t *task,
                                       clipped_img_area);
 }
 
+/* Keep the decoder open across both passes. No tile writes before every
+ * clipped tile has passed geometry/address checks; never replay a partial
+ * blend through software after an engine failure. */
+static int lv_draw_aic_ge2d_tiles(lv_draw_task_t *task, const lv_draw_image_dsc_t *dsc,
+                                 const lv_image_decoder_dsc_t *decoder)
+{
+    int32_t w = dsc->header.w, h = dsc->header.h;
+    if (w <= 0 || h <= 0 || !task->target_layer || !task->target_layer->draw_buf ||
+        !decoder->decoded || !lv_draw_aic_ge2d_device()) return 0;
+    lv_area_t anchor = lv_area_get_width(&dsc->image_area) >= 0 ? dsc->image_area : task->area;
+    /* Match LVGL's initial anchor and positive stepping; jump over invisible
+     * rows/columns without iterating an unbounded off-screen prefix. */
+    int64_t x0 = anchor.x1, y0 = anchor.y1;
+    if (x0 + w - 1 < task->area.x1) x0 += ((task->area.x1 - x0) / w) * w;
+    if (y0 + h - 1 < task->area.y1) y0 += ((task->area.y1 - y0) / h) * h;
+    for (int pass = 0; pass < 2; pass++) {
+        s_blit_validate_only = pass == 0;
+        for (int64_t y = y0; y <= task->area.y2; y += h) {
+            for (int64_t x = x0; x <= task->area.x2; x += w) {
+                if (x + w - 1 > INT32_MAX || y + h - 1 > INT32_MAX) {
+                    s_blit_validate_only = false;
+                    return pass ? -1 : 0;
+                }
+                lv_area_t tile = {(int32_t)x, (int32_t)y, (int32_t)(x+w-1), (int32_t)(y+h-1)};
+                lv_area_t clip;
+                if (!lv_area_intersect(&clip, &tile, &task->area) ||
+                    !lv_area_intersect(&clip, &clip, &task->clip_area) ||
+                    !lv_area_intersect(&clip, &clip, &task->target_layer->buf_area)) continue;
+                if (!lv_draw_aic_ge2d_blit(task, dsc, decoder, &tile, &clip)) {
+                    s_blit_validate_only = false;
+                    return pass ? -1 : 0;
+                }
+            }
+        }
+    }
+    s_blit_validate_only = false;
+    return 1;
+}
+
 lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
                                    lv_draw_aic_ge2d_outcome_t *outcome)
 {
@@ -555,8 +597,20 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
      * normalization can replace a padded CMA source with an inaccessible
      * LVGL heap copy. Preserve its layout and straight alpha instead.
      * LVGL still owns decode, clipping and the decoder lifetime. */
-    lv_draw_image_normal_helper(task, blit_dsc, &task->area,
-                                lv_draw_aic_ge2d_image_cb, &decoder_args);
+    if (blit_dsc->tile) {
+        lv_image_decoder_dsc_t decoder;
+        if (lv_image_decoder_open(&decoder, blit_dsc->src, &decoder_args) == LV_RESULT_OK) {
+            int tiled = lv_draw_aic_ge2d_tiles(task, blit_dsc, &decoder);
+            lv_image_decoder_close(&decoder);
+            s_blit_called = true;
+            s_blit_ok = tiled > 0;
+            s_blit_failed = tiled < 0;
+        }
+    }
+    else {
+        lv_draw_image_normal_helper(task, blit_dsc, &task->area,
+                                    lv_draw_aic_ge2d_image_cb, &decoder_args);
+    }
 
     if (s_blit_failed) {
         /* GE may already have blended pixels: never retry those in software. */
