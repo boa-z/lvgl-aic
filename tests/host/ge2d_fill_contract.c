@@ -10,8 +10,9 @@ static struct ge_fillrect captured;
 static lv_area_t cache_area;
 static int submits, emits, syncs, caches, fail_at;
 static const void *allowed_dst;
-static bool yuv_fault;
+static bool yuv_fault, rgb_fault;
 static int image_calls;
+bool lv_draw_aic_ge2d_image_faulted(void) { return rgb_fault; }
 bool lv_draw_aic_ge2d_yuv_faulted(void) { return yuv_fault; }
 struct mpp_ge *mpp_ge_open(void) { return (struct mpp_ge *)(uintptr_t)1; }
 void mpp_ge_close(struct mpp_ge *ge) { (void)ge; }
@@ -31,13 +32,13 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *t, lv_draw_aic_ge2d_outcome_t
 { (void)t; (void)o; image_calls++; return LV_RESULT_INVALID; }
 static void dispatcher_failure_contract(lv_layer_t *layer)
 {
-    for (unsigned fatal = 0; fatal < 2; fatal++) {
+    for (unsigned fatal = 0; fatal < 3; fatal++) {
         lv_draw_aic_ge2d_unit_t unit = {0};
         lv_draw_task_t *task = lv_draw_add_task(layer, &layer->buf_area,
                                                LV_DRAW_TASK_TYPE_IMAGE);
         assert(task != NULL);
         task->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
-        yuv_fault = fatal != 0;
+        yuv_fault = fatal == 1; rgb_fault = fatal == 2;
         image_calls = 0;
         lv_draw_aic_ge2d_stats_reset();
         assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == 1);
@@ -65,7 +66,7 @@ static void dispatcher_failure_contract(lv_layer_t *layer)
         lv_free(queued);
         lv_free(task);
     }
-    yuv_fault = false;
+    yuv_fault = rgb_fault = false;
 }
 static void reset_calls(void) { submits = emits = syncs = caches = 0; }
 static void rejected(lv_draw_task_t *t)

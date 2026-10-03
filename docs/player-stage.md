@@ -108,8 +108,8 @@ This bridge does not implement a playback scheduler: feeding raw decoded
 frames as fast as possible would skip through a movie. PTS pacing, audio/video
 clock selection, pause/seek/repeat and source replacement belong to the pending
 background player. SDK PLAY_END also represents some decoder errors, so it
-must not be treated as proof of clean EOS. RGB publication remains pending;
-this bridge rejects RGB and error-marked frames without consuming their lease.
+must not be treated as proof of clean EOS. Native RGB publication is now supported as described below; error-marked frames
+still fail without consuming their lease.
 
 ## Media clock and event mailbox / 媒体时钟与事件邮箱
 
@@ -139,11 +139,30 @@ SDK 的纯视频 get_play_time 依赖内部 video renderer 的 PTS；外部渲�
 SDK PLAY_END 也用于解码器错误和资源不足，邮箱只记录 terminal 通知，不声明
 正常 EOS。帧错误、EOS 帧标志与 terminal 事件必须由后续播放状态机分别处理。
 另外 D13x 的 MJPEG external-render 路径按 framebuffer 格式请求 RGB 输出；
-当前 YUV bridge 会拒绝这些帧，RGB publication 必须补齐才覆盖该播放路径。
+下述 RGB bridge 已覆盖原生 RGB565/RGB888/ARGB8888 发布；真实 MJPEG 播放仍待集成验证。
+ARGB1555 与非原生 BGR/RGBA 字节顺序不在发布范围，不能冒充相近的 LVGL 格式。
+
+## Native RGB publication and GE lifetime / RGB 发布与 GE 生命周期
+
+`include/lv_aic_rgb_image.h` provides immutable native RGB565/RGB888/XRGB8888/
+straight-ARGB8888 frames. `common/lv_aic_rgb_mpp.h` imports bounded physical
+MPP frames with crop and verified allocator capacity, rejecting address wrap,
+invalid source spans and channel orders without a native LVGL representation.
+
+Decoder 完整 padding 行可直接借用；裁剪尾部缺 padding、像素/行未对齐、请求
+stride 规范化或 alpha 预乘时创建只读副本，不修改 producer 像素。每图像最多
+四种 lazy 解码视图，随图像和全部 reader 的最终释放统一回收，不进入通用 cache。
+播放器 `poll_image` 返回 RGB/YUV 通用 owner handle（含 PTS），由 source/destroy
+配套使用。原 YUV-only poll 不会丢弃待发布 RGB 帧；混合媒体须初始化两个 decoder。
+
+GE RGB executor 在 decoder open/close 外再持有一个图像租约，覆盖源和所有副本。
+bitblt/rotate/emit/sync 失败时保留租约直到重启；dispatcher 保留 IN_PROGRESS
+任务和目标 layer，停止后续绘制，不做软件重放。这样 decoder close 不会导致
+播放器归还仍可能被 DMA 使用的缓冲。普通和 tiled 路径采用相同保护。
 
 ## Evidence
 
-- Host **29/29 PASS**, actual SDK player/mpp_frame declarations, mocked player
+- Host **30/30 PASS**, actual SDK player/mpp_frame declarations, mocked player
   operations. New checks cover setup/metadata/start/pause/resume/seek failures,
   idempotent pause, frame saturation, stale tickets across reopen, transactional
   getters, held-frame stop/seek/close refusal, return retry, stop/destroy retry,
@@ -165,6 +184,13 @@ SDK PLAY_END 也用于解码器错误和资源不足，邮箱只记录 terminal 
   64-bit limits. Event contract: real concurrent pthread callbacks/snapshots,
   10,000 alternating signed audio timestamps, sticky terminal/format flags,
   unknown events, partial registration failure and destruction refusal.
+- RGB contracts: four native MPP format/crop mappings; truncated/FD/address
+  rejection; shared borrowed decodes, immutable premultiply/stride snapshots,
+  minimal last-row capacity and unaligned-row fallback; retired-open refusal;
+  worker RGB publication and delayed put. GE tests cover normal/tiled paths,
+  borrowed/copied storage and injected bitblt/emit/sync failures; dispatcher
+  tests keep both RGB and YUV DMA-fault tasks in progress. These are mocked GE
+  tests, not physical DMA validation.
 - `tools/sdk/check-player-session.ps1`: D13x E907 double-float ABI, real SDK
   player/allocator/frame bridge/events/clock and RT-Thread pthread headers, -Wall -Wextra -Werror: PASS.
   The script uses the SDK's Newlib/POSIX defines from compiler/pthread
@@ -175,18 +201,22 @@ SDK PLAY_END 也用于解码器错误和资源不足，邮箱只记录 terminal 
 - SDK output/lvgl-player-allocator.o SHA256:
   a64904bcfccb70d3ebf2359637f903f4b8319e87be928011f42b4742dd1b4682.
 - SDK output/lvgl-player-frames.o SHA256:
-  3e477e8dad6a0d74fa9fd102a903bebdb7712318dc4cd9ca1dc7b1e1b42b5c82.
+  0aa18367dc69a0dd8b92ca16b239ffdbf692bfc4380831da63ee0f4e6ab2b509.
 - SDK output/lvgl-player-events.o SHA256:
   1de7123a1f3a67316156db124d15ca2a2dd314af42a47601ac0be2fb66b7cf1e.
 - SDK output/lvgl-player-clock.o SHA256:
   d3ff0e11058f87bde95e23c925a09f5619321d0fa38686a62ec19866a5ab130b.
+- SDK output/lvgl-rgb-image.o SHA256:
+  d33d66747ff957f802494886b4273e5df6bcd95ba7ab42581831ea2b9c0a5767.
+- SDK output/lvgl-rgb-mpp.o SHA256:
+  6532233780565f09b09f7d1ecce6ddbef32fd744c176ae2c9fb5999a49f63d8b.
 - Media-enabled image linking, real demux/codec/audio playback, physical DMA
   lifetime and board execution: **NOT_RUN**. The current GE image has no player.
 
 ## Remaining SDK parity
 
 Integrate background command/event handling (including EOS/error/seek), PTS
-pacing and audio/video synchronization using the clock and event primitives, RGB publication, player widget controls, source replacement, repeat/rate behavior, slave and group
+pacing and audio/video synchronization using the clock and event primitives, player widget controls, source replacement, repeat/rate behavior, slave and group
 lifetimes, APNG backend, and explicit video-plane composition/ownership.
 Do not report this internal session as a complete player widget or as tested
 hardware decoding. All physical verification remains deferred.

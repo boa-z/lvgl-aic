@@ -159,6 +159,7 @@ typedef enum {
  *
  * The task must already have been accepted by this unit's evaluate().
  */
+bool lv_draw_aic_ge2d_image_faulted(void);
 lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
                                    lv_draw_aic_ge2d_outcome_t *outcome);
 

@@ -153,6 +153,6 @@ config AIC_LVGL_USE_PLAYER_SESSION
     depends on AIC_LVGL_PORT && AIC_MPP_PLAYER_INTERFACE && AIC_MPP_PLAYER_VIDEO_EXT_RENDER
     help
         Worker-side playback session, bounded CMA allocator and immutable
-        YUV frame publication bridge with deferred decoder-frame return,
+        RGB/YUV frame publication bridge with deferred decoder-frame return,
         media clock primitives and coherent SDK event mailbox.
         This is not yet an integrated playback worker, widget or video-plane owner.

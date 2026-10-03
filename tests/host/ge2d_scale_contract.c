@@ -11,6 +11,9 @@
 #include "../../draw/ge2d/lv_draw_aic_ge2d_fill.c"
 
 static struct ge_bitblt captured, tile_history[16];
+static int rgb_retained,rgb_released;
+static bool rgb_retain(void *p) { (void)p; rgb_retained++; return true; }
+static void rgb_release(void *p) { (void)p; rgb_released++; }
 static bool record_tiles;
 static unsigned tile_count, oracle_count;
 static lv_area_t oracle_cells[16], oracle_clips[16];
@@ -559,6 +562,41 @@ int main(void)
         assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
         assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING);
     }
+    g_ge2d_dev=mpp_ge_open(); g_ge2d_ready=true;
+    assert(lv_aic_rgb_image_decoder_init());
+    for(unsigned copy=0;copy<2;copy++) for(unsigned tiled=0;tiled<2;tiled++) for(int failure=1;failure<=3;failure++) {
+        lv_aic_rgb_frame_t rgb={LV_COLOR_FORMAT_ARGB8888,copy?31:32,32,128,pixels,copy?4092:4096};
+        lv_aic_rgb_image_t *image=lv_aic_rgb_image_create(&rgb,rgb_retain,rgb_release,NULL); assert(image);
+        const lv_image_dsc_t *source=lv_aic_rgb_image_source(image);
+        lv_image_decoder_args_t args={.stride_align=false,.premultiply=false};
+        lv_image_decoder_dsc_t probe;
+        assert(lv_image_decoder_open(&probe,source,&args)==LV_RESULT_OK);
+        allowed_src=probe.decoded->data;
+        assert((allowed_src!=pixels)==(copy!=0));
+        const uint8_t *snapshot=allowed_src; uint8_t first=snapshot[0];
+        lv_image_decoder_close(&probe);
+        assert(lv_draw_buf_init(&dst,128,128,LV_COLOR_FORMAT_ARGB8888,512,output,sizeof(output))==LV_RESULT_OK);
+        layer.draw_buf=&dst; layer.buf_area=(lv_area_t){0,0,127,127}; layer.color_format=LV_COLOR_FORMAT_ARGB8888;
+        allowed_dst=output; fail_at=0; fail_submission=0; rotate_fail=0; record_tiles=false;
+        lv_draw_image_dsc_init(&d); d.src=source; d.tile=tiled;
+        d.header.w=rgb.width; d.header.h=rgb.height; d.header.cf=rgb.format;
+        d.image_area=(lv_area_t){0,0,(int32_t)rgb.width-1,31};
+        task.type=LV_DRAW_TASK_TYPE_IMAGE; task.draw_dsc=&d; task.target_layer=&layer;
+        task.area=d.image_area; task.clip_area=d.image_area;
+        lv_draw_aic_ge2d_outcome_t outcome;
+        assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK && outcome==LV_DRAW_AIC_GE2D_OUTCOME_ENGINE);
+        fail_at=failure;
+        assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_INVALID && lv_draw_aic_ge2d_image_faulted());
+        lv_aic_rgb_image_destroy(image);
+        assert(rgb_retained==rgb_released+1 && !lv_aic_rgb_image_decoder_deinit());
+        assert(snapshot[0]==first); /* Copied decode storage survived decoder close too. */
+        int before=submits;
+        assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_INVALID && submits==before);
+        /* Mock engine has no DMA. Only the test may release/reset quarantine. */
+        lv_aic_rgb_image_release_lease(rgb_quarantined); rgb_quarantined=NULL;
+        assert(rgb_retained==rgb_released);
+    }
+    assert(lv_aic_rgb_image_decoder_deinit());
     lv_deinit();
     return 0;
 }

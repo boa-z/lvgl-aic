@@ -118,5 +118,11 @@ only on its worker, with delayed close and failed-put retry. A pauseable media
 clock and coherent SDK callback mailbox now provide timing/event primitives;
 PLAY_END remains an ambiguous terminal notification, not clean EOS evidence.
 Host ABI contracts and target compilation pass; the background player,
-widget, PTS/audio-video timing, RGB publication, APNG, group/slave and video-plane integration remain
+widget, PTS/audio-video timing, APNG, group/slave and video-plane integration remain
 open. No media-enabled image or physical playback has been verified.
+
+Native RGB frame publication now covers the D13x MJPEG RGB565/RGB888/ARGB8888
+output path at the adapter level, including bounded crops and immutable decoder
+views. GE retains producer and decoded-snapshot leases on DMA failures for both
+normal and tiled RGB draws. This does not establish real MJPEG playback or
+physical DMA acceptance. See [player-stage.md](player-stage.md).

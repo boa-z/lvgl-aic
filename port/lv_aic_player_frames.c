@@ -2,11 +2,14 @@
 #if defined(AIC_LVGL_USE_PLAYER_SESSION) && AIC_LVGL_USE_PLAYER_SESSION
 #include "lv_aic_player_frames.h"
 #include "lv_aic_yuv_mpp.h"
+#include "lv_aic_rgb_mpp.h"
 #include <aic_osal.h>
 typedef enum { EMPTY, BUILDING, READY, PUBLISHING, PUBLISHED, RETURNING, RELEASING } slot_state_t;
 typedef struct {
     struct lv_aic_player_frames *owner;
     lv_aic_yuv_frame_t frame;
+    lv_aic_rgb_frame_t rgb_frame;
+    bool rgb;
     uint64_t sdk_lease, pin;
     int64_t pts;
     slot_state_t state;
@@ -64,8 +67,11 @@ bool lv_aic_player_frames_submit(lv_aic_player_frames_t *f,uint64_t lease)
     unlock(f);
     if(!s) return false;
     size_t capacity[3]; uint64_t pin=0;
-    bool valid=lv_aic_player_allocator_acquire(f->allocator,frame,capacity,&pin) &&
-        lv_aic_yuv_from_mpp(&frame->buf,capacity,f->space,&s->frame);
+    bool valid=lv_aic_player_allocator_acquire(f->allocator,frame,capacity,&pin);
+    s->rgb=false;
+    if(valid && !lv_aic_yuv_from_mpp(&frame->buf,capacity,f->space,&s->frame)) {
+        valid=lv_aic_rgb_from_mpp(&frame->buf,capacity[0],&s->rgb_frame); s->rgb=valid;
+    }
     if(!valid) {
         bool released=!pin || lv_aic_player_allocator_release(f->allocator,pin);
         lock(f);
@@ -89,13 +95,40 @@ lv_aic_yuv_image_t *lv_aic_player_frames_poll(lv_aic_player_frames_t *f,int64_t 
     slot_t *s=NULL;
     lock(f);
     if(!f->closing && !f->quarantined) for(unsigned i=0;i<LV_AIC_PLAYER_LEASES;i++)
-        if(f->slots[i].state==READY) { s=&f->slots[i]; s->state=PUBLISHING; break; }
+        if(f->slots[i].state==READY && !f->slots[i].rgb) { s=&f->slots[i]; s->state=PUBLISHING; break; }
     unlock(f);
     if(!s) return NULL;
     lv_aic_yuv_image_t *image=lv_aic_yuv_image_create(&s->frame,retain,release,s);
     if(image) *pts=s->pts;
     else { lock(f); s->state=RETURNING; unlock(f); }
     return image;
+}
+bool lv_aic_player_frames_poll_image(lv_aic_player_frames_t *f,lv_aic_player_image_t *out)
+{
+    if(!f || !out || out->yuv || out->rgb) return false;
+    slot_t *s=NULL;
+    lock(f);
+    if(!f->closing && !f->quarantined) for(unsigned i=0;i<LV_AIC_PLAYER_LEASES;i++)
+        if(f->slots[i].state==READY) { s=&f->slots[i]; s->state=PUBLISHING; break; }
+    unlock(f);
+    if(!s) return false;
+    lv_aic_player_image_t result={.pts=s->pts};
+    if(s->rgb) result.rgb=lv_aic_rgb_image_create(&s->rgb_frame,retain,release,s);
+    else result.yuv=lv_aic_yuv_image_create(&s->frame,retain,release,s);
+    if(!result.rgb && !result.yuv) { lock(f); s->state=RETURNING; unlock(f); return false; }
+    *out=result; return true;
+}
+const lv_image_dsc_t *lv_aic_player_image_source(const lv_aic_player_image_t *image)
+{
+    if(!image) return NULL;
+    return image->rgb?lv_aic_rgb_image_source(image->rgb):lv_aic_yuv_image_source(image->yuv);
+}
+void lv_aic_player_image_destroy(lv_aic_player_image_t *image)
+{
+    if(!image) return;
+    if(image->rgb) lv_aic_rgb_image_destroy(image->rgb);
+    if(image->yuv) lv_aic_yuv_image_destroy(image->yuv);
+    *image=(lv_aic_player_image_t){0};
 }
 bool lv_aic_player_frames_drain(lv_aic_player_frames_t *f)
 {

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_aic_player_frames.h"
 #include "lv_aic_yuv_image_private.h"
+#include "lv_aic_rgb_image_private.h"
 #include <aic_osal.h>
 #include <assert.h>
 #include <pthread.h>
@@ -17,6 +18,7 @@ static lv_aic_player_frames_t *bridge;
 static struct frame_allocator *sdk_allocator;
 static struct mpp_frame pool[4];
 static unsigned held, next_frame;
+static enum mpp_pixel_format media_format=MPP_FMT_YUV400;
 static int puts, frees, allocations, invalidates, fail_put;
 static uint64_t submitted;
 static uintptr_t next_address=0x42000000;
@@ -54,8 +56,8 @@ s32 aic_player_start(struct aic_player *p)
 {
     worker_only(); assert(p->live && sdk_allocator);
     for(unsigned i=0;i<4;i++) {
-        pool[i]=(struct mpp_frame){.id=i,.pts=(int64_t)i*40000,.buf={.size={32,16}}};
-        assert(!sdk_allocator->ops->alloc_frame_buffer(sdk_allocator,&pool[i],32,16,MPP_FMT_YUV400));
+        pool[i]=(struct mpp_frame){.id=i,.pts=(int64_t)i*40000,.buf={.size={8,16}}};
+        assert(!sdk_allocator->ops->alloc_frame_buffer(sdk_allocator,&pool[i],32,16,media_format));
     }
     held=0; next_frame=0; return 0;
 }
@@ -148,7 +150,7 @@ int main(void)
     assert(image && pts==120000);
     const lv_aic_yuv_frame_t *view;
     lv_aic_yuv_image_t *reader=lv_aic_yuv_image_acquire(lv_aic_yuv_image_source(image),&view);
-    assert(reader && view->width==32 && view->planes[0].capacity==512);
+    assert(reader && view->width==8 && view->planes[0].capacity==512);
     assert(!lv_aic_player_frames_destroy(bridge));
     lv_aic_player_frames_close(bridge);
     assert(!execute(SUBMIT));
@@ -176,6 +178,20 @@ int main(void)
     while(!finished) pthread_cond_wait(&wake,&gate);
     assert(result); pthread_mutex_unlock(&gate);
     assert(!lv_aic_player_frames_poll(bridge,&pts)); shutdown();
+    assert(lv_aic_rgb_image_decoder_init()); media_format=MPP_FMT_ARGB_8888;
+    startup(); assert(execute(SUBMIT));
+    assert(!lv_aic_player_frames_poll(bridge,&pts)); /* Legacy poll must not discard RGB. */
+    lv_aic_player_image_t published={0};
+    assert(lv_aic_player_frames_poll_image(bridge,&published) && published.rgb && !published.yuv);
+    const lv_aic_rgb_frame_t *rgb;
+    lv_aic_rgb_image_t *rgb_reader=lv_aic_rgb_image_acquire(lv_aic_player_image_source(&published),&rgb);
+    assert(rgb_reader && rgb->width==8 && rgb->stride==32 && rgb->capacity==512);
+    lv_aic_player_frames_close(bridge); before=puts;
+    lv_aic_player_image_destroy(&published);
+    assert(!published.rgb && !lv_aic_player_image_source(&published));
+    assert(execute(DRAIN) && puts==before && !lv_aic_player_frames_idle(bridge));
+    lv_aic_rgb_image_release_lease(rgb_reader); shutdown();
+    assert(lv_aic_rgb_image_decoder_deinit());
     assert(allocations==frees && invalidates>0);
     assert(lv_aic_yuv_image_decoder_deinit()); lv_deinit();
     return 0;

@@ -51,6 +51,7 @@
 
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_draw_aic_ge2d.h"
+#include "lv_aic_rgb_image_private.h"
 #include "lv_draw_aic_ge2d_utils.h"
 #include "lv_draw_aic_ge2d_yuv.h"
 #include "lv_aic_fake_image.h"
@@ -79,6 +80,8 @@
 static bool s_blit_called;
 static bool s_blit_ok;
 static bool s_blit_failed;
+static lv_aic_rgb_image_t *rgb_quarantined;
+bool lv_draw_aic_ge2d_image_faulted(void) { return rgb_quarantined!=NULL; }
 static bool s_blit_validate_only;
 
 static int lv_draw_aic_ge2d_angle_2_12(int32_t angle, bool cosine)
@@ -623,7 +626,7 @@ static lv_result_t fake_image_draw(lv_draw_task_t *task, const lv_aic_fake_image
     return LV_RESULT_OK;
 }
 
-lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
+static lv_result_t image_draw(lv_draw_task_t *task,
                                    lv_draw_aic_ge2d_outcome_t *outcome)
 {
     const lv_draw_image_dsc_t *dsc;
@@ -740,6 +743,27 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
         *outcome = LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE;
     }
     return LV_RESULT_OK;
+}
+
+lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,lv_draw_aic_ge2d_outcome_t *outcome)
+{
+    if(outcome) *outcome=LV_DRAW_AIC_GE2D_OUTCOME_NOTHING;
+    if(rgb_quarantined) return LV_RESULT_INVALID;
+    lv_aic_rgb_image_t *lease=NULL;
+    const lv_aic_rgb_frame_t *frame;
+    if(task && task->type==LV_DRAW_TASK_TYPE_IMAGE && task->draw_dsc) {
+        const lv_draw_image_dsc_t *dsc=task->draw_dsc;
+        lease=lv_aic_rgb_image_acquire(dsc->src,&frame);
+    }
+    s_blit_failed=false;
+    lv_result_t result=image_draw(task,outcome);
+    if(lease) {
+        /* Decoder close may have run already, but this extra lease still owns
+         * both producer pixels and every decoded snapshot consumed by GE. */
+        if(s_blit_failed) rgb_quarantined=lease;
+        else lv_aic_rgb_image_release_lease(lease);
+    }
+    return result;
 }
 
 #endif /* AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP */
