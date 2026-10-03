@@ -21,6 +21,7 @@ typedef struct player_group player_group_t;
 typedef struct { lv_aic_player_image_t image; size_t owners; } player_frame_t;
 struct player_binding {
     lv_obj_t *obj;
+    uint32_t requested_width,requested_height;
     lv_timer_t *timer;
     lv_aic_player_playback_t *playback;
 #if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
@@ -416,6 +417,27 @@ static bool present_plane(player_binding_t *b)
 }
 
 #endif
+static void apply_requested_size(player_binding_t *b)
+{
+    if(!b->obj || b->closing || !b->frame) return;
+    lv_image_t *image=(lv_image_t *)b->obj;
+    int32_t w=image->w,h=image->h;
+    if(w<=0 || h<=0) return;
+    if(b->requested_width) {
+        uint32_t scale=(uint32_t)(((uint64_t)b->requested_width*256)/(uint32_t)w);
+        lv_image_set_scale_x(b->obj,scale?scale:1);
+        if(!b->obj || b->closing) return;
+        lv_obj_set_width(b->obj,(int32_t)b->requested_width);
+    }
+    if(!b->obj || b->closing) return;
+    if(b->requested_height) {
+        uint32_t scale=(uint32_t)(((uint64_t)b->requested_height*256)/(uint32_t)h);
+        lv_image_set_scale_y(b->obj,scale?scale:1);
+        if(!b->obj || b->closing) return;
+        lv_obj_set_height(b->obj,(int32_t)b->requested_height);
+    }
+}
+
 static void tick(lv_timer_t *timer)
 {
     player_binding_t *b=lv_timer_get_user_data(timer);
@@ -458,6 +480,7 @@ static void tick(lv_timer_t *timer)
                     if(!b->plane_enabled || !old)
 #endif
                         lv_image_set_src(b->obj,lv_aic_player_image_source(&frame->image));
+                    apply_requested_size(b);
                     publish_slaves(b,frame);
                     b->group_presented=true;
                     release_frame(old);
@@ -696,16 +719,37 @@ void lv_aic_player_set_rotation(lv_obj_t *obj,int32_t value)
 { lv_image_set_rotation(obj,value); }
 int32_t lv_aic_player_get_rotation(lv_obj_t *obj)
 { return lv_image_get_rotation(obj); }
+static void reset_requested_size(lv_obj_t *obj)
+{
+    if(lv_obj_check_type(obj,&lv_aic_player_class)) {
+        player_binding_t *b=((player_widget_t *)obj)->binding;
+        b->requested_width=b->requested_height=0;
+    }
+}
+lv_result_t lv_aic_player_set_width(lv_obj_t *obj,uint32_t width)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+    if(!width || width>4096) return LV_RESULT_INVALID;
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    b->requested_width=width;apply_requested_size(b);return LV_RESULT_OK;
+}
+lv_result_t lv_aic_player_set_height(lv_obj_t *obj,uint32_t height)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+    if(!height || height>4096) return LV_RESULT_INVALID;
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    b->requested_height=height;apply_requested_size(b);return LV_RESULT_OK;
+}
 void lv_aic_player_set_scale(lv_obj_t *obj,uint32_t value)
-{ lv_image_set_scale(obj,value); }
+{ reset_requested_size(obj);lv_image_set_scale(obj,value); }
 int32_t lv_aic_player_get_scale(lv_obj_t *obj)
 { return lv_image_get_scale(obj); }
 void lv_aic_player_set_scale_x(lv_obj_t *obj,uint32_t value)
-{ lv_image_set_scale_x(obj,value); }
+{ reset_requested_size(obj);lv_image_set_scale_x(obj,value); }
 int32_t lv_aic_player_get_scale_x(lv_obj_t *obj)
 { return lv_image_get_scale_x(obj); }
 void lv_aic_player_set_scale_y(lv_obj_t *obj,uint32_t value)
-{ lv_image_set_scale_y(obj,value); }
+{ reset_requested_size(obj);lv_image_set_scale_y(obj,value); }
 int32_t lv_aic_player_get_scale_y(lv_obj_t *obj)
 { return lv_image_get_scale_y(obj); }
 void lv_aic_player_set_offset_x(lv_obj_t *obj,int32_t value)

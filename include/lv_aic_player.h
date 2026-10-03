@@ -114,7 +114,14 @@ unsigned lv_aic_player_pending_cleanup(void);
  * LVGL 9.6 units/validation/notifications apply: rotation is 0.1 degrees,
  * scale 256 is unity; get_scale returns the x scale. This does not select a
  * video plane or change media timing. Use owner thread, outside draw callbacks.
- * Width/height-based automatic scaling is a separate, unsupported SDK API. */
+ * Explicit scale setters clear both pending width/height requests on a main player. */
+/* Main player only. Checked 1..4096 pixel requests survive source replacement
+ * and apply after frame publication, or immediately if a frame is present.
+ * Sets object extent and the corresponding scale using native image dimensions;
+ * 256-based scale truncates (minimum 1), so exact rendered extent is not promised.
+ * No aspect-ratio coupling; a request does not modify the other axis. */
+lv_result_t lv_aic_player_set_width(lv_obj_t *obj,uint32_t width);
+lv_result_t lv_aic_player_set_height(lv_obj_t *obj,uint32_t height);
 void lv_aic_player_set_pivot(lv_obj_t *obj,int32_t x,int32_t y);
 void lv_aic_player_get_pivot(lv_obj_t *obj,lv_point_t *pivot);
 void lv_aic_player_set_rotation(lv_obj_t *obj,int32_t value);

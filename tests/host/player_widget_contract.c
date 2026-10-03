@@ -683,6 +683,37 @@ int main(void)
     assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
     lv_image_decoder_delete(window_decoder);
 #endif
+    /* Size requests made before open apply on the first decoded frame and
+     * persist across source replacement. Manual scaling cancels both axes. */
+    o=make();
+    assert(lv_aic_player_set_width(o,8)==LV_RESULT_OK);
+    assert(lv_aic_player_set_height(o,12)==LV_RESULT_OK);
+    assert(lv_aic_player_set_width(o,0)==LV_RESULT_INVALID);
+    assert(lv_aic_player_set_height(o,4097)==LV_RESULT_INVALID);
+    assert(lv_aic_player_set_src(o,"sized.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);frames=1;tick();
+    lv_obj_update_layout(o);
+    assert(lv_obj_get_width(o)==8 && lv_obj_get_height(o)==12);
+    assert(lv_image_get_scale_x(o)==512 && lv_image_get_scale_y(o)==768);
+    assert(lv_aic_player_set_width(o,6)==LV_RESULT_OK);lv_obj_update_layout(o);
+    assert(lv_obj_get_width(o)==6 && lv_image_get_scale_x(o)==384);
+    assert(lv_aic_player_set_src(o,"resized.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);tick();frames=1;tick();
+    assert(lv_image_get_scale_x(o)==384 && lv_image_get_scale_y(o)==768);
+    lv_aic_player_set_scale_x(o,256);lv_image_set_scale_y(o,64);frames=1;tick();
+    assert(lv_image_get_scale_x(o)==256 && lv_image_get_scale_y(o)==64);
+    lv_obj_delete(o);tick();assert(!active);
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    o=make();assert(lv_aic_player_configure_apng(o,&po)==LV_RESULT_OK);
+    assert(lv_aic_player_set_width(o,12)==LV_RESULT_OK);
+    assert(lv_aic_player_set_height(o,8)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"sized.apng")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);png_frames=1;tick();tick();
+    lv_obj_update_layout(o);
+    assert(lv_obj_get_width(o)==12 && lv_obj_get_height(o)==8);
+    assert(lv_image_get_scale_x(o)==768 && lv_image_get_scale_y(o)==512);
+    lv_obj_delete(o);tick();assert(!png);
+#endif
     /* SDK-named transforms use the same native image state on both classes. */
     static const uint8_t transform_pixels[32*16*4]={0};
     lv_image_dsc_t transform_image={.header={.magic=LV_IMAGE_HEADER_MAGIC,

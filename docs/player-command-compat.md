@@ -140,3 +140,35 @@ entry points and physical execution are **NOT_RUN**.
 RGB565 GE color-key acceptance remains deferred: the existing `key565_probe`
 compares keyed output to independent unkeyed hardware conversion. No hardware
 result was supplied for it, so the production software fallback remains active.
+
+## Deferred width/height requests (2026-10-04)
+
+`lv_aic_player_set_width/height` now save independent pixel requests on a main
+player, apply them to an existing frame, or wait for first frame publication.
+They set both object extent and the matching image scale based on decoded image
+dimensions. Requests persist through media/APNG source replacement and are
+reapplied at publication. Slave players retain independent native image transforms
+and do not accept these main-player requests, consistent with SDK ownership.
+
+Unlike the SDK void setters, these return a checked `lv_result_t` and accept
+1..4096 pixels; zero/out-of-range requests leave prior configuration unchanged.
+The 256-based scale uses integer truncation, minimum 1. The object extent is the
+requested size, while rendered pixels may differ due to scale precision; there
+is no automatic aspect-ratio coupling. Explicit player scale/scale_x/scale_y
+clears both pending requests, as the SDK's reset-size behavior does. Native image
+setters are still available but do not clear component requests. No synthetic
+SIZE_CHANGED notifications are injected; native LVGL setters own notifications.
+
+These APIs supersede the earlier unsupported width/height note above. Initial
+application is on decoded-frame publication rather than SDK metadata arrival;
+audio-only/no-frame resources retain the pending request without manufacturing
+image dimensions. Video-plane geometry remains governed by its separate adapter.
+
+Validation: **70/70 host PASS**, covering pre-open requests, first media frame,
+immediate resize, preserved requests across resource replacement, invalid bounds,
+manual scaling clearing both axes, and APNG first-frame sizing. Strict D13x
+compilation PASS; SDK `output/player-size-lv_aic_player.o` SHA256:
+`6aa5d612e7e2638b9cd648e2be17785c584f16e29b4255edad88631e61a917bf`.
+Logs: `output/player-size-build.log`, `output/player-size-tests.log`,
+`output/player-size-target.log`. Full-firmware live-symbol validation and physical
+GE/video-plane rendering remain pending, hardware **NOT_RUN**.
