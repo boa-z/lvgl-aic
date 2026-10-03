@@ -11,6 +11,16 @@ static lv_area_t cache_area;
 static int submits, emits, syncs, caches, fail_at;
 static const void *allowed_dst;
 static bool yuv_fault, rgb_fault;
+static bool alloc_failure,allocated_ge_accessible;
+extern void *__real_lv_draw_layer_alloc_buf(lv_layer_t *layer);
+void *__wrap_lv_draw_layer_alloc_buf(lv_layer_t *layer)
+{
+    if(alloc_failure) return NULL;
+    void *data=__real_lv_draw_layer_alloc_buf(layer);
+    if(allocated_ge_accessible) allowed_dst=data;
+    return data;
+}
+
 static int image_calls, image_fault_kind, opens, closes;
 bool lv_draw_aic_ge2d_image_faulted(void) { return rgb_fault; }
 bool lv_draw_aic_ge2d_yuv_faulted(void) { return yuv_fault; }
@@ -100,6 +110,41 @@ static void fill_dispatch_failure(lv_layer_t *layer, lv_draw_fill_dsc_t *dsc)
         layer->draw_task_head = NULL; lv_free(task);
     }
     fail_at = 0;
+}
+static void lazy_layer_contract(void)
+{
+    const void *saved=allowed_dst;
+    for(unsigned hardware=0;hardware<2;hardware++) {
+        lv_layer_t layer={0};layer.buf_area=(lv_area_t){4,6,11,13};
+        layer.color_format=LV_COLOR_FORMAT_RGB888;
+        lv_draw_fill_dsc_t d;lv_draw_fill_dsc_init(&d);d.color=lv_color_make(20,70,130);
+        lv_draw_task_t *t=lv_draw_add_task(&layer,&layer.buf_area,LV_DRAW_TASK_TYPE_FILL);
+        t->draw_dsc=&d;t->clip_area=layer.buf_area;
+        assert(lv_draw_aic_ge2d_accepts_fill(t));
+        layer.color_format=LV_COLOR_FORMAT_ARGB8888;d.opa=128;
+        assert(!lv_draw_aic_ge2d_accepts_fill(t));
+        layer.color_format=LV_COLOR_FORMAT_RGB888;d.opa=255;
+        t->preference_score=100;
+        assert(lv_draw_aic_ge2d_evaluate(NULL,t)==1);
+        assert(t->preferred_draw_unit_id==AIC_GE2D_DRAW_UNIT_ID);
+        lv_draw_aic_ge2d_unit_t unit={0};
+        reset_calls();lv_draw_aic_ge2d_stats_reset();
+        alloc_failure=true;
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit,&layer)==LV_DRAW_UNIT_IDLE);
+        assert(t->state==LV_DRAW_TASK_STATE_WAITING && !layer.draw_buf && !submits);
+        assert(!unit.task_act && !g_ge2d_stats.errors);
+        alloc_failure=false;allocated_ge_accessible=hardware;allowed_dst=NULL;
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit,&layer)==1);
+        assert(t->state==LV_DRAW_TASK_STATE_FINISHED && !unit.task_act);
+        assert(g_ge2d_stats.fill_completed==1 && g_ge2d_stats.fill_sw_fallback==!hardware);
+        assert(submits==(int)hardware && emits==(int)hardware && syncs==(int)hardware);
+        if(!hardware) for(unsigned y=0;y<8;y++) for(unsigned x=0;x<8;x++) {
+            uint8_t *p=layer.draw_buf->data+y*layer.draw_buf->header.stride+x*3;
+            assert(p[0]==130 && p[1]==70 && p[2]==20);
+        }
+        layer.draw_task_head=NULL;lv_free(t);lv_draw_layer_dealloc_buf(&layer);
+    }
+    allocated_ge_accessible=false;allowed_dst=saved;
 }
 static void rejected(lv_draw_task_t *t)
 {
@@ -242,6 +287,7 @@ int main(void)
     assert(submits == 0 && caches == 0);
     allowed_dst = output;
     task.type = LV_DRAW_TASK_TYPE_IMAGE; rejected(&task); rejected(NULL);
+    lazy_layer_contract();
     dispatcher_failure_contract(&layer);
     d.opa = 255; fill_dispatch_failure(&layer, &d);
     task.type = LV_DRAW_TASK_TYPE_FILL;

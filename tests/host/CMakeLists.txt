@@ -514,6 +514,7 @@ if(AIC_SDK_ROOT)
     target_compile_definitions(lvgl_aic_ge2d_fill_contract PRIVATE
         AIC_LVGL_USE_GE2D=1 AIC_LVGL_BSP_MPP=1 AIC_LVGL_BSP_RTTHREAD=0)
     target_link_libraries(lvgl_aic_ge2d_fill_contract PRIVATE lvgl)
+    target_link_options(lvgl_aic_ge2d_fill_contract PRIVATE "-Wl,--wrap=lv_draw_layer_alloc_buf")
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(lvgl_aic_ge2d_fill_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     endif()

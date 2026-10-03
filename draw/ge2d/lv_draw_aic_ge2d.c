@@ -84,8 +84,14 @@ static bool lv_draw_aic_ge2d_accepts_dst(const lv_draw_task_t *task)
      * fixed at task creation, unlike layer->_clip_area which may already
      * describe a later task by the time we run. */
     layer = task->target_layer;
-    if (layer == NULL || layer->draw_buf == NULL) {
-        return false;
+    if (layer == NULL) return false;
+    if (layer->draw_buf == NULL) {
+        /* LVGL allocates child buffers lazily, after task evaluation. The
+         * actual DMA address is checked again after allocation in dispatch. */
+        int64_t w=(int64_t)layer->buf_area.x2-layer->buf_area.x1+1;
+        int64_t h=(int64_t)layer->buf_area.y2-layer->buf_area.y1+1;
+        return w>0 && h>0 && w<=4096 && h<=4096 &&
+               lv_draw_aic_ge2d_dst_format_supported(layer->color_format);
     }
     draw_buf = layer->draw_buf;
 
@@ -173,7 +179,8 @@ static bool lv_draw_aic_ge2d_accepts_fill(const lv_draw_task_t *task)
     /* Partial fills on alpha-bearing destinations need separate composition
      * validation. Opaque destinations use straight-alpha source-over. */
     return dsc->opa >= LV_OPA_MAX ||
-           task->target_layer->draw_buf->header.cf != LV_COLOR_FORMAT_ARGB8888;
+           (task->target_layer->draw_buf ? task->target_layer->draw_buf->header.cf :
+            task->target_layer->color_format) != LV_COLOR_FORMAT_ARGB8888;
 }
 
 /**
@@ -357,6 +364,7 @@ void lv_draw_aic_ge2d_stats_reset(void)
 
     g_ge2d_stats.fill_accepted = 0U;
     g_ge2d_stats.fill_completed = 0U;
+    g_ge2d_stats.fill_sw_fallback = 0U;
     g_ge2d_stats.image_accepted = 0U;
     g_ge2d_stats.image_completed = 0U;
     g_ge2d_stats.scaled_image_engine = 0U;
@@ -447,8 +455,8 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
 
     /* Make sure the layer has a buffer before the engine is pointed at it. */
     if (lv_draw_layer_alloc_buf(layer) == NULL) {
-        task->state = LV_DRAW_TASK_STATE_FAILED;
-        g_ge2d_stats.errors++;
+        /* Match LVGL SW scheduling: memory pressure is retryable; never
+         * discard a task just because another layer currently owns memory. */
         return LV_DRAW_UNIT_IDLE;
     }
 
@@ -456,9 +464,15 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
     task->draw_unit = unit;
     ge2d->task_act = task;
 
-    switch (task->type) {
+    if (task->type==LV_DRAW_TASK_TYPE_FILL && !lv_draw_aic_ge2d_accepts_dst(task)) {
+        /* Lazy allocation may use heap fallback. IMAGE/LAYER retain their
+         * executor's source leases and special .fake replacement semantics. */
+        lv_draw_sw_fill(task,task->draw_dsc,&task->area);
+        result=LV_RESULT_OK;outcome=LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE;
+    }
+    else switch (task->type) {
     case LV_DRAW_TASK_TYPE_FILL:
-        /* The fill path has no fallback: it either runs on the engine or
+        /* The validated fill path has no further fallback: it either runs on the engine or
          * reports a failure, so the outcome is always ENGINE here. */
         result = lv_draw_aic_ge2d_fill(task);
         outcome = LV_DRAW_AIC_GE2D_OUTCOME_ENGINE;
@@ -481,6 +495,7 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
         switch (task->type) {
         case LV_DRAW_TASK_TYPE_FILL:
             g_ge2d_stats.fill_completed++;
+            if(outcome==LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE) g_ge2d_stats.fill_sw_fallback++;
             break;
         case LV_DRAW_TASK_TYPE_IMAGE:
             g_ge2d_stats.image_completed++;

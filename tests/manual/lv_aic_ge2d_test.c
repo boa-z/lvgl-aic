@@ -355,7 +355,8 @@ int lv_aic_ge2d_test_run(void)
     refresh_elapsed_us = aic_get_time_us() - refresh_start_us;
 
     fill = stats->fill_accepted - before.fill_accepted;
-    fill_done = stats->fill_completed - before.fill_completed;
+    fill_done = stats->fill_completed - before.fill_completed -
+                (stats->fill_sw_fallback - before.fill_sw_fallback);
     image = stats->image_accepted - before.image_accepted;
     image_done = stats->image_completed - before.image_completed;
     image_sw = stats->image_sw_fallback - before.image_sw_fallback;
@@ -370,6 +371,7 @@ int lv_aic_ge2d_test_run(void)
     AIC_TEST_I("ge2d engine fill=%u image=%u layer=%u",
           (unsigned)fill_done, (unsigned)(image_done - image_sw),
           (unsigned)(layer_done - layer_sw));
+    AIC_TEST_I("ge2d sw fill=%u", (unsigned)(stats->fill_sw_fallback-before.fill_sw_fallback));
     AIC_TEST_I("ge2d sw image=%u layer=%u declined=%u errors=%u",
           (unsigned)image_sw, (unsigned)layer_sw,
           (unsigned)fallback, (unsigned)errors);
@@ -385,8 +387,7 @@ int lv_aic_ge2d_test_run(void)
         return -1;
     }
 
-    /* Solid, square-cornered rectangles. The fill path has no
-     * fallback, so completed implies the engine drew it. */
+    /* Solid, square-cornered rectangles. fill_done excludes SW fallback. */
     if (fill < AIC_GE2D_MIN_FILL) {
         AIC_TEST_E("FAIL only %u solid FILL tasks reached GE2D, expected >= %u",
               (unsigned)fill, (unsigned)AIC_GE2D_MIN_FILL);
@@ -437,14 +438,10 @@ int lv_aic_ge2d_test_run(void)
     /* Phase 3B: the opa_layered rectangle, which LVGL composites through a
      * LAYER task.
      *
-     * Only the CLAIM is asserted. The engine-drawn count is reported but not
-     * required to be non-zero: LVGL allocates layer buffers with lv_malloc,
-     * which on this SDK is the RT-Thread system heap at 0x30040000 - below the
-     * 0x40000000 floor the D13x GE can reach - so the composite is expected to
-     * fall back to software here. Asserting engine work for LAYER would fail on
-     * correct code, and asserting nothing at all would let a dropped layer go
-     * unnoticed. Claimed-and-completed, with the split reported, is what is
-     * actually true on this board. */
+     * Require claim and completion. CMA now enables hardware composition,
+     * but budget pressure can still use heap/software fallback. The separate
+     * engine count reports which happened; numeric board acceptance remains
+     * distinct from scheduler completion. */
     if (layer == 0U) {
         AIC_TEST_E("FAIL no LAYER task reached GE2D; expected the opa_layered probe");
         return -1;

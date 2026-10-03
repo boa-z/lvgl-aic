@@ -42,16 +42,11 @@ struct mpp_ge;
  *   a task it cannot blit to the software renderer and still reports success, so
  *   a task can finish without the engine having touched a pixel. Read the
  *   engine-drawn count as completed minus sw_fallback.
- * @c image_sw_fallback / @c layer_sw_fallback count the accepted tasks of that
- *   type the executor handed to the software renderer because the engine could
- *   not take the source - an unsupported format, or an address outside the GE
- *   window. This pair is the only way to tell "the unit claimed it" from "the
- *   engine drew it"; without it a completed count reads as acceleration that
- *   never happened. It is expected to be non-zero for LAYER on any board whose
- *   LVGL heap sits below the GE window: layer buffers come from lv_malloc, so
- *   the composite is declined and drawn in software. Nothing is dropped and
- *   nothing is misreported. There is no fill counterpart because the fill path
- *   cannot fall back - it either runs on the engine or fails.
+ * @c fill_sw_fallback / @c image_sw_fallback / @c layer_sw_fallback
+ *   count accepted tasks completed by software. Lazy child-buffer allocation
+ *   can use heap fallback; image sources can also be outside the GE window.
+ *   CMA allocation makes more child layers accessible, but does not guarantee
+ *   every accepted task executes on hardware.
  * @c fallback counts tasks of a supported type this unit declined in
  *   evaluate(), which the software renderer then owns. A task the executor
  *   rejects after the source became visible is counted in the sw_fallback pair
@@ -61,6 +56,7 @@ struct mpp_ge;
 typedef struct {
     uint32_t fill_accepted;
     uint32_t fill_completed;
+    uint32_t fill_sw_fallback;
     uint32_t image_accepted;
     uint32_t image_completed;
     uint32_t scaled_image_engine; /**< successful scaled IMAGE tasks only */

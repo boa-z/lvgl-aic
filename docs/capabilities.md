@@ -818,3 +818,19 @@ layer allocator call site. Clean component `c1574ee837101a14c59cdb1000e983135843
 SDK `65edf972ea87542192b14a2b14c9f9d82e9a31a9`.
 Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
 SHA256 `66ea09e3f6b5a7f9450c3e9855bdaedbf6519f78e1386841e3aaf91ab5145394`. Board **NOT_RUN**.
+
+### Lazy child-layer GE scheduling (2026-10-04)
+
+GE evaluation now accepts supported child-layer formats before LVGL allocates
+their buffers. Previously the missing buffer forced all initial child tasks
+to software even when the eventual allocation was CMA. Dispatch still checks
+the actual destination after allocation; fill on heap fallback is rendered by
+LVGL software, while IMAGE/LAYER keep their existing source/fake/lease fallback
+logic. Partial ARGB fills still stay in software.
+
+Temporary draw-buffer allocation failure keeps the task WAITING for retry,
+matching LVGL software scheduling instead of dropping it as FAILED. Tests
+exercise delayed allocation, retry, actual software fill pixels, GE submission
+and completion/fallback counters. `fill_sw_fallback` now distinguishes accepted
+software fills, and board logs subtract it from reported engine work.
+Hardware execution/cache acceptance remains NOT_RUN.
