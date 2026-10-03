@@ -16,5 +16,19 @@ Empty intersections report NOTHING rather than ENGINE. Traversal is bounded
 by the visible intersection, including a two-billion-pixel task with a tiny clip.
 These mock GE submission; actual tiled pixels and DMA/cache remain NOT_RUN.
 
-Remaining: explicit decoder close-count instrumentation, transformed tiling,
-board numeric probes and target build validation.
+Target build including RGB/ARGB tile numeric probes: PASS.
+The startup scale suite now checks clipped 2x2 native tiles with an independent
+modulo-coordinate oracle, including seam pixels, mixed alpha and every pixel
+outside the clip. Physical execution of these probes remains NOT_RUN.
+
+- Command: tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -Jobs 8
+- SDK source: a7a7f1c3; component source: 51b44c7; LVGL: 80ca777e.
+- Boot/app builds, static symbol checks, image checks and manifest: PASS.
+- Evidence: SDK output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp.
+- Image: images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
+- SHA256: d57ad5cb4d7b182741f5677e78f62998759398994cc1c1a8576b65f27b2102d6.
+- Manifest records clean source states; later documentation commits are not
+  part of this image. This profile directory is replaced by subsequent builds.
+
+Remaining: explicit decoder close-count instrumentation, transformed tiling
+and physical-board numeric acceptance.
