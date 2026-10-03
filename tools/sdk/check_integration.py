@@ -241,6 +241,7 @@ def main():
     parser.add_argument("--with-player", action="store_true")
     parser.add_argument("--with-apng", action="store_true")
     parser.add_argument("--with-barcode", action="store_true")
+    parser.add_argument("--with-spi", action="store_true")
     parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
@@ -302,6 +303,17 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("barcode decoder live symbol absent: " + symbol)
         print("SDK barcode archive and worker adapter live symbols: PASS (not decoder execution)")
+    spi_enabled = re.search(r"^CONFIG_AIC_LVGL_USE_SPI_SDK=y$", config, re.MULTILINE) is not None
+    if spi_enabled != args.with_spi:
+        fail("SPI profile mismatch")
+    if args.with_spi:
+        if not re.search(r"^#define AIC_LVGL_USE_SPI_SDK(?:\s|$)", header, re.MULTILINE):
+            fail("SPI target header mismatch")
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ('lv_aic_spi_display_create_buffered', 'lv_aic_spi_display_create', 'lv_aic_spi_display_get', 'lv_aic_spi_display_result', 'lv_aic_spi_display_close', 'lv_aic_spi_panel_create', 'lv_aic_spi_panel_prepare', 'lv_aic_spi_panel_close', 'lv_aic_spi_session_open_owned', 'lv_aic_spi_session_close', 'lv_aic_spi_worker_create', 'lv_aic_spi_handoff_run', 'lv_aic_spi_sdk_write_qspi', 'lv_aic_spi_sdk_submit_qspi', 'lv_aic_spi_sdk_wait_complete', 'rt_qspi_transfer_message', 'rt_spi_wait_completion', 'rt_spi_nonblock_set', 'rt_spi_get_transfer_status'):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("SPI live symbol absent: " + symbol)
+        print("SPI display/worker/panel/session/SDK final link: PASS (no device execution)")
     turns = args.rotation // 90
     if args.with_aicp:
         if "CONFIG_AIC_MPP_AICP_DEC_ENABLE=y" not in config or not re.search(
