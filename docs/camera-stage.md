@@ -199,3 +199,18 @@ Real SDK header/OSAL/D13x strict compilation also passes; camera-enabled link
 and hardware acceptance remain NOT_RUN. Final object SHA256 values:
 - capture: 9e136350aa9e180fb0367dfd4ea82798080240d267cbd8b80d7ff1111893fd2a
 - widget: eebb8cb1444e930ce5adea0397ba3288b6459daaef4a8a9d375fa4593bcfedec
+
+## RT-Thread configuration-aware camera compile (2026-10-04)
+
+The VIN checker now enters the real RT-Thread configuration path, matching the
+SDK libc definitions and audio/FreeType include paths used by the combined
+profile. All four adapter modules pass E907 -Wall -Wextra -Werror. Defined-symbol
+checks confirm VIN open/close, capture open/close and camera create/channel APIs
+exist in the objects, rather than accepting disabled/empty translation units.
+
+This remains compile-only evidence. The inspected D50T board/smoke defconfigs
+provide no explicit camera sensor, I2C channel or reset selection. Enabling the
+SDK camera choice would silently select its OV5640 default; that is not evidence
+of the user's hardware. A camera-enabled full-image profile and physical capture
+remain NOT_RUN pending a documented board camera configuration. Other port work
+can continue independently; no camera hardware is opened by this checker.
