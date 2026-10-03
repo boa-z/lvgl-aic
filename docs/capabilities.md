@@ -7,7 +7,7 @@ APNG worker and other suffixes to SDK media, retaining the same image object,
 transforms and slave bindings across drained source replacement. APNG rate,
 zero-time replay, finite repeat and metadata use checked common commands.
 The standalone APNG widget remains usable without SDK media/audio.
-Host **51/51 PASS** and strict combined-feature E907 compile **PASS**.
+Host **52/52 PASS** and strict combined-feature E907 compile **PASS**.
 The video-plane stage clean firmware passed boot/app/static/image/manifest;
 source identities and artifact evidence are recorded in [video-plane stage](video-plane-stage.md).
 Physical validation remains **NOT_RUN**.
@@ -602,3 +602,13 @@ format/budget/stride/range checks, CMA failure, public metadata edits, concurren
 owners, non-head removal and 100 balanced lifecycle cycles. Mocks never dereference
 physical addresses and do not prove actual CMA/cache behavior. Target live-symbol
 gates include all four APIs; board NOT_RUN.
+
+
+#### Standalone image-buffer firmware evidence
+
+Host **52/52 PASS**. Full GE/fonts/GIF/widgets/AICP/player/APNG
+boot/app/static/image/manifest gates PASS, including allocator live symbols.
+Clean component `3180cc38ea6d58b62e4f71ccc20381e28814dc0d`, SDK
+`443b32995c4e87c310e35abfcdea888996ae5fcd`.
+SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `c85f345fab0e0fd8d097b176ec8f318d46a59efbfff5643168054dc479d693d3`. Board **NOT_RUN**.
