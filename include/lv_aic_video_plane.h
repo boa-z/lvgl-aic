@@ -22,6 +22,14 @@ bool lv_aic_video_plane_enable_ui_alpha(lv_aic_video_plane_t *plane);
  * hide/close retries are accepted. False never means safe to reclaim pixels. */
 bool lv_aic_video_plane_present(lv_aic_video_plane_t *plane,const void *source,
                                 int32_t x,int32_t y,uint32_t width,uint32_t height);
+/* Clockwise 0/90/180/270 degrees; nonzero requires GE2D and source >=8x8.
+ * Explicit CMA budget includes BOTH the current and next ARGB8888 copy,
+ * padded to 64-byte rows. DE scales the rotated result to the given rectangle.
+ * Budget/allocation/preflight failure leaves old scanout intact and is retryable.
+ * GE submit/emit/sync uncertainty permanently pins source, destination and old
+ * scanout: hide/close return false until reboot. There is no unsafe force-free. */
+bool lv_aic_video_plane_present_rotated(lv_aic_video_plane_t *plane,const void *source,
+    int32_t x,int32_t y,uint32_t width,uint32_t height,unsigned degrees,size_t cma_budget);
 bool lv_aic_video_plane_faulted(const lv_aic_video_plane_t *plane);
 /* Disable + two successful VSync waits before releasing readers. Failure keeps
  * owner/storage alive. Retry from owner thread; never force-free on timeout. */

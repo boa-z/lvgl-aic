@@ -330,7 +330,7 @@ def main():
         print("SDK widget live symbols: PASS")
     if args.with_player:
         text = map_path.read_text(encoding="utf-8", errors="replace")
-        for symbol in ("lv_aic_video_plane_enable_ui_alpha", "lv_aic_video_plane_open", "lv_aic_video_plane_present",
+        for symbol in ("lv_aic_video_plane_present_rotated", "lv_aic_video_plane_enable_ui_alpha", "lv_aic_video_plane_open", "lv_aic_video_plane_present",
                        "lv_aic_video_plane_hide", "lv_aic_video_plane_close", "lv_aic_video_plane_faulted",
                        "lv_aic_player_set_video_plane", "lv_aic_player_create", "lv_aic_player_set_src", "lv_aic_player_start",
                        "lv_aic_player_seek", "lv_aic_player_playback_seek",

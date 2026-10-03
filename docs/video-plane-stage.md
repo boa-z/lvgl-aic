@@ -154,3 +154,26 @@ API is verified live in the final ELF. Sources:
 - ELF SHA256: `baa27813071f5976e305a3f45539451e1a650d0eee6da2be5cbcd394e81d821c`.
 
 Latest combined-profile manifest records this build. Board **NOT_RUN**.
+
+## Bounded GE video-plane rotation (2026-10-04)
+
+`lv_aic_video_plane_present_rotated` adds explicit clockwise 90/180/270-degree
+rotation of native RGB/YUV frames through GE into ARGB8888 CMA storage. Zero
+rotation keeps direct scanout. DE scales the rotated result to the requested
+physical rectangle. Source dimensions must be at least 8x8; the caller supplies
+an independent CMA budget covering both current and replacement copies. Budget,
+allocation and geometry rejection leave the previous scanout intact. Builds
+without GE reject nonzero angles without faulting the session.
+
+Successful GE synchronization retires the native source reader; the copy stays
+owned until verified scanout replacement/disable. Uncertain GE submission,
+emission or synchronization permanently quarantines source/copies/session until
+reboot: no reset/quiescence guarantee exists to permit safe reclamation. DE
+errors after completed GE remain recoverable through hide/close retries.
+
+Host **49/49 PASS**, including disabled-GE and three GE failure injection cases.
+Strict E907 compile **PASS**. Tests verify descriptors, budget and ownership,
+not pixels or hardware DMA. Player widget image/display rotation is still
+unsupported; its geometry and transparent-window mapping need separate work.
+Firmware evidence below must be updated after a clean-source build. Board
+**NOT_RUN**.

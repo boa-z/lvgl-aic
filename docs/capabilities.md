@@ -285,3 +285,12 @@ with that SDK choice. Explicit video-plane mode is opt-in. Do not count the
 absence of automatic video-plane selection as a missing default behavior in
 this profile. Other SDK render profiles and rotated video-plane composition
 still require separate implementation/validation.
+
+## Raw video-plane rotation boundary (2026-10-04)
+
+The explicit video-plane session now supports bounded GE clockwise right-angle
+rotation with a caller-owned additional CMA budget, including simultaneous old
+and new scanout copies. Host 49/49 and strict E907 compilation pass. GE failures
+retain potentially referenced memory until reboot; descriptor tests are not
+pixel/hardware acceptance. Player widget image/display rotation and transformed
+transparent-window placement remain open. See [video-plane stage](video-plane-stage.md).

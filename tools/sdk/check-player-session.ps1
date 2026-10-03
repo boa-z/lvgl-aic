@@ -10,8 +10,8 @@ if (-not $SdkRoot) {
 }
 $sdk=(Resolve-Path $SdkRoot).Path
 $component=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$includes=@('.', 'bsp/common/include', 'bsp/artinchip/sys/d13x/include',
-    'bsp/artinchip/include/uapi', 'bsp/artinchip/include',
+$includes=@('.', 'packages/third-party/freetype/include', 'bsp/common/include', 'bsp/artinchip/sys/d13x/include',
+    'bsp/artinchip/include/uapi', 'bsp/artinchip/include', 'bsp/artinchip/include/drv',
     'packages/artinchip/mpp/ve/include', 'packages/artinchip/mpp/include', 'packages/artinchip/mpp/middle_media/player/include',
     'kernel/rt-thread/include', 'kernel/common/include/osal',
     'kernel/rt-thread/components/finsh', 'kernel/rt-thread/components/drivers/include',
@@ -19,9 +19,9 @@ $includes=@('.', 'bsp/common/include', 'bsp/artinchip/sys/d13x/include',
     'kernel/rt-thread/components/utilities/ulog',
     'kernel/rt-thread/components/libc/posix/pthreads',
     'kernel/rt-thread/components/libc/compilers/common/include')
-$arguments=@('-std=gnu99','-Wall','-Wextra','-Werror',
+$arguments=@('-std=gnu99','-Wall','-Wextra','-Werror','-DKERNEL_RTTHREAD','-DAIC_LVGL_BSP_RTTHREAD=1',
     '-march=rv32imafdcpzpsfoperand_xtheade','-mabi=ilp32d',
-    '-DAIC_LVGL_USE_VIDEO_PLANE=1','-DAIC_LVGL_USE_APNG_WIDGET=1','-DAIC_LVGL_USE_APNG=1','-DAIC_LVGL_USE_PLAYER=1','-DAIC_LVGL_USE_PLAYER_SESSION=1','-DAIC_MPP_PLAYER_VIDEO_EXT_RENDER=1',
+    '-DAIC_LVGL_USE_GE2D=1','-DAIC_LVGL_USE_VIDEO_PLANE=1','-DAIC_LVGL_USE_APNG_WIDGET=1','-DAIC_LVGL_USE_APNG=1','-DAIC_LVGL_USE_PLAYER=1','-DAIC_LVGL_USE_PLAYER_SESSION=1','-DAIC_MPP_PLAYER_VIDEO_EXT_RENDER=1',
     '-DRT_USING_NEWLIB','-DRT_USING_LIBC','-D_POSIX_C_SOURCE=1','-D_SYS__PTHREADTYPES_H_')
 foreach ($path in $includes) { $arguments+=@('-isystem',(Join-Path $sdk $path)) }
 $arguments+=('-I'+(Join-Path $component 'compat'))
