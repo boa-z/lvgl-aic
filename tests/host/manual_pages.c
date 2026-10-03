@@ -51,10 +51,10 @@ static void check_page(lv_obj_t *screen, lv_obj_t *nav, uint32_t first, int page
         fprintf(stderr, "page expected=%d actual=%d pointer=%d,%d\n",
                 page, lv_aic_manual_page_current(), (int)pointer.x, (int)pointer.y);
     assert(lv_aic_manual_page_current() == page);
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < lv_aic_manual_page_count(); i++)
         assert(lv_obj_is_hidden(lv_obj_get_child(screen, first + i)) == (i != page));
     char position[16];
-    snprintf(position, sizeof(position), "%d / 3", page + 1);
+    snprintf(position, sizeof(position), "%d / %d", page + 1, lv_aic_manual_page_count());
     assert(!strcmp(lv_label_get_text(lv_obj_get_child(nav, 1)), position));
     assert(!lv_obj_is_hidden(nav));
 }
@@ -90,8 +90,13 @@ int main(int argc, char **argv)
     for (int cycle = 0; cycle < 3; cycle++) {
         assert(lv_aic_manual_test_create() == LV_AIC_OK);
         assert(lv_aic_manual_test_create() == LV_AIC_ERR_INVALID_STATE);
-        assert(lv_aic_manual_page_count() == 3);
-        assert(lv_obj_get_child_count(screen) == initial + 3);
+        int count = lv_aic_manual_page_count();
+#if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1
+        assert(count == 4);
+#else
+        assert(count == 3);
+#endif
+        assert(lv_obj_get_child_count(screen) == initial + (uint32_t)count);
         lv_obj_t *baseline = lv_obj_get_child(screen, initial);
         lv_obj_t *nav = lv_obj_get_child(lv_layer_top(), top_initial);
         lv_obj_t *next = find_button(nav, "Next >");
@@ -106,11 +111,20 @@ int main(int argc, char **argv)
         check_page(screen, nav, initial, 0);
         /* Actual pointer hit testing catches overlapping buttons, unlike sending
          * CLICKED directly to objects that may be hidden behind another object. */
-        for (int i = 1; i <= 12; i++) { click(indev, next); check_page(screen, nav, initial, i % 3); }
-        for (int i = 1; i <= 12; i++) { click(indev, prev); check_page(screen, nav, initial, (3 - i % 3) % 3); }
+        for (int i = 1; i <= count * 4; i++) { click(indev, next); check_page(screen, nav, initial, i % count); }
+        for (int i = 1; i <= count * 4; i++) { click(indev, prev); check_page(screen, nav, initial, (count - i % count) % count); }
+#if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1
+        lv_aic_manual_page_request(count - 1); lv_aic_manual_page_poll();
+        lv_obj_t *widgets = lv_obj_get_child(screen, initial + count - 1);
+        lv_obj_t *advance = find_button(widgets, "Next icon");
+        assert(advance);
+        click(indev, advance);
+        for (int tick = 0; tick < 30; tick++) { lv_tick_inc(20); lv_timer_handler(); }
+        lv_aic_manual_page_request(0); lv_aic_manual_page_poll();
+#endif
         lv_aic_manual_page_request(-1); lv_aic_manual_page_request(99);
         lv_aic_manual_page_poll(); check_page(screen, nav, initial, 0);
-        for (int page = 0; page < 3; page++) {
+        for (int page = 0; page < count; page++) {
             lv_aic_manual_page_request(page); lv_aic_manual_page_poll();
             check_page(screen, nav, initial, page);
             lv_refr_now(display);

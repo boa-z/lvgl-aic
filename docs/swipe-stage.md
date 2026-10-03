@@ -36,6 +36,9 @@ The complete host configuration passed 11/11 tests.
 `cmake -S tests/host -B output/lvgl-host-ge -DAIC_BUILD_SWIPE_TESTS=ON`
 enables the contract in an already configured external-LVGL host build.
 
-Target cross-build, manual page integration and physical display/input
-acceptance remain pending for both newly adapted SDK widgets. Host PASS
+The shared manual UI has an optional SDK widgets page for both widgets;
+host pointer tests navigate to it and activate its Next icon button.
+Build it with `tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets`.
+The profile checks both feature settings and live linked widget symbols.
+Target cross-build and physical display/input acceptance remain pending. Host PASS
 does not establish hardware rendering, DMA/cache behavior or performance.

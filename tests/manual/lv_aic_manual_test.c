@@ -10,6 +10,15 @@
 #include <stdbool.h>
 #include "lv_aic_font_test.h"
 #include "lv_aic_gif_test.h"
+#include "lv_img_roller.h"
+#include "lv_swipe_v1.h"
+
+#if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1
+#define LV_AIC_WIDGET_TEST 1
+static lv_obj_t *lv_aic_widget_root;
+#else
+#define LV_AIC_WIDGET_TEST 0
+#endif
 
 static lv_obj_t *lv_aic_manual_root;
 static lv_obj_t *lv_aic_manual_status;
@@ -138,9 +147,9 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
 int lv_aic_manual_page_count(void)
 {
 #if LV_AIC_GE2D_IMAGE_TEST
-    return 3;
+    return 3 + LV_AIC_WIDGET_TEST;
 #else
-    return 1;
+    return 1 + LV_AIC_WIDGET_TEST;
 #endif
 }
 
@@ -153,6 +162,11 @@ static void lv_aic_nav_update(void)
 {
     static const char *const titles[] = {"Overview", "Image rotation", "Rotation + scale"};
     if (!lv_aic_nav_title) return;
+#if LV_AIC_WIDGET_TEST
+    if (lv_aic_manual_page_active == lv_aic_manual_page_count() - 1)
+        lv_label_set_text(lv_aic_nav_title, "SDK widgets");
+    else
+#endif
     lv_label_set_text(lv_aic_nav_title, titles[lv_aic_manual_page_active]);
     lv_label_set_text_fmt(lv_aic_nav_position, "%d / %d",
                          lv_aic_manual_page_active + 1, lv_aic_manual_page_count());
@@ -172,6 +186,9 @@ void lv_aic_manual_page_poll(void)
     if (page >= lv_aic_manual_page_count()) return;
     lv_aic_manual_page_active = page;
     lv_obj_set_hidden(lv_aic_manual_root, page != 0);
+#if LV_AIC_WIDGET_TEST
+    lv_obj_set_hidden(lv_aic_widget_root, page != lv_aic_manual_page_count() - 1);
+#endif
 #if LV_AIC_GE2D_IMAGE_TEST
     lv_obj_set_hidden(lv_aic_rotation_root, page != 1);
     lv_obj_set_hidden(lv_aic_combo_root, page != 2);
@@ -204,6 +221,63 @@ static lv_obj_t *lv_aic_nav_button(const char *text, int32_t x, int direction)
     if (lv_aic_manual_page_count() == 1) lv_obj_add_state(button, LV_STATE_DISABLED);
     return button;
 }
+
+#if LV_AIC_WIDGET_TEST
+static void lv_aic_swipe_button(lv_event_t *e)
+{
+    lv_obj_t *swipe = lv_event_get_user_data(e);
+    lv_swipe_v1_set_next(swipe, LV_ANIM_ON);
+}
+
+static int lv_aic_widget_page_create(lv_display_t *display)
+{
+    static const char *const symbols[] = {LV_SYMBOL_HOME, LV_SYMBOL_SETTINGS,
+                                         LV_SYMBOL_AUDIO, LV_SYMBOL_IMAGE};
+    int32_t width = lv_display_get_horizontal_resolution(display);
+    int32_t height = lv_display_get_vertical_resolution(display) - 64;
+    lv_aic_widget_root = lv_obj_create(lv_screen_active());
+    if (!lv_aic_widget_root) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_pos(lv_aic_widget_root, 0, 64);
+    lv_obj_set_size(lv_aic_widget_root, width, height);
+    lv_obj_set_style_pad_all(lv_aic_widget_root, 12, 0);
+    lv_obj_set_style_bg_color(lv_aic_widget_root, lv_color_hex(0x202020), 0);
+    lv_obj_set_style_text_color(lv_aic_widget_root, lv_color_white(), 0);
+    lv_obj_set_scrollable(lv_aic_widget_root, false);
+    lv_obj_t *label = lv_label_create(lv_aic_widget_root);
+    lv_obj_t *roller = lv_img_roller_create(lv_aic_widget_root);
+    lv_obj_t *swipe = lv_swipe_v1_create(lv_aic_widget_root);
+    lv_obj_t *button = lv_button_create(lv_aic_widget_root);
+    if (!label || !roller || !swipe || !button) return LV_AIC_ERR_NO_MEMORY;
+    lv_label_set_text(label, "Drag the carousel | Tap side icons or Next | Tap front icon to toggle");
+    lv_obj_set_width(label, width - 40);
+    lv_obj_set_pos(roller, 8, 44);
+    lv_obj_set_size(roller, width - 48, 100);
+    lv_img_roller_set_loop_mode(roller, LV_ROLL_LOOP_ON);
+    lv_img_roller_set_transform_ratio(roller, 128);
+    for (int i = 0; i < 4; i++) {
+        if (!lv_img_roller_add_child(roller, symbols[i])) return LV_AIC_ERR_NO_MEMORY;
+        lv_swipe_v1_child_add_state_src(swipe, i, (void *)symbols[i], (void *)symbols[i]);
+        lv_swipe_v1_child_add_state_src(swipe, i, (void *)LV_SYMBOL_OK, (void *)LV_SYMBOL_CLOSE);
+        lv_obj_t *child = lv_swipe_v1_get_child(swipe, i);
+        if (!child) return LV_AIC_ERR_NO_MEMORY;
+        lv_obj_set_pos(child, 40 + i * (width - 160) / 4, i == 3 ? 50 : 16);
+        lv_obj_set_style_transform_scale(child, i == 3 ? 512 : 256, 0);
+    }
+    lv_img_roller_ready(roller);
+    lv_obj_set_pos(swipe, 8, 160);
+    lv_obj_set_size(swipe, width - 48, 130);
+    lv_swipe_v1_set_anim_params(swipe, 400, NULL);
+    lv_obj_set_size(button, 120, 44);
+    lv_obj_align(button, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
+    lv_obj_add_event_cb(button, lv_aic_swipe_button, LV_EVENT_CLICKED, swipe);
+    label = lv_label_create(button);
+    if (!label) return LV_AIC_ERR_NO_MEMORY;
+    lv_label_set_text(label, "Next icon");
+    lv_obj_center(label);
+    lv_obj_set_hidden(lv_aic_widget_root, true);
+    return LV_AIC_OK;
+}
+#endif
 
 static int lv_aic_nav_create(lv_display_t *display)
 {
@@ -627,6 +701,9 @@ int lv_aic_manual_test_create(void)
     if (lv_aic_combo_page_create(display) != LV_AIC_OK) goto fail;
 #endif
 
+#if LV_AIC_WIDGET_TEST
+    if (lv_aic_widget_page_create(display) != LV_AIC_OK) goto fail;
+#endif
     if (lv_aic_nav_create(display) != LV_AIC_OK) goto fail;
 
 #if LV_USE_FREETYPE && AIC_LVGL_BSP_RTTHREAD
@@ -650,6 +727,10 @@ const char *lv_aic_manual_test_status_text(void)
 
 void lv_aic_manual_test_deinit(void)
 {
+#if LV_AIC_WIDGET_TEST
+    if (lv_aic_widget_root) lv_obj_delete(lv_aic_widget_root);
+    lv_aic_widget_root = NULL;
+#endif
 #if LV_USE_GIF && AIC_LVGL_BSP_RTTHREAD
     lv_aic_gif_test_deinit();
 #endif

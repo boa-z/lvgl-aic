@@ -61,7 +61,7 @@ def check_submodule(root, path, expected):
         fail("%s is %s, expected %s" % (path, actual, expected))
 
 
-def check_config(root, phase="gate1", with_fonts=False, with_gif=False):
+def check_config(root, phase="gate1", with_fonts=False, with_gif=False, with_widgets=False):
     config = (root / ".config").read_text(encoding="utf-8")
     header = (root / "rtconfig.h").read_text(encoding="utf-8")
     for symbol in REQUIRED_CONFIG_SYMBOLS:
@@ -82,6 +82,11 @@ def check_config(root, phase="gate1", with_fonts=False, with_gif=False):
     defined = bool(re.search(r"^#define AIC_LVGL_USE_GIF(?:\s|$)", header, re.MULTILINE))
     if enabled != with_gif or defined != with_gif:
         fail("GIF profile mismatch")
+    for symbol in ("AIC_LVGL_USE_IMG_ROLLER", "AIC_LVGL_USE_SWIPE_V1"):
+        enabled = bool(re.search(r"^CONFIG_%s=y$" % symbol, config, re.MULTILINE))
+        defined = bool(re.search(r"^#define %s(?:\s|$)" % symbol, header, re.MULTILINE))
+        if enabled != with_widgets or defined != with_widgets:
+            fail("widget profile mismatch: " + symbol)
     disabled = list(DISABLED_CONFIG_SYMBOLS)
     if phase in ("mpp", "ge2d"):
         disabled.remove("AIC_LVGL_USE_MPP_DEC")
@@ -139,6 +144,7 @@ def main():
     parser.add_argument("--phase", choices=("gate1", "mpp", "ge2d"), default="gate1")
     parser.add_argument("--with-fonts", action="store_true")
     parser.add_argument("--with-gif", action="store_true")
+    parser.add_argument("--with-widgets", action="store_true")
     parser.add_argument("--allow-component-dirty", action="store_true",
                         help="Development builds only; preserve the component diff with evidence")
     args = parser.parse_args()
@@ -165,7 +171,7 @@ def main():
         map_path.relative_to(root)
     except ValueError:
         fail("link map is outside the integration checkout: %s" % map_path)
-    check_config(root, args.phase, args.with_fonts, args.with_gif)
+    check_config(root, args.phase, args.with_fonts, args.with_gif, args.with_widgets)
     check_map(map_path)
     if args.phase in ("mpp", "ge2d"):
         text = map_path.read_text(encoding="utf-8", errors="replace")
@@ -229,6 +235,13 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("native GIF live symbol absent: " + symbol)
         print("native GIF live symbols: PASS")
+    if args.with_widgets:
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_img_roller_create", "lv_img_roller_ready",
+                       "lv_swipe_v1_create", "lv_swipe_v1_set_next"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("SDK widget live symbol absent: " + symbol)
+        print("SDK widget live symbols: PASS")
     print(args.phase + " static checks: PASS (not board validation)")
 
 

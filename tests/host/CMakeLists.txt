@@ -332,6 +332,13 @@ if(AIC_BUILD_IMG_ROLLER_TESTS)
 endif()
 
 if(AIC_BUILD_SWIPE_TESTS)
+    if(AIC_BUILD_IMG_ROLLER_TESTS)
+        target_sources(lvgl_aic_manual_pages PRIVATE
+            "${AIC_ROOT}/widgets/lv_img_roller.c" "${AIC_ROOT}/widgets/lv_swipe_v1.c")
+        target_include_directories(lvgl_aic_manual_pages PRIVATE "${AIC_ROOT}/compat")
+        target_compile_definitions(lvgl_aic_manual_pages PRIVATE
+            AIC_LVGL_USE_IMG_ROLLER=1 AIC_LVGL_USE_SWIPE_V1=1)
+    endif()
     add_executable(lvgl_aic_swipe_contract swipe_contract.c
         "${AIC_ROOT}/widgets/lv_swipe_v1.c")
     target_include_directories(lvgl_aic_swipe_contract PRIVATE
