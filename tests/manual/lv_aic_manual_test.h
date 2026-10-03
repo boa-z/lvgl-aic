@@ -29,6 +29,7 @@ int lv_aic_mpp_resource_test_run(void);
 int lv_aic_ge2d_test_run(void);
 int lv_aic_ge2d_fill_test_run(void);
 int lv_aic_ge2d_scale_test_run(void);
+int lv_aic_yuv_test_run(void);
 #endif
 void lv_aic_manual_test_deinit(void);
 const char *lv_aic_manual_test_status_text(void);

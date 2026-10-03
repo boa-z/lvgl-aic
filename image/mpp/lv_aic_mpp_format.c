@@ -26,7 +26,8 @@ bool lv_aic_mpp_format_to_lvgl(enum mpp_pixel_format mpp_fmt,
      * asks for it, and Phase 2 validated the decoder against RGB565/RGB888/
      * ARGB8888 only. Keep the accepted set symmetric with from_lvgl() so this
      * translation never widens decoder behaviour by accident. */
-    if (mpp_fmt == MPP_FMT_XRGB_8888) {
+    if (mpp_fmt != MPP_FMT_RGB_565 && mpp_fmt != MPP_FMT_RGB_888 &&
+        mpp_fmt != MPP_FMT_ARGB_8888) {
         return false;
     }
 
@@ -38,7 +39,8 @@ bool lv_aic_mpp_format_from_lvgl(lv_color_format_t lv_fmt,
 {
     /* XRGB8888 is a valid GE2D destination but no decoder entry point requests
      * it, so it stays out of the decoder's accepted set. */
-    if (lv_fmt == LV_COLOR_FORMAT_XRGB8888) {
+    if (lv_fmt != LV_COLOR_FORMAT_RGB565 && lv_fmt != LV_COLOR_FORMAT_RGB888 &&
+        lv_fmt != LV_COLOR_FORMAT_ARGB8888) {
         return false;
     }
 

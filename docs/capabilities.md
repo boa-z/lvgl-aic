@@ -79,7 +79,7 @@ not from assumptions that every LVGL draw feature is hardware accelerated.
 | Capability | SDK source evidence | Port status / next work |
 |---|---|---|
 | Image tiling | lv_ge2d/lv_draw_ge2d_img.c calls the tiled image helper | Native-size clipped IMAGE tiles implemented with whole-task preflight; target build and probe integration PASS; transformed tiles and board validation remain; see [tiling stage](ge-tiling-stage.md) |
-| YUV image input | lv_ge2d/lv_draw_ge2d.c accepts YUV with orthogonal rotations | Genuine gap; needs multi-plane ownership, format metadata and GE/SW behavior |
+| YUV image input | lv_ge2d/lv_draw_ge2d.c accepts YUV with orthogonal rotations | Bounded 8-format frame views, CPU conversion and MPP metadata implemented; LVGL/GE rendering and frame publication still pending; see [YUV stage](yuv-stage.md) |
 | fake image | aic_ui.h encodes dimensions/blend/color in a .fake path; GE turns it into a fill | Implemented bounded parser, LVGL 9.6 virtual-file bridge and GE/CPU replacement/blend; board pending; see [fake stage](fake-image-stage.md) |
 | Arbitrary rotation plus scale | ge2d_draw_img_supported explicitly rejects it | Future extension beyond this SDK baseline |
 | Recolor / bitmap mask | ge2d_draw_img_supported explicitly rejects both | Software fallback is consistent with SDK; GE support is an extension |

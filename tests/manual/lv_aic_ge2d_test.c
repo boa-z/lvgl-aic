@@ -343,6 +343,7 @@ int lv_aic_ge2d_test_run(void)
     }
 
     if (lv_aic_ge2d_fill_test_run() != 0) return -1;
+    if (lv_aic_yuv_test_run() != 0) return -1;
 
     before = *stats;
 
