@@ -54,4 +54,5 @@ Strict D13x compilation PASS; SDK `output/roller-child-lv_img_roller.o` SHA256:
 `71250b24d08d17022e44107b320195ab91e8315a9a9001489e636a1780e806f1`.
 Logs: component `output/roller-child-before.log`, `output/roller-child-build.log`,
 `output/roller-child-tests.log`, `output/roller-child-target.log`.
-Full-firmware refresh and physical drag/rendering acceptance remain pending.
+Full-firmware refresh PASS at `eab1b40`; see
+[validation.md](validation.md). Physical drag/rendering acceptance remains pending.

@@ -1,5 +1,23 @@
 # Validation record
 
+## Image roller and SPI GE combined firmware (2026-10-04)
+
+Current clean 90-degree GE/font/GIF/widget/AICP/player/APNG/barcode/SPI profile:
+boot/app, static/live-link, image and provenance gates **PASS**. Includes pending
+image-roller target removal protection, SPI scale bounds/split-risk checks and
+GE session integration. Host composed CPU/GE pipelines: **70/70 PASS**.
+
+- lvgl-aic: `eab1b4045d16359da773b324a20eda10c0a28454` (clean).
+- sdk: `30ec4fa2d9d7e630ea2b09b2b8a60c025d02397a` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `dc8bfd58a19a4b391e296081905b7a44c67fbb459d1d0528829bf1cc6c9bc89f`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-rotate90/manifest.json`.
+
+The image hash was independently rechecked against the saved artifact. No SPI
+panel is instantiated. Physical board execution **NOT_RUN**; no flashing.
+This supersedes pending full-firmware notes for the roller child lifecycle and
+SPI ratio/split guard. Test and source history below is retained as milestones.
+
 ## SPI GE session firmware (2026-10-04)
 
 Combined GE/font/GIF/widget/AICP/player/APNG/barcode/SPI with rotation 90:
