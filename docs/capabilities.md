@@ -57,7 +57,7 @@ phase documents are historical; source presence and switches are not board proof
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
 | Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
-| AIC canvas | Owned ARGB8888 CMA buffer; bounded peak allocation; positioned and clearing centered text; host pixels/lifecycle and target live-link gates | Board CMA/cache/display validation; standalone SDK MPP image/fill helper API parity |
+| AIC canvas | Owned ARGB8888 CMA buffer; bounded peak allocation; positioned and clearing centered text; host pixels/lifecycle and target live-link gates | Board CMA/cache/display validation; standalone packed-RGB fill helper implemented, native YUV fill still pending |
 | Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu have host interaction contracts, a manual page and target linkage gates; physical input/rendering and direct video-window composition remain pending; camera/player use separate opt-in adapters |
 
 SDK image roller is now optional via AIC_LVGL_USE_IMG_ROLLER: application-owned
@@ -635,3 +635,13 @@ submission without poisoning GE. Host contracts verify descriptor fields, all
 packed formats, crop/range rejection, cache sequencing and each failure stage.
 They do not establish gradient/blend pixel correctness. Native YUV fill, board
 numeric probes and physical acceptance remain open; board NOT_RUN.
+
+
+#### GE fill helper firmware evidence
+
+Host **52/52 PASS**. Full GE/fonts/GIF/widgets/AICP/player/APNG
+boot/app/static/image/manifest gates PASS, including live `lv_ge_fill`.
+Clean component `06665c9c5ed3298296c74ac630d8820fb233f784`, SDK
+`0f62248e583c41cb87cc78e72d67e2573326ea7e`.
+SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `37b2883fb39eee6befafca5b3d26a020b3a55d1f8ca82f17bfdb8801ec948385`. Board **NOT_RUN**.
