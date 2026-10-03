@@ -469,3 +469,15 @@ retirement, no EOS/no fresh frames/unseekable suppression, disabling from the
 terminal event, audio-only progress gating and callback deletion. Strict target
 compilation **PASS**. Real media loop continuity, repeated decode resource
 behavior and A/V synchronization remain **NOT_RUN** pending board validation.
+
+### Auto-restart firmware evidence
+
+Standard `-WithPlayer` profile: boot/app/static/image/manifest **PASS**, including
+live auto-restart control/counter symbols. Clean sources: SDK `f258a3c3`,
+component `8fd7708`, LVGL `80ca777e`. Physical board validation: **NOT_RUN**.
+
+- Evidence directory: `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player`.
+- Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img` SHA256:
+  `7ed344b277de6a2f13a5591e6f0144b593426deefa40a7294b70b37fdd879e58`.
+- ELF SHA256: `801604c625b66e8c45e73e67f15af6f374b7829a43888ac7799acaf8ad315556`.
+- This replaces the slave-stage image in the same evidence directory.
