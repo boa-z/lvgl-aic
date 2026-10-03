@@ -568,3 +568,13 @@ repeatedly (no corruption), and leave/return (same generation/text). Record seri
 logs and image identity with the visual result. No board result is claimed here.
 Host snapshot: set `AIC_CANVAS_PAGE_PPM` to an output path when running the manual
 page contract to save the software frame after replace/rebuild interactions.
+
+
+#### Canvas acceptance-page firmware evidence
+
+Host **51/51 PASS**. Complete GE/fonts/GIF/widgets/AICP/player/APNG
+boot/app/static/image/manifest gates PASS. Clean component
+`f7f0f7c98af63f8491adbc4ac9301e863fb65ac3`, SDK
+`2054943be3f13304d32a1da003ddfbb21bed5c59`.
+SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `e18661e1b9804a219177f0e1160034658acdbdfab6c6f14a680c495adc7a0e31`. Board **NOT_RUN**.
