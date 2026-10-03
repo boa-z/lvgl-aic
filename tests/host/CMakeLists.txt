@@ -921,3 +921,19 @@ if(AIC_BUILD_WIDGET_TESTS AND EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/inc
     endif()
     add_test(NAME lvgl_aic_canvas_image_contract COMMAND lvgl_aic_canvas_image_contract)
 endif()
+
+if(AIC_BUILD_WIDGET_TESTS AND EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/include/mpp_ge.h")
+    add_executable(lvgl_aic_native_fill_probe_contract native_fill_probe_contract.c)
+    target_include_directories(lvgl_aic_native_fill_probe_contract PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/native_fill_stubs" "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs"
+        "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${AIC_ROOT}/draw/ge2d" "${AIC_ROOT}/tests/manual"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/drv" "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+    target_compile_definitions(lvgl_aic_native_fill_probe_contract PRIVATE
+        AIC_LVGL_USE_CANVAS=1 AIC_LVGL_USE_GE2D=1 AIC_LVGL_BSP_RTTHREAD=1 AIC_LVGL_BSP_MPP=1)
+    target_link_libraries(lvgl_aic_native_fill_probe_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_native_fill_probe_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_native_fill_probe_contract COMMAND lvgl_aic_native_fill_probe_contract)
+endif()

@@ -268,6 +268,9 @@ int lv_aic_ge2d_fill_test_run(void)
     AIC_TEST_I("PASS 12 solid-fill numeric probes; panel acceptance remains separate");
     if (fake_probe(0) || fake_probe(128) || fake_probe(255)) return -1;
     if(key565_probe()) return -1;
+#if AIC_LVGL_USE_CANVAS
+    if(lv_aic_native_fill_test_run()) return -1;
+#endif
     return 0;
 }
 #endif

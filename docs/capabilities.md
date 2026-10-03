@@ -679,3 +679,27 @@ boot/app/static/image/manifest gates PASS. Clean component
 `fb3a70ddbbc2a01e2080444c7bbb5911241b0c5a`.
 SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
 SHA256 `102632cc744f95a5d9567030ec3d1f5b94279f9f9526e3e8827c57511729e72e`. Board **NOT_RUN**.
+
+
+### Native gradient numeric probes and SDK CMDQ defect (2026-10-04)
+
+The existing fill-test runner now includes 24 offscreen native gradient cases
+when canvas support is enabled: ARGB8888/RGB888/RGB565, horizontal/vertical,
+blend off/on and increasing/decreasing channels. An 8x8 crop in a 16x16 owned
+CMA buffer has untouched pixel/row-padding sentinels. Independent arithmetic
+checks every RGB sample (tolerance 2, or 5 for RGB565) and replacement alpha.
+DMA failure uses shared quarantine and retains the allocation; numeric mismatch
+after completed sync releases it. These probes are compiled, not board-executed.
+
+Source inspection found a real reference defect in SDK
+`packages/artinchip/mpp/ge/cmdq_ops.c:update_gradient_cmd`: green step writes
+`cmd[3]`, then blue overwrites `cmd[3]`; `cmd[2]` is uninitialized. The D50T
+profile enables AIC_GE_CMDQ. Distinct green/blue slopes in the probe deliberately
+expose this defect. Do NOT interpret descriptor-only helper PASS as functioning
+CMDQ gradients. An application-owned correction is still required; SDK files
+must stay untouched. YUV CSC numeric probes are also still pending. Board NOT_RUN.
+
+The host probe contract injects a no-op engine, corrupt green channel and crop
+boundary write, and checks all are rejected. It also verifies DMA failure retains
+storage and blocks subsequent probes. A synthetic RGB generator drives the 24
+nominal cases solely to test the checker; it does not emulate hardware evidence.
