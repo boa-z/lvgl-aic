@@ -283,6 +283,26 @@ if(AIC_SDK_ROOT)
     add_test(NAME lvgl_aic_vin_session_contract COMMAND lvgl_aic_vin_session_contract)
     target_link_libraries(lvgl_aic_vin_session_contract PRIVATE lvgl)
     find_package(Threads REQUIRED)
+    add_executable(lvgl_aic_player_clock_contract player_clock_contract.c
+        "${AIC_ROOT}/common/lv_aic_player_clock.c")
+    target_include_directories(lvgl_aic_player_clock_contract PRIVATE "${AIC_ROOT}/compat")
+    add_executable(lvgl_aic_player_events_contract player_events_contract.c
+        "${AIC_ROOT}/port/lv_aic_player_events.c")
+    target_include_directories(lvgl_aic_player_events_contract PRIVATE
+        "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/player_stubs"
+        "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/middle_media/player/include"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+    target_compile_definitions(lvgl_aic_player_events_contract PRIVATE AIC_LVGL_USE_PLAYER_SESSION=1)
+    target_link_libraries(lvgl_aic_player_events_contract PRIVATE Threads::Threads)
+    foreach(contract player_clock player_events)
+        if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(lvgl_aic_${contract}_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        endif()
+        add_test(NAME lvgl_aic_${contract}_contract COMMAND lvgl_aic_${contract}_contract)
+        set_tests_properties(lvgl_aic_${contract}_contract PROPERTIES TIMEOUT 15)
+    endforeach()
     add_executable(lvgl_aic_player_frames_contract player_frames_contract.c
         "${AIC_ROOT}/port/lv_aic_player_frames.c" "${AIC_ROOT}/port/lv_aic_player_session.c"
         "${AIC_ROOT}/port/lv_aic_player_allocator.c" "${AIC_ROOT}/common/lv_aic_yuv.c"

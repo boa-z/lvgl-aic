@@ -111,9 +111,39 @@ background player. SDK PLAY_END also represents some decoder errors, so it
 must not be treated as proof of clean EOS. RGB publication remains pending;
 this bridge rejects RGB and error-marked frames without consuming their lease.
 
+## Media clock and event mailbox / 媒体时钟与事件邮箱
+
+`compat/lv_aic_player_clock.h` / `common/lv_aic_player_clock.c` provide a
+worker-owned microsecond timeline: explicit source/seek reset, audio-reference
+sync, idempotent pause/resume, position and wait/present/drop decisions.
+Future frames never publish early. Late tolerance is supplied by the caller;
+there is no guessed frame rate, discontinuity repair or playback-speed policy.
+Negative audio preroll PTS is supported. Backward monotonic time and arithmetic
+overflow fail transactionally, preserving clock state and output values.
+
+`compat/lv_aic_player_events.h` / `port/lv_aic_player_events.c` register a
+small SDK callback that records timestamped audio PTS, terminal and format
+notifications under an independent OSAL mutex. It never calls back into the
+SDK or LVGL. Snapshot readers see a coherent pair of 64-bit audio PTS and wall
+time. Registration failure keeps the potentially installed callback alive;
+mailbox destruction refuses until the associated SDK session has been closed.
+Create a fresh mailbox for a new session; terminal/format failure flags are
+sticky, not an implicitly reset seek epoch.
+
+SDK 的纯视频 get_play_time 依赖内部 video renderer 的 PTS；外部渲染模式不能靠
+它自动走时。带音频模式优先使用 PLAY_TIME 回调：其值是音频帧 PTS 减去音频设备
+缓存时长，可能为负。回调的两个 32 位片段按无符号位模式重组，不从另一线程直接
+读取 SDK 未同步的 64 位字段。后台 worker 仍需选择主时钟并把样本接入 timeline，
+不能把单元测试的 clock helper 当成已完成音视频同步。
+
+SDK PLAY_END 也用于解码器错误和资源不足，邮箱只记录 terminal 通知，不声明
+正常 EOS。帧错误、EOS 帧标志与 terminal 事件必须由后续播放状态机分别处理。
+另外 D13x 的 MJPEG external-render 路径按 framebuffer 格式请求 RGB 输出；
+当前 YUV bridge 会拒绝这些帧，RGB publication 必须补齐才覆盖该播放路径。
+
 ## Evidence
 
-- Host **27/27 PASS**, actual SDK player/mpp_frame declarations, mocked player
+- Host **29/29 PASS**, actual SDK player/mpp_frame declarations, mocked player
   operations. New checks cover setup/metadata/start/pause/resume/seek failures,
   idempotent pause, frame saturation, stale tickets across reopen, transactional
   getters, held-frame stop/seek/close refusal, return retry, stop/destroy retry,
@@ -130,8 +160,13 @@ this bridge rejects RGB and error-marked frames without consuming their lease.
   shutdown with readers, unpublished close and close during worker cache handoff.
   SDK calls/cache operations assert worker-thread ownership. No physical pixel
   memory is dereferenced by this test; CPU conversion has separate coverage.
+- Clock contract: exact due/late boundaries, pause freeze/idempotence/resume,
+  negative audio PTS, explicit reset, stale sample rejection and signed/unsigned
+  64-bit limits. Event contract: real concurrent pthread callbacks/snapshots,
+  10,000 alternating signed audio timestamps, sticky terminal/format flags,
+  unknown events, partial registration failure and destruction refusal.
 - `tools/sdk/check-player-session.ps1`: D13x E907 double-float ABI, real SDK
-  player/allocator/frame bridge and RT-Thread pthread headers, -Wall -Wextra -Werror: PASS.
+  player/allocator/frame bridge/events/clock and RT-Thread pthread headers, -Wall -Wextra -Werror: PASS.
   The script uses the SDK's Newlib/POSIX defines from compiler/pthread
   SConscript, including _POSIX_C_SOURCE=1 and _SYS__PTHREADTYPES_H_. It does not
   change SDK configuration or substitute host pthread declarations for target.
@@ -141,13 +176,17 @@ this bridge rejects RGB and error-marked frames without consuming their lease.
   a64904bcfccb70d3ebf2359637f903f4b8319e87be928011f42b4742dd1b4682.
 - SDK output/lvgl-player-frames.o SHA256:
   3e477e8dad6a0d74fa9fd102a903bebdb7712318dc4cd9ca1dc7b1e1b42b5c82.
+- SDK output/lvgl-player-events.o SHA256:
+  1de7123a1f3a67316156db124d15ca2a2dd314af42a47601ac0be2fb66b7cf1e.
+- SDK output/lvgl-player-clock.o SHA256:
+  d3ff0e11058f87bde95e23c925a09f5619321d0fa38686a62ec19866a5ab130b.
 - Media-enabled image linking, real demux/codec/audio playback, physical DMA
   lifetime and board execution: **NOT_RUN**. The current GE image has no player.
 
 ## Remaining SDK parity
 
-Implement background command/event handling (including EOS/error/seek), PTS
-pacing and audio/video synchronization, RGB publication, player widget controls, source replacement, repeat/rate behavior, slave and group
+Integrate background command/event handling (including EOS/error/seek), PTS
+pacing and audio/video synchronization using the clock and event primitives, RGB publication, player widget controls, source replacement, repeat/rate behavior, slave and group
 lifetimes, APNG backend, and explicit video-plane composition/ownership.
 Do not report this internal session as a complete player widget or as tested
 hardware decoding. All physical verification remains deferred.

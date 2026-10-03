@@ -114,6 +114,9 @@ frames. An application-owned CMA allocator now supplies verified plane bounds,
 explicit memory budget, cache handoff and deferred free for pinned readers;
 the bounded MPP importer applies aligned YUV crops. The immutable YUV publication
 bridge transfers session/allocator leases to LVGL readers and returns frames
-only on its worker, with delayed close and failed-put retry. Host ABI contracts and target compilation pass; the background player,
+only on its worker, with delayed close and failed-put retry. A pauseable media
+clock and coherent SDK callback mailbox now provide timing/event primitives;
+PLAY_END remains an ambiguous terminal notification, not clean EOS evidence.
+Host ABI contracts and target compilation pass; the background player,
 widget, PTS/audio-video timing, RGB publication, APNG, group/slave and video-plane integration remain
 open. No media-enabled image or physical playback has been verified.
