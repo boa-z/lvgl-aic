@@ -886,3 +886,16 @@ barcode boot/app/static/image/manifest **PASS**. Clean component
 Evidence directory: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
 The new probe is built into this candidate; no physical execution or flashing
 was performed. Camera capture remains disabled in this profile.
+
+
+### Native fill stride register guard
+
+`lv_ge_fill` now rejects any active-plane stride above 65535 before cache
+handoff or GE submission. SDK `bsp/artinchip/hal/ge/hal_ge_reg.h`
+`DST_STRIDE_SET`/`OUTPUT_STRIDE_SET` mask pitches to 16 bits, so a larger
+caller-owned buffer could previously pass capacity validation but submit a
+truncated row pitch. Existing immutable YUV import already enforced this limit.
+RGB888 pitch 65535, aligned ARGB8888 pitch 65532 and planar/semiplanar YUV
+pitch 65535 remain accepted; 65536 is rejected without quarantining GE.
+Host **57/57 PASS**, including boundary pitches and independent chroma checks.
+This is an application-side guard; SDK code is unchanged.

@@ -135,7 +135,10 @@ int lv_ge_fill(struct mpp_buf *buf,enum ge_fillrect_type type,
     for(unsigned i=0;i<planes;i++) {
         uint32_t address=dst.phy_addr[i];
         uint64_t bytes=(uint64_t)dst.stride[i]*rows[i];
-        if(!address || address%alignment || dst.stride[i]%alignment ||
+        /* GE DST/OUTPUT_STRIDE_SET masks each pitch to 16 bits. Reject
+         * truncation before cache handoff or submission, including foreign
+         * buffers whose large capacity would otherwise pass span checks. */
+        if(!address || address%alignment || dst.stride[i]>UINT16_MAX || dst.stride[i]%alignment ||
            dst.stride[i]<pitch[i] || bytes>(uint64_t)UINT32_MAX-address+1) return LV_RESULT_INVALID;
 #if defined(AIC_CHIP_D13X) || defined(AIC_CHIP_G73X)
         if(address<0x40000000U) return LV_RESULT_INVALID;

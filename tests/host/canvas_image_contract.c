@@ -147,6 +147,32 @@ static void yuv_fill_contract(void)
     for(unsigned i=0;i<3;i++) lv_mpp_image_free(parts[i]);
     assert(allocs==frees);
 }
+static void stride_limit_contract(void)
+{
+    struct mpp_buf b={.buf_type=MPP_PHY_ADDR,.format=MPP_FMT_RGB_888,
+        .size={16,16},.stride={65535},.phy_addr={0x48000000}};
+    unsigned old_clean=cleans,old_invalid=invalidates;
+    assert(lv_ge_fill(&b,GE_NO_GRADIENT,0,0,0)==LV_RESULT_OK);
+    assert(captured.dst_buf.stride[0]==65535);
+    b.stride[0]=65536;
+    unsigned old=submits;
+    assert(lv_ge_fill(&b,GE_NO_GRADIENT,0,0,0)==LV_RESULT_INVALID && submits==old && !fault);
+    b.format=MPP_FMT_ARGB_8888;b.stride[0]=65532;
+    assert(lv_ge_fill(&b,GE_NO_GRADIENT,0,0,0)==LV_RESULT_OK);
+    b.stride[0]=65536;old=submits;
+    assert(lv_ge_fill(&b,GE_NO_GRADIENT,0,0,0)==LV_RESULT_INVALID && submits==old && !fault);
+    b.format=MPP_FMT_YUV444P;b.stride[0]=b.stride[1]=b.stride[2]=65535;
+    b.phy_addr[1]=0x49000000;b.phy_addr[2]=0x4a000000;
+    assert(lv_ge_fill(&b,GE_NO_GRADIENT,0,0,0)==LV_RESULT_OK);
+    /* Keep chroma pitches equal to isolate register width from layout checks. */
+    b.stride[1]=b.stride[2]=65536;old=submits;
+    assert(lv_ge_fill(&b,GE_NO_GRADIENT,0,0,0)==LV_RESULT_INVALID && submits==old && !fault);
+    b.format=MPP_FMT_NV12;b.stride[0]=64;b.stride[1]=65536;
+    assert(lv_ge_fill(&b,GE_NO_GRADIENT,0,0,0)==LV_RESULT_INVALID && submits==old && !fault);
+    b.stride[1]=65535;
+    assert(lv_ge_fill(&b,GE_NO_GRADIENT,0,0,0)==LV_RESULT_OK);
+    assert(cleans==old_clean && invalidates==old_invalid);
+}
 int main(void)
 {
     lv_init();
@@ -192,5 +218,5 @@ int main(void)
     lv_mpp_image_free(second);assert(allocs==frees);
     struct lv_mpp_buf foreign={0};lv_mpp_image_flush_cache(&foreign);lv_mpp_image_free(&foreign);
     lv_mpp_image_flush_cache(NULL);lv_mpp_image_free(NULL);
-    assert(allocs==frees);fill_contract();yuv_fill_contract();lv_deinit();return 0;
+    assert(allocs==frees);fill_contract();yuv_fill_contract();stride_limit_contract();lv_deinit();return 0;
 }
