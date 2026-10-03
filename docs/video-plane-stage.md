@@ -252,3 +252,11 @@ Clean source identities and SHA256 values:
 Board **NOT_RUN**. Rotated alpha-window pixels, scanout timing and physical
 multi-decoder behavior remain unverified. D13x reference image scale/arbitrary
 angle restrictions are documented in the current capabilities inventory.
+
+Pivot boundary host follow-up: percentage center pivots are checked before and
+after a paused non-square resize. A fitting original object whose rotated
+window crosses the root clip, and a pivot outside the fake-render +/-4096
+limit, both fault without alpha acquisition or video submission; all owners and
+readers drain. Focused plane widget contract **PASS**. Runtime source is unchanged
+from the latest combined firmware manifest; these tests do not prove physical
+pixels. Remaining board entry/scanout validation stays **NOT_RUN**.

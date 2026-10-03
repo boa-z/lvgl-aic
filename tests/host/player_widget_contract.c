@@ -562,6 +562,11 @@ int main(void)
         assert(plane_w==(uint32_t)image_bounds[angle-1][2] && plane_h==(uint32_t)image_bounds[angle-1][3]);
         assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
     }
+    lv_image_set_pivot(o,LV_PCT(50),LV_PCT(50));lv_image_set_rotation(o,900);tick();
+    assert(plane_x==3 && plane_y==4 && plane_w==5 && plane_h==6);
+    lv_obj_set_size(o,8,5);tick();
+    assert(plane_x==4 && plane_y==3 && plane_w==5 && plane_h==8);
+    lv_obj_set_size(o,6,5);lv_image_set_pivot(o,2,1);tick();
     lv_image_set_rotation(o,900);lv_display_set_rotation(d,LV_DISPLAY_ROTATION_90);
     lv_timer_pause(lv_display_get_refr_timer(d));tick();
     assert(plane_degrees==0 && plane_x==3 && plane_y==9 && plane_w==6 && plane_h==5);
@@ -626,6 +631,20 @@ int main(void)
         }
     }
     lv_display_set_rotation(d,LV_DISPLAY_ROTATION_0);lv_timer_pause(lv_display_get_refr_timer(d));
+    /* Original object fits; rotated window crosses the root clip, or pivot
+     * exceeds the fake draw path limit. Neither may acquire UI alpha. */
+    for(unsigned scenario=0;scenario<2;scenario++) {
+        o=make();lv_obj_set_size(o,6,5);lv_obj_set_pos(o,1,1);
+        lv_image_set_pivot(o,scenario?4097:0,0);lv_image_set_rotation(o,900);
+        assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+        assert(lv_aic_player_set_video_plane_rotation_budget(o,8192)==LV_RESULT_OK);
+        assert(lv_aic_player_set_src(o,"clip.mp4")==LV_RESULT_OK);
+        assert(lv_aic_player_start(o)==LV_RESULT_OK);
+        unsigned before=alpha_enables,submitted=plane_presents;frames=1;tick();
+        assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT);
+        assert(!plane_live && alpha_enables==before && plane_presents==submitted);
+        lv_obj_delete(o);tick();assert(!active && created==freed && retained==released);
+    }
     /* Top/system/bottom layers are visible roots, unlike inactive screens. */
     lv_obj_t *roots[]={lv_display_get_layer_top(d),lv_display_get_layer_sys(d),lv_display_get_layer_bottom(d)};
     for(unsigned i=0;i<3;i++) {
