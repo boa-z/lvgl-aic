@@ -2,9 +2,17 @@
 
 The application-owned frame API in include/lv_aic_yuv.h now describes borrowed
 CPU-addressable planes with independent strides and capacities. It supports
-I420, I422, I444, I400, NV12, NV21, YUY2 and UYVY, with explicit BT.601/BT.709
+I420, I422, I444, I400, NV12, NV21, YUY2, UYVY, NV16 and NV61, with explicit BT.601/BT.709
 limited/full range. The producer owns lifetime and cache synchronization;
 these descriptors must not be passed to LVGL as if they were decoded pixels.
+
+LVGL 9.6 has no NV16/NV61 color enum. LV_AIC_YUV_NV16/NV61 are frame-only
+32-bit tags accepted by this API, its CPU converter and native GE path. They
+must never be stored in lv_image_header_t.cf. Publication still reports RAW
+source/RGB888 decoded metadata; ordinary LVGL/MPP image format mappings remain
+unchanged. Ten-format host coverage includes row-varying 4:2:2 chroma, all four
+matrices, GE transforms/tiling and 20 actual widget frame replacements per
+NV16/NV61 format without stale pixels or leaked producer references.
 
 CPU conversion to native RGB888 validates every span and output overlap before
 writing. Odd dimensions use rounded-up chroma storage. Conversion performs no

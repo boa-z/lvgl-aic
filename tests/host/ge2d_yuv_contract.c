@@ -40,7 +40,7 @@ static void release(void *context) { (void)context; live--; }
 static void reset(void) { calls=emits=syncs=src_caches=dst_caches=0; }
 int main(void)
 {
-    const lv_color_format_t formats[]={LV_COLOR_FORMAT_I420,LV_COLOR_FORMAT_I422,
+    const lv_aic_yuv_format_t formats[]={LV_AIC_YUV_NV16,LV_AIC_YUV_NV61,LV_COLOR_FORMAT_I420,LV_COLOR_FORMAT_I422,
         LV_COLOR_FORMAT_I444,LV_COLOR_FORMAT_I400,LV_COLOR_FORMAT_NV12,LV_COLOR_FORMAT_NV21,
         LV_COLOR_FORMAT_YUY2,LV_COLOR_FORMAT_UYVY};
     const unsigned rotations[]={MPP_ROTATION_0,MPP_ROTATION_90,MPP_ROTATION_180,MPP_ROTATION_270};

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_aic_yuv.h"
 
-bool lv_aic_yuv_layout(lv_color_format_t format, uint32_t w, uint32_t h,
+bool lv_aic_yuv_layout(lv_aic_yuv_format_t format, uint32_t w, uint32_t h,
                        lv_aic_yuv_layout_t *layout)
 {
     lv_aic_yuv_layout_t result = {{0}, {0}, 0};
@@ -18,8 +18,11 @@ bool lv_aic_yuv_layout(lv_color_format_t format, uint32_t w, uint32_t h,
         break;
     case LV_COLOR_FORMAT_NV12:
     case LV_COLOR_FORMAT_NV21:
+    case LV_AIC_YUV_NV16:
+    case LV_AIC_YUV_NV61:
         result.planes = 2;
-        result.row_bytes[1] = ((w+1)/2)*2; result.rows[1] = (h+1)/2;
+        result.row_bytes[1] = ((w+1)/2)*2;
+        result.rows[1] = format==LV_AIC_YUV_NV16 || format==LV_AIC_YUV_NV61 ? h : (h+1)/2;
         break;
     case LV_COLOR_FORMAT_YUY2:
     case LV_COLOR_FORMAT_UYVY:
@@ -71,8 +74,8 @@ static void sample(const lv_aic_yuv_frame_t *f, uint32_t x, uint32_t y, int *lum
     if (f->format == LV_COLOR_FORMAT_I420 || f->format == LV_COLOR_FORMAT_NV12 ||
         f->format == LV_COLOR_FORMAT_NV21) y /= 2;
     p = f->planes[1].data + (size_t)y * f->planes[1].stride;
-    if (f->format == LV_COLOR_FORMAT_NV12) { *u = p[x*2]; *v = p[x*2+1]; }
-    else if (f->format == LV_COLOR_FORMAT_NV21) { *v = p[x*2]; *u = p[x*2+1]; }
+    if (f->format == LV_COLOR_FORMAT_NV12 || f->format == LV_AIC_YUV_NV16) { *u = p[x*2]; *v = p[x*2+1]; }
+    else if (f->format == LV_COLOR_FORMAT_NV21 || f->format == LV_AIC_YUV_NV61) { *v = p[x*2]; *u = p[x*2+1]; }
     else { *u = p[x]; *v = f->planes[2].data[(size_t)y * f->planes[2].stride + x]; }
 }
 

@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <string.h>
 #include "lv_aic_vin_session.h"
+#include "lv_aic_vin_frame.h"
 static int fail_cmd, fail_init, fail_pool, closes, pool_closes, queues, off_calls;
 static unsigned next_index, bad_buffers;
 static int sequence, off_sequence, free_sequence;
@@ -67,6 +68,21 @@ int main(void)
         assert(lv_aic_vin_start(&s));
         uint32_t index=99;
         assert(lv_aic_vin_acquire(&s,&index) && index==0);
+        lv_aic_yuv_frame_t view, saved;
+        assert(lv_aic_vin_frame_view(&s,index,LV_AIC_YUV_BT709_LIMITED,&view));
+        assert(view.format==(formats[f]==MPP_FMT_NV12 ? LV_COLOR_FORMAT_NV12 :
+                             formats[f]==MPP_FMT_NV16 ? LV_AIC_YUV_NV16 : LV_COLOR_FORMAT_I400));
+        assert(view.width==34 && view.height==16 && view.planes[0].stride==40);
+        assert((uintptr_t)view.planes[0].data==0x40000000 && view.planes[0].capacity==640);
+        saved=view;
+        assert(!lv_aic_vin_frame_view(&s,index,99,&view));
+        assert(!memcmp(&view,&saved,sizeof(view)));
+        assert(!lv_aic_vin_frame_view(&s,3,LV_AIC_YUV_BT709_LIMITED,&view));
+        assert(!lv_aic_vin_frame_view(&s,1,LV_AIC_YUV_BT709_LIMITED,&view));
+        s.buffers.planes[0].len=1;
+        assert(!lv_aic_vin_frame_view(&s,index,LV_AIC_YUV_BT709_LIMITED,&view));
+        assert(!memcmp(&view,&saved,sizeof(view)));
+        s.buffers.planes[0].len=640;
         int before=closes;
         assert(!lv_aic_vin_close(&s) && closes==before);
         assert(!lv_aic_vin_stop(&s));
@@ -74,6 +90,7 @@ int main(void)
         assert(!lv_aic_vin_acquire(&s,&index));
         assert(lv_aic_vin_resume(&s));
         assert(lv_aic_vin_release(&s,index));
+        assert(!lv_aic_vin_frame_view(&s,index,LV_AIC_YUV_BT709_LIMITED,&view));
         assert(!lv_aic_vin_release(&s,index));
         assert(lv_aic_vin_stop(&s));
         assert(lv_aic_vin_start(&s));

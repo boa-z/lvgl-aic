@@ -16,6 +16,12 @@ typedef enum {
     LV_AIC_YUV_BT709_FULL
 } lv_aic_yuv_color_space_t;
 
+/* Existing LV_COLOR_FORMAT_* YUV values remain accepted. NV16/NV61 have no
+ * LVGL 9.6 enum: these frame-only tags must never enter an LVGL image header. */
+typedef uint32_t lv_aic_yuv_format_t;
+#define LV_AIC_YUV_NV16 UINT32_C(0x10000)
+#define LV_AIC_YUV_NV61 UINT32_C(0x10001)
+
 typedef struct {
     const uint8_t *data;
     uint32_t stride;
@@ -29,7 +35,7 @@ typedef struct {
  * Plane order: Y/U/V (planar), Y/UV or Y/VU (semi-planar), packed bytes (plane 0).
  */
 typedef struct {
-    lv_color_format_t format;
+    lv_aic_yuv_format_t format;
     uint32_t width, height;
     lv_aic_yuv_color_space_t color_space;
     lv_aic_yuv_plane_t planes[3];
@@ -40,10 +46,11 @@ typedef struct {
     uint8_t planes;
 } lv_aic_yuv_layout_t;
 
-/* Accepts I420/I422/I444/I400/NV12/NV21/YUY2/UYVY, 1..4096 dimensions,
+/* Accepts I420/I422/I444/I400/NV12/NV21/YUY2/UYVY and frame-only NV16/NV61,
+ * 1..4096 dimensions,
  * <=8M pixels. Odd dimensions use ceil-sized chroma/macro-pixel storage.
  * Layout is independent of plane pointers. Outputs stay unchanged on error. */
-bool lv_aic_yuv_layout(lv_color_format_t format, uint32_t width, uint32_t height,
+bool lv_aic_yuv_layout(lv_aic_yuv_format_t format, uint32_t width, uint32_t height,
                        lv_aic_yuv_layout_t *layout);
 bool lv_aic_yuv_validate(const lv_aic_yuv_frame_t *frame);
 

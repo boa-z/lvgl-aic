@@ -79,6 +79,11 @@ int main(void)
     lv_obj_set_style_bg_opa(screen,LV_OPA_COVER,0);
     lv_obj_t *widget=lv_image_create(screen);
     lv_obj_set_pos(widget,0,0);
+    uint8_t uv[16]; memset(uv,128,sizeof(uv));
+    const lv_aic_yuv_format_t publication_formats[]={LV_COLOR_FORMAT_I420,LV_AIC_YUV_NV16,LV_AIC_YUV_NV61};
+    for(unsigned f=0;f<3;f++) {
+    frame.format=publication_formats[f];
+    frame.planes[1]=f ? (lv_aic_yuv_plane_t){uv,4,sizeof(uv)} : (lv_aic_yuv_plane_t){u,2,sizeof(u)};
     for (int cycle=0;cycle<20;cycle++) {
         memset(y,cycle&1 ? 235 : 16,sizeof(y));
         memset(u,128,sizeof(u)); memset(v,128,sizeof(v));
@@ -92,6 +97,7 @@ int main(void)
         lv_refr_now(display);
         lv_aic_yuv_image_destroy(image);
         assert(live==0);
+    }
     }
     lv_obj_delete(widget);
     lv_display_delete(display);

@@ -28,7 +28,8 @@ static unsigned vval(unsigned x, unsigned y, unsigned seed) { return (x*13+y*97+
 
 int main(void)
 {
-    const struct { lv_color_format_t cf; unsigned sx, sy, planes; } formats[] = {
+    const struct { lv_aic_yuv_format_t cf; unsigned sx, sy, planes; } formats[] = {
+        {LV_AIC_YUV_NV16,2,1,2}, {LV_AIC_YUV_NV61,2,1,2},
         {LV_COLOR_FORMAT_I420,2,2,3}, {LV_COLOR_FORMAT_I422,2,1,3},
         {LV_COLOR_FORMAT_I444,1,1,3}, {LV_COLOR_FORMAT_I400,1,1,1},
         {LV_COLOR_FORMAT_NV12,2,2,2}, {LV_COLOR_FORMAT_NV21,2,2,2},
@@ -59,7 +60,7 @@ int main(void)
                         unsigned cx=x/formats[f].sx, cy=y/formats[f].sy;
                         if (formats[f].planes == 3) { planes[1][cy*24+cx]=u; planes[2][cy*24+cx]=v; }
                         if (formats[f].planes == 2) {
-                            bool vu = frame.format == LV_COLOR_FORMAT_NV21;
+                            bool vu = frame.format == LV_COLOR_FORMAT_NV21 || frame.format == LV_AIC_YUV_NV61;
                             planes[1][cy*24+cx*2]=vu?v:u;
                             planes[1][cy*24+cx*2+1]=vu?u:v;
                         }

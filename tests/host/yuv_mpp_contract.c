@@ -14,7 +14,8 @@ static void reject(const lv_aic_yuv_frame_t *frame)
 }
 int main(void)
 {
-    const struct { lv_color_format_t lv; enum mpp_pixel_format mpp; unsigned planes; } formats[] = {
+    const struct { lv_aic_yuv_format_t lv; enum mpp_pixel_format mpp; unsigned planes; } formats[] = {
+        {LV_AIC_YUV_NV16,MPP_FMT_NV16,2}, {LV_AIC_YUV_NV61,MPP_FMT_NV61,2},
         {LV_COLOR_FORMAT_I420,MPP_FMT_YUV420P,3}, {LV_COLOR_FORMAT_I422,MPP_FMT_YUV422P,3},
         {LV_COLOR_FORMAT_I444,MPP_FMT_YUV444P,3}, {LV_COLOR_FORMAT_I400,MPP_FMT_YUV400,1},
         {LV_COLOR_FORMAT_NV12,MPP_FMT_NV12,2}, {LV_COLOR_FORMAT_NV21,MPP_FMT_NV21,2},
@@ -39,7 +40,9 @@ int main(void)
                 assert(out.stride[p] == (p < formats[f].planes ? 96U : 0U));
             }
             lv_color_format_t lv;
-            assert(lv_aic_pixel_format_from_mpp(out.format,&lv) && lv==frame.format);
+            if(frame.format==LV_AIC_YUV_NV16 || frame.format==LV_AIC_YUV_NV61)
+                assert(!lv_aic_pixel_format_from_mpp(out.format,&lv));
+            else assert(lv_aic_pixel_format_from_mpp(out.format,&lv) && lv==frame.format);
             /* General metadata mapping must not accidentally widen the JPEG/
              * PNG decoder or ordinary RGB GE blit's accepted format policy. */
             assert(!lv_aic_mpp_format_to_lvgl(out.format,&lv));

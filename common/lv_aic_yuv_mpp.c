@@ -11,8 +11,10 @@ bool lv_aic_yuv_to_mpp(const lv_aic_yuv_frame_t *frame, uint32_t address_floor,
         MPP_COLOR_SPACE_BT601, MPP_COLOR_SPACE_BT709,
         MPP_COLOR_SPACE_BT601_FULL_RANGE, MPP_COLOR_SPACE_BT709_FULL_RANGE
     };
-    if (!output || !lv_aic_yuv_validate(frame) ||
-        !lv_aic_pixel_format_to_mpp(frame->format, &result.format)) return false;
+    if (!output || !lv_aic_yuv_validate(frame)) return false;
+    if (frame->format==LV_AIC_YUV_NV16) result.format=MPP_FMT_NV16;
+    else if (frame->format==LV_AIC_YUV_NV61) result.format=MPP_FMT_NV61;
+    else if (!lv_aic_pixel_format_to_mpp(frame->format, &result.format)) return false;
     bool sub_x = frame->format != LV_COLOR_FORMAT_I400 && frame->format != LV_COLOR_FORMAT_I444;
     bool sub_y = frame->format == LV_COLOR_FORMAT_I420 ||
                  frame->format == LV_COLOR_FORMAT_NV12 || frame->format == LV_COLOR_FORMAT_NV21;

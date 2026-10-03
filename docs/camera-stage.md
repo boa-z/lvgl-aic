@@ -44,5 +44,15 @@ frames early, or reset uncertain hardware.
 - This is compile-only evidence. Camera-enabled image linking, device capture,
   DMA/cache, UI publication and physical board acceptance are NOT_RUN.
 
-Remaining work includes NV16 frame publication, camera widget/worker integration,
+The borrowed-view adapter in compat/lv_aic_vin_frame.h now maps a held capture
+index into the application YUV frame API. It uses the negotiated strides and
+reported capacities, rejects released indices/malformed spans and requires an
+explicit colorspace. It never touches caches, queues a buffer or infers sensor
+colorimetry. NV16 uses a frame-only format tag because LVGL has no native enum.
+CPU conversion, image publication and native GE rendering now accept this tag.
+Host checks include rejected stale/unheld indices and unchanged output on error.
+The target check script also compiles the frame adapter; object SHA256:
+1940a78808ad2542a8df33825ae0264f93713ac4b250a30b6525a7d08cd4ed27.
+
+Remaining work includes capture-to-publication ownership callbacks, camera widget/worker integration,
 video-plane ownership and SDK player backends. The camera gap remains open.
