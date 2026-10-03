@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Compile-only D13x E907 double-float ABI check. Does not enable/open a camera.
+# D13x E907 compile and optional barcode partial-link check. Never opens a camera.
 param([string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT,[switch]$WithVideoPlane,[switch]$WithBarcode)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) {
@@ -25,12 +25,14 @@ foreach ($path in @($component,(Join-Path $component 'include'),$lvgl,(Join-Path
     $arguments+=('-I'+$path)
 }
 $arguments+=@('-include',(Join-Path $component 'compat/lvgl_aic_build_config.h'))
-if ($WithBarcode) { $arguments+='-DAIC_LVGL_USE_BARCODE=1' }
+# Feature combinations must not silently inherit the last firmware profile.
+# Load target config first: lv_conf.h normalizes defined Kconfig macros to 1.
+$override=Join-Path $sdk 'output/lvgl-camera-check-config.h'
+New-Item -ItemType Directory -Force (Split-Path $override) | Out-Null
+$featureConfig="#include <lvgl_aic_target_config.h>`n#undef AIC_LVGL_USE_VIDEO_PLANE`n#define AIC_LVGL_USE_VIDEO_PLANE $([int]$WithVideoPlane.IsPresent)`n#undef AIC_LVGL_USE_BARCODE`n#define AIC_LVGL_USE_BARCODE $([int]$WithBarcode.IsPresent)`n"
+[IO.File]::WriteAllText($override,$featureConfig,(New-Object Text.UTF8Encoding($false)))
+$arguments+=@('-include',$override)
 if ($WithVideoPlane) {
-    $override=Join-Path $sdk 'output/lvgl-camera-plane-config.h'
-    New-Item -ItemType Directory -Force (Split-Path $override) | Out-Null
-    [IO.File]::WriteAllText($override, "#include <rtconfig.h>`n#undef AIC_LVGL_USE_VIDEO_PLANE`n#define AIC_LVGL_USE_VIDEO_PLANE 1`n", (New-Object Text.UTF8Encoding($false)))
-    $arguments+=@('-include',$override)
     $compileArgs=$arguments+@('-c',(Join-Path $component 'common/lv_aic_plane_window.c'),'-o',(Join-Path $sdk 'output/lvgl-plane-window.o'))
     & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
     if ($LASTEXITCODE -ne 0) { throw 'Shared plane window target compilation failed' }
@@ -78,4 +80,35 @@ if ($WithBarcode) {
         if(-not ($symbols -match ('\bU\s+'+$symbol+'$'))) { throw "Widget barcode path absent: $symbol" }
     }
 }
-Write-Output 'PASS compile-only VIN session/frame/capture/widget; no camera link or hardware execution'
+if (-not $WithVideoPlane) {
+    $symbols=& $nm (Join-Path $sdk 'output/lvgl-camera-widget.o')
+    if($LASTEXITCODE -ne 0) { throw 'Widget nm failed' }
+    if($symbols -match '\bU\s+lv_aic_plane_window_(present|close)$') { throw 'Disabled plane path still references window' }
+}
+if ($WithBarcode) {
+    $barcodeObject=Join-Path $sdk 'output/lvgl-camera-barcode.o'
+    $compileArgs=$arguments+@('-isystem',(Join-Path $sdk 'packages/artinchip/barcode/include'),
+        '-c',(Join-Path $component 'common/lv_aic_barcode.c'),'-o',$barcodeObject)
+    & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
+    if($LASTEXITCODE -ne 0) { throw 'Barcode adapter target compilation failed' }
+    $combined=Join-Path $sdk 'output/lvgl-camera-barcode-linked.o'
+    $linkArgs=@('-m','elf32lriscv','-r','-o',$combined,(Join-Path $sdk 'output/lvgl-camera-widget.o'),
+        (Join-Path $sdk 'output/lvgl-camera-capture.o'),$barcodeObject,
+        (Join-Path $sdk 'packages/artinchip/barcode/lib/libdecoder.a'))
+    & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-ld.exe') @linkArgs
+    if($LASTEXITCODE -ne 0) { throw 'Camera barcode partial link failed' }
+    $symbols=& $nm $combined
+    if($LASTEXITCODE -ne 0) { throw 'Camera barcode linked-object nm failed' }
+    foreach($symbol in @('lv_aic_camera_barcode_enable','lv_aic_camera_capture_barcode_poll',
+        'lv_aic_camera_capture_barcode_configure','lv_aic_barcode_decode','Initial_Decoder',
+        'Decoding_Image','GetResultLength','GetDecoderResult','Set_Donfig_Decoder')) {
+        if(-not ($symbols -match ('\bT\s+'+$symbol+'$'))) { throw "Partial link unresolved implementation: $symbol" }
+    }
+    Get-FileHash $combined -Algorithm SHA256
+    Write-Output 'PASS camera/widget/decoder archive partial link; OS/VIN/LVGL dependencies intentionally unresolved'
+} else {
+    $symbols=& $nm (Join-Path $sdk 'output/lvgl-camera-capture.o')
+    if($LASTEXITCODE -ne 0) { throw 'Capture nm failed' }
+    if($symbols -match '\bU\s+lv_aic_barcode_decode$') { throw 'Disabled barcode path still references decoder' }
+}
+Write-Output 'PASS VIN session/frame/capture/widget target checks; no final camera firmware link or hardware execution'

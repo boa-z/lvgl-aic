@@ -346,3 +346,28 @@ boot/app/static/image/manifest **PASS**, clean component
 Camera is disabled in this regression profile, so the unchanged image is
 expected; it is not camera-enabled link/runtime evidence. The manifest and
 logs are under SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
+
+
+### Reproducible camera feature matrix and barcode partial link
+
+`check-vin-session.ps1` now overrides optional BARCODE and VIDEO_PLANE after
+loading the target configuration. Previously a preceding firmware build could
+silently enable an unrequested feature, and defining a Kconfig macro to zero
+before `lv_conf.h` normalization did not disable it. Off checks now reject
+unexpected references to the barcode decoder or plane-window helpers.
+
+All four combinations passed strict D13x compilation: neither switch,
+`-WithBarcode`, `-WithVideoPlane`, and both. Barcode profiles additionally compile
+the actual adapter and perform an ELF32 relocatable link of camera widget,
+capture worker, adapter and SDK `libdecoder.a`. The combined object must define
+the widget enable API, capture configure/poll, adapter decode and all five vendor
+entrypoints. This checks actual archive extraction and ABI compatibility, beyond
+merely observing unresolved references in separately compiled objects.
+
+Combined plane/barcode object SHA256:
+`2a02266d38ceb4f8eaef89b35b5435fd479a92d8d01db9cd5f71f08f0a1b17be`.
+Logs: `output/camera-barcode-link.log`, `output/camera-barcode-only-link.log`,
+`output/camera-plane-only-check.log`, `output/camera-features-off.log`.
+OS/VIN/LVGL dependencies intentionally remain unresolved in this partial link;
+it is not a bootable camera-enabled firmware, sensor configuration or execution
+evidence. Those gates remain **NOT_RUN**. No runtime source changed in this stage.
