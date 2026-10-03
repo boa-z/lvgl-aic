@@ -42,6 +42,21 @@ lv_result_t lv_aic_camera_set_format(lv_obj_t *obj, lv_aic_camera_format format)
  * closed/stopped, after old transport cleanup. queue is NOT sensor input. */
 lv_result_t lv_aic_camera_configure(lv_obj_t *obj, const char *device,
     uint32_t queue, lv_aic_yuv_color_space_t color_space);
+/* SDK-shaped barcode APIs. Configure only while closed/stopped after cleanup.
+ * Requires AIC_LVGL_USE_BARCODE. only suppresses preview, but does not enable
+ * decoding by itself. disable restores preview on the next open.
+ * Callback runs on the LVGL owner, after transport state notification, only
+ * for nonempty successful results. Input is binary and valid only during the
+ * callback; output storage is caller-owned and must remain live until closed.
+ * The callback may close/stop/delete this widget. Never retain in_data.
+ * Unlike the SDK implementation, callbacks never execute on a worker thread. */
+typedef void (*lv_aic_camera_barcode_cb_t)(const char *in_data,int in_length,
+    char *out_data,int out_length);
+lv_result_t lv_aic_camera_barcode_enable(lv_obj_t *obj);
+lv_result_t lv_aic_camera_barcode_disable(lv_obj_t *obj);
+lv_result_t lv_aic_camera_barcode_only(lv_obj_t *obj);
+lv_result_t lv_aic_camera_barcode_callback(lv_obj_t *obj,
+    lv_aic_camera_barcode_cb_t callback,char *data,int data_size);
 lv_result_t lv_aic_camera_open(lv_obj_t *obj);
 lv_result_t lv_aic_camera_start(lv_obj_t *obj);
 lv_result_t lv_aic_camera_stop(lv_obj_t *obj);

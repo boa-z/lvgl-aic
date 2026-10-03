@@ -172,6 +172,54 @@ static void test_barcode(void)
     assert(!lv_aic_camera_capture_barcode_poll(c,output,3,&length,&result));
     assert(lv_aic_camera_capture_destroy(c));
 }
+static lv_obj_t *scan_widget;
+static pthread_t ui_owner;
+static int callback_calls, callback_delete;
+static void barcode_callback(const char *data,int length,char *out,int capacity)
+{
+    assert(pthread_equal(pthread_self(),ui_owner));
+    assert(length==3 && data[0]=='A' && !data[1] && data[2]=='Z');
+    assert(out && capacity==1); *out=42; callback_calls++;
+    if(callback_delete) lv_obj_delete(scan_widget);
+    else assert(lv_aic_camera_close(scan_widget)==LV_RESULT_OK);
+    /* Deleting the widget must not invalidate this callback's borrowed input. */
+    assert(data[0]=='A' && data[2]=='Z');
+}
+static void test_widget_barcode(void)
+{
+    ui_owner=pthread_self();
+    lv_display_t *display=lv_display_create(16,16);
+    for(callback_delete=0;callback_delete<2;callback_delete++) {
+        scan_widget=lv_aic_camera_create(lv_screen_active()); assert(scan_widget);
+        char output=0;
+        assert(lv_aic_camera_configure(scan_widget,"camera",0,LV_AIC_YUV_BT601_LIMITED)==LV_RESULT_OK);
+        assert(lv_aic_camera_barcode_callback(scan_widget,barcode_callback,NULL,1)==LV_RESULT_INVALID);
+        assert(lv_aic_camera_barcode_callback(scan_widget,barcode_callback,&output,-1)==LV_RESULT_INVALID);
+        assert(lv_aic_camera_barcode_callback(scan_widget,barcode_callback,&output,1)==LV_RESULT_OK);
+        assert(lv_aic_camera_barcode_only(scan_widget)==LV_RESULT_OK);
+        assert(lv_aic_camera_barcode_enable(scan_widget)==LV_RESULT_OK);
+        assert(lv_aic_camera_open(scan_widget)==LV_RESULT_OK);
+        assert(lv_aic_camera_barcode_disable(scan_widget)==LV_RESULT_INVALID);
+        assert(lv_aic_camera_barcode_only(scan_widget)==LV_RESULT_INVALID);
+        assert(lv_aic_camera_barcode_callback(scan_widget,NULL,NULL,0)==LV_RESULT_INVALID);
+        assert(lv_aic_camera_start(scan_widget)==LV_RESULT_OK); wait_count(&blocked,1);
+        int scans=atomic_load(&scan_calls), calls=callback_calls;
+        wake_worker(1,false); wait_count(&scan_calls,scans+1); wait_count(&blocked,1);
+        assert(callback_calls==calls); /* Worker never invokes application code. */
+        for(unsigned i=0;i<20 && callback_calls==calls;i++) { lv_tick_inc(25);lv_timer_handler(); }
+        assert(callback_calls==calls+1 && output==42);
+        if(!callback_delete) assert(lv_image_get_src(scan_widget)==NULL);
+        wake_worker(0,true);wait_count(&done,1);pthread_join(thread,NULL);
+        lv_tick_inc(25);lv_timer_handler();
+        if(!callback_delete) {
+            assert(lv_aic_camera_get_state(scan_widget)==LV_AIC_CAMERA_CLOSED);
+            assert(lv_aic_camera_barcode_disable(scan_widget)==LV_RESULT_OK);
+            lv_obj_delete(scan_widget);lv_tick_inc(25);lv_timer_handler();
+        }
+        assert(!lv_aic_camera_pending_cleanup());
+    }
+    lv_display_delete(display);
+}
 int main(void)
 {
     lv_init(); assert(lv_aic_yuv_image_decoder_init());
@@ -316,5 +364,6 @@ int main(void)
     lv_tick_inc(25); lv_timer_handler();
     assert(!lv_aic_camera_pending_cleanup()); lv_display_delete(display);
     test_barcode();
+    test_widget_barcode();
     assert(lv_aic_yuv_image_decoder_deinit()); lv_deinit(); return 0;
 }

@@ -73,5 +73,9 @@ if ($WithVideoPlane) {
 if ($WithBarcode) {
     $symbols=& $nm (Join-Path $sdk 'output/lvgl-camera-capture.o')
     if(-not ($symbols -match '\bU\s+lv_aic_barcode_decode$')) { throw 'Capture barcode decode path absent' }
+    $symbols=& $nm (Join-Path $sdk 'output/lvgl-camera-widget.o')
+    foreach($symbol in @('lv_aic_camera_capture_barcode_configure','lv_aic_camera_capture_barcode_poll')) {
+        if(-not ($symbols -match ('\bU\s+'+$symbol+'$'))) { throw "Widget barcode path absent: $symbol" }
+    }
 }
 Write-Output 'PASS compile-only VIN session/frame/capture/widget; no camera link or hardware execution'

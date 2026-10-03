@@ -268,8 +268,8 @@ leaves caller output unchanged and clears result length. Host contracts use
 mocked vendor entrypoints and cover padded rows, source immutability, result
 guards, initialization failure/retry, empty/oversized results and reentrancy.
 `build.ps1 -WithBarcode` adds a separate opt-in link-evidence profile; it never
-starts decoding or capture. The capture worker mailbox is implemented below; SDK-shaped widget barcode
-callbacks/only mode remain to be integrated. Real barcode decoding is NOT_RUN.
+starts decoding or capture. Capture worker and widget integration are recorded
+below. Real barcode decoding is NOT_RUN.
 
 Barcode foundation evidence: **57/57 host PASS**; full GE/fonts/GIF/widgets/
 AICP/player/APNG/barcode boot/app/static/image/manifest gates **PASS**.
@@ -303,5 +303,35 @@ short output retry, unread-result backpressure and preview suppression.
 compile and capture-to-decoder undefined-symbol check. Logs are
 `output/camera-barcode-tests.log` and `output/camera-barcode-target.log`.
 This is compile/host evidence only: camera-enabled final firmware linking,
-SDK-shaped widget callbacks, sensor configuration, scan latency/stack budget
+sensor configuration, scan latency/stack budget
 and physical decoding acceptance remain **NOT_RUN** or incomplete.
+
+
+### SDK-shaped camera barcode widget integration
+
+The widget now provides `lv_aic_camera_barcode_enable`, `barcode_disable`,
+`barcode_only` and `barcode_callback` with the SDK callback signature. Configure
+while closed/stopped after asynchronous cleanup. `barcode_only` selects preview
+suppression; decoding still requires enable. Disable restores preview on the
+next open, and re-enable retains the previously selected only mode. No sensor
+or default colorimetry is inferred. The build must enable BARCODE and CAMERA.
+
+The capture worker performs decoding, but successful nonempty binary results
+are delivered from the LVGL owner timer. Input remains valid for the callback
+only; the application supplies optional output storage and owns its lifetime.
+Invalid output pointer/size pairs are rejected. State notifications take priority
+and return immediately; barcode delivery occurs on a subsequent timer tick.
+Callbacks are the final action and may close, stop or delete their camera widget.
+Deleted objects retain their binding until capture/readers drain, preserving
+callback input lifetime. EMPTY and decoder errors are consumed without invoking
+the success callback; detailed status remains available through capture API.
+
+Evidence: **57/57 host PASS**, including actual widget + pthread worker tests
+for UI-thread-only callbacks, embedded NUL data, configuration guards, no preview
+in only mode, callback-driven close and callback-driven deletion. Strict D13x
+compile with video plane and barcode **PASS**, including widget references to
+capture configuration/poll and capture reference to decoder. Logs:
+`output/camera-widget-barcode-tests.log`, `output/camera-widget-barcode-target.log`.
+Camera-enabled firmware link, physical capture/decoding, throughput and decoder
+stack/internal allocation acceptance remain **NOT_RUN**. Earlier stage notes
+about missing barcode APIs are historical; this section supersedes them.

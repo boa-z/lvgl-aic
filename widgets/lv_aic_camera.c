@@ -20,6 +20,13 @@ typedef struct {
     lv_aic_camera_format format;
     lv_aic_camera_state_t state, reported;
     bool configured, closing, stopped;
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+    bool barcode_enabled, barcode_only;
+    lv_aic_camera_barcode_cb_t barcode_callback;
+    char *barcode_output;
+    int barcode_capacity;
+    uint8_t barcode_input[4096];
+#endif
 #if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
     lv_aic_plane_window_t window;
     bool plane_enabled,plane_failed;
@@ -115,7 +122,22 @@ static void tick(lv_timer_t *timer)
         b->input_reported=input;
         b->reported=b->state;
         lv_obj_send_event(b->obj,LV_EVENT_VALUE_CHANGED,NULL);
+        return;
     }
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+    if(b->obj && !b->closing && b->state==LV_AIC_CAMERA_RUNNING && b->barcode_enabled) {
+        size_t length=0;
+        lv_aic_barcode_result_t result;
+        if(lv_aic_camera_capture_barcode_poll(b->capture,b->barcode_input,
+            sizeof(b->barcode_input),&length,&result) && result==LV_AIC_BARCODE_OK &&
+            length && b->barcode_callback) {
+            /* Final action: callback may delete the object. The orphan binding
+             * keeps input alive until a later timer tick retires the capture. */
+            b->barcode_callback((const char *)b->barcode_input,(int)length,
+                b->barcode_output,b->barcode_capacity);
+        }
+    }
+#endif
 }
 static void destructor(const lv_obj_class_t *class_p,lv_obj_t *obj)
 {
@@ -177,6 +199,35 @@ lv_result_t lv_aic_camera_set_format(lv_obj_t *obj,lv_aic_camera_format format)
     if(b->capture || b->closing || format<0 || format>=_LV_AIC_CAMERA_FORMAT_LAST) return LV_RESULT_INVALID;
     b->format=format; return LV_RESULT_OK;
 }
+static lv_result_t barcode_mode(lv_obj_t *obj,int mode)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_camera_class,return LV_RESULT_INVALID);
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+    camera_binding_t *b=((camera_widget_t *)obj)->binding;
+    if(b->capture || b->closing) return LV_RESULT_INVALID;
+    if(mode==2) b->barcode_only=true;
+    else b->barcode_enabled=mode!=0;
+    return LV_RESULT_OK;
+#else
+    LV_UNUSED(mode);return LV_RESULT_INVALID;
+#endif
+}
+lv_result_t lv_aic_camera_barcode_enable(lv_obj_t *obj) { return barcode_mode(obj,1); }
+lv_result_t lv_aic_camera_barcode_disable(lv_obj_t *obj) { return barcode_mode(obj,0); }
+lv_result_t lv_aic_camera_barcode_only(lv_obj_t *obj) { return barcode_mode(obj,2); }
+lv_result_t lv_aic_camera_barcode_callback(lv_obj_t *obj,
+    lv_aic_camera_barcode_cb_t callback,char *data,int data_size)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_camera_class,return LV_RESULT_INVALID);
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+    camera_binding_t *b=((camera_widget_t *)obj)->binding;
+    if(b->capture || b->closing || data_size<0 || (data_size && !data)) return LV_RESULT_INVALID;
+    b->barcode_callback=callback;b->barcode_output=data;b->barcode_capacity=data_size;
+    return LV_RESULT_OK;
+#else
+    LV_UNUSED(callback);LV_UNUSED(data);LV_UNUSED(data_size);return LV_RESULT_INVALID;
+#endif
+}
 lv_result_t lv_aic_camera_open(lv_obj_t *obj)
 {
     LV_CHECK_OBJ(obj,&lv_aic_camera_class,return LV_RESULT_INVALID);
@@ -186,7 +237,11 @@ lv_result_t lv_aic_camera_open(lv_obj_t *obj)
         b->format==LV_AIC_CAMERA_FORMAT_NV12 ? LV_COLOR_FORMAT_NV12 : LV_COLOR_FORMAT_I400;
     b->capture=lv_aic_camera_capture_prepare(b->device,b->queue,format,b->space);
     if(!b->capture) return LV_RESULT_INVALID;
-    if(b->have_input && !lv_aic_camera_capture_select_input(b->capture,b->desired_input)) {
+    bool setup=true;
+#if defined(AIC_LVGL_USE_BARCODE) && AIC_LVGL_USE_BARCODE
+    if(b->barcode_enabled) setup=lv_aic_camera_capture_barcode_configure(b->capture,true,b->barcode_only);
+#endif
+    if(!setup || (b->have_input && !lv_aic_camera_capture_select_input(b->capture,b->desired_input))) {
         lv_aic_camera_capture_close(b->capture);
         b->closing=true; b->stopped=false; b->state=LV_AIC_CAMERA_STOPPING;
         lv_timer_resume(b->timer); return LV_RESULT_INVALID;
