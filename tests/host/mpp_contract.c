@@ -321,6 +321,39 @@ static void bmp_pixel_contract(void)
     lv_image_decoder_t *decoder;
     assert(lv_aic_mpp_decoder_init(&decoder) == LV_AIC_OK);
     lv_aic_mpp_cache_set_limit(4096);
+    for (int mode = 0; mode < 3; mode++) {
+        uint8_t bytes[78] = {'B', 'M'};
+        bmp_put32(bytes + 10, 70); bmp_put32(bytes + 14, 40);
+        bmp_put32(bytes + 18, 2); bmp_put32(bytes + 22, (uint32_t)-2);
+        bytes[26] = 1; bytes[28] = 16;
+        if (mode) {
+            bmp_put32(bytes + 30, 3);
+            bmp_put32(bytes + 54, mode == 1 ? 0xf800 : 0x7c00);
+            bmp_put32(bytes + 58, mode == 1 ? 0x7e0 : 0x3e0);
+            bmp_put32(bytes + 62, 31);
+        }
+        uint16_t input[] = {mode == 1 ? 0xf800 : 0x7c00,
+                            mode == 1 ? 0x7e0 : 0x3e0, 31, 0xffff};
+        uint16_t expected[] = {0xf800, 0x7e0, 31, 0xffff};
+        for (unsigned i = 0; i < 4; i++) {
+            bytes[70 + 2*i] = (uint8_t)input[i];
+            bytes[71 + 2*i] = (uint8_t)(input[i] >> 8);
+        }
+        lv_image_dsc_t image = {0};
+        image.header.magic = LV_IMAGE_HEADER_MAGIC; image.header.cf = LV_COLOR_FORMAT_RAW;
+        image.data = bytes; image.data_size = sizeof(bytes);
+        lv_image_decoder_dsc_t d;
+        lv_image_decoder_args_t args = {0};
+        args.no_cache = true;
+        open_mpp(&d, &image, &args);
+        assert(d.decoded->header.cf == LV_COLOR_FORMAT_RGB565);
+        for (unsigned i = 0; i < 4; i++) {
+            const uint8_t *p = d.decoded->data + (i / 2) * d.decoded->header.stride + (i % 2) * 2;
+            assert(((uint16_t)p[0] | (uint16_t)p[1] << 8) == expected[i]);
+        }
+        lv_image_decoder_close(&d);
+        assert(live_cma == 0);
+    }
     for (int bpp = 24; bpp <= 32; bpp += 8) {
         for (int top = 0; top < 2; top++) {
             uint8_t bytes[94] = {'B', 'M'};

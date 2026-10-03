@@ -610,10 +610,10 @@ static void lv_aic_mpp_cache_insert(lv_image_decoder_dsc_t *dsc, lv_aic_mpp_sess
 
 static bool lv_aic_bmp_read_header(lv_aic_mpp_stream_t *stream, lv_aic_bmp_header_t *header)
 {
-    uint8_t bytes[54];
+    uint8_t bytes[70];
     uint32_t got = 0;
     return lv_aic_mpp_stream_read(stream, bytes, sizeof(bytes), &got) == LV_FS_RES_OK &&
-           got == sizeof(bytes) &&
+           got >= 54 &&
            lv_aic_bmp_parse_header(bytes, got, stream->size, header);
 }
 
@@ -673,7 +673,8 @@ static lv_result_t lv_aic_mpp_decode_source(const void *src, enum mpp_codec_type
         lv_aic_bmp_header_t bmp;
         if (!lv_aic_bmp_read_header(&stream, &bmp) || bmp.width != session->width ||
             bmp.height != session->height ||
-            (bmp.bpp == 24 ? LV_COLOR_FORMAT_RGB888 : LV_COLOR_FORMAT_ARGB8888) != lv_fmt) goto fail;
+            (bmp.bpp == 16 ? LV_COLOR_FORMAT_RGB565 :
+             bmp.bpp == 24 ? LV_COLOR_FORMAT_RGB888 : LV_COLOR_FORMAT_ARGB8888) != lv_fmt) goto fail;
         ext_alloc.session = session;
         uint32_t output_stride = lv_aic_mpp_align_up(bmp.width * (bmp.bpp / 8U), 8U);
         if (lv_aic_mpp_alloc_ext_frame(&ext_alloc.allocator, &frame,
@@ -684,6 +685,16 @@ static lv_result_t lv_aic_mpp_decode_source(const void *src, enum mpp_codec_type
             if (lv_aic_mpp_stream_seek(&stream, bmp.offset + source_row * bmp.stride) != LV_FS_RES_OK ||
                 lv_aic_mpp_stream_read(&stream, (uint8_t *)session->allocation_base + y * output_stride,
                                        bytes, &read_done) != LV_FS_RES_OK || read_done != bytes) goto fail;
+            if (bmp.rgb555) {
+                uint8_t *row = (uint8_t *)session->allocation_base + y * output_stride;
+                for (uint32_t x = 0; x < bmp.width; x++) {
+                    uint16_t pixel = (uint16_t)row[2*x] | (uint16_t)row[2*x+1] << 8;
+                    uint16_t green = (pixel >> 5) & 31U;
+                    pixel = (uint16_t)(((pixel & 0x7c00U) << 1) |
+                             (((green << 1) | (green >> 4)) << 5) | (pixel & 31U));
+                    row[2*x] = (uint8_t)pixel; row[2*x+1] = (uint8_t)(pixel >> 8);
+                }
+            }
         }
         /* Pixels were written by CPU, unlike the MPP hardware path. */
         aicos_dcache_clean_invalid_range((unsigned long *)session->allocation_base, session->cma_size);
@@ -825,7 +836,8 @@ static lv_result_t lv_aic_mpp_info_cb(lv_image_decoder_t *decoder,
         result = lv_aic_bmp_read_header(&stream, &bmp) ? LV_RESULT_OK : LV_RESULT_INVALID;
         if (result == LV_RESULT_OK) {
             width = bmp.width; height = bmp.height;
-            cf = bmp.bpp == 24 ? LV_COLOR_FORMAT_RGB888 : LV_COLOR_FORMAT_ARGB8888;
+            cf = bmp.bpp == 16 ? LV_COLOR_FORMAT_RGB565 :
+                 bmp.bpp == 24 ? LV_COLOR_FORMAT_RGB888 : LV_COLOR_FORMAT_ARGB8888;
         }
     }
     else if (codec == MPP_CODEC_VIDEO_DECODER_MJPEG) {

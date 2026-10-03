@@ -1,7 +1,7 @@
 # Component BMP decoder
 
 The MPP resource adapter now also decodes uncompressed 24/32-bit BMP in
-software, using its existing CMA allocation and LRU ownership. No MPP codec
+software, plus 16-bit RGB555/RGB565, using its existing CMA allocation and LRU ownership. No MPP codec
 is invoked for BMP; the resulting complete RGB/ARGB draw buffer can follow
 the existing GE image path when its address and geometry are supported.
 
@@ -12,12 +12,16 @@ the existing GE image path when its address and geometry are supported.
 
 Headers validate signature, DIB extent, planes, compression, dimensions,
 declared length, pixel offset and complete row bounds. Unsupported indexed,
-RLE and bitfield BMP are rejected. 16-bit is not yet implemented: BI_RGB
-means RGB555, so it cannot safely be treated as RGB565 without conversion.
+RLE and arbitrary bitfield BMP are rejected. 16-bit BI_RGB is RGB555 and
+is converted to RGB565 with green-bit replication. BI_BITFIELDS accepts
+explicit RGB555/RGB565 masks only, rejecting overlapping or alpha masks.
 
 Host 16/16 PASS includes independent expected-pixel checks for FILE/RAW,
 24/32-bit, both row directions, padding and offset; it also checks cache
 sharing, active-reader invalidation and allocation failure cleanup.
 
-Remaining: RGB555/RGB565 mask handling, target build and board rendered
+Additional BMP/MPP regression passes 4/4 with 16-bit RGB primary/white
+pixel conversion, explicit masks and invalid mask/short-header rejection.
+
+Remaining: target build and board rendered
 pixels/cache acceptance. This is partial SDK parity, not complete BMP support.

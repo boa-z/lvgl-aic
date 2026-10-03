@@ -6,7 +6,7 @@ static void put32(uint8_t *p, uint32_t v)
 { for (unsigned i = 0; i < 4; i++) p[i] = (uint8_t)(v >> (8 * i)); }
 int main(void)
 {
-    uint8_t b[54] = {'B','M'};
+    uint8_t b[70] = {'B','M'};
     lv_aic_bmp_header_t h;
     put32(b + 10, 70); put32(b + 14, 40);
     put32(b + 18, 3); put32(b + 22, 2);
@@ -23,11 +23,17 @@ int main(void)
     put32(b + 18, 3); put32(b + 22, 0x80000000U);
     assert(!lv_aic_bmp_parse_header(b, 54, 94, &h));
     put32(b + 22, 2); b[28] = 16;
-    assert(!lv_aic_bmp_parse_header(b, 54, 94, &h));
+    assert(lv_aic_bmp_parse_header(b, 54, 94, &h) && h.rgb555);
     b[28] = 32;
     assert(lv_aic_bmp_parse_header(b, 54, 94, &h));
     put32(b + 30, 1); assert(!lv_aic_bmp_parse_header(b, 54, 94, &h));
     put32(b + 30, 0); put32(b + 2, 93);
     assert(!lv_aic_bmp_parse_header(b, 54, 94, &h));
+    put32(b + 2, 0); b[28] = 16; put32(b + 30, 3);
+    put32(b + 54, 0xf800); put32(b + 58, 0x7e0); put32(b + 62, 31);
+    assert(lv_aic_bmp_parse_header(b, 70, 94, &h) && !h.rgb555);
+    assert(!lv_aic_bmp_parse_header(b, 65, 94, &h));
+    put32(b + 62, 0x7e0);
+    assert(!lv_aic_bmp_parse_header(b, 70, 94, &h));
     return 0;
 }
