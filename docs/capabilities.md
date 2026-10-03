@@ -924,3 +924,12 @@ error logs instead of discarding the failing pixel context.
 Host **57/57 PASS**. Board runner now performs 308 submissions: 36 RGB gradient,
 240 solid YUV, 32 full-resolution YUV gradient. Actual GE alpha interpolation
 and blend behavior remain **NOT_RUN**, including transparent-background cases.
+
+
+Alpha-gradient firmware regression: full GE/fonts/GIF/widgets/AICP/player/APNG/
+barcode boot/app/static/image/manifest **PASS**. Clean component
+`6a6ba75de0c5130ceded3abbead983bac125d62e`, SDK
+`8043d66184ea9c7c8acf9ec39b966bbaa1e73e5e`. Image SHA256
+`4b4967497378ecc0df36e443a5c4dc72f25b2a6132a3e39d2b614811f5d0737c`.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
+Board execution remains **NOT_RUN**; no flashing performed.
