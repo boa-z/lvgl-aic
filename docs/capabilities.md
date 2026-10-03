@@ -120,7 +120,7 @@ PLAY_END remains an ambiguous terminal notification, not clean EOS evidence.
 The background playback worker now supports prepare/start/pause/volume,
 RGB/YUV publication and deferred close, using SDK get_frame synchronization.
 Host ABI contracts and target compilation pass; seek/repeat controls,
-real A/V timing, APNG, group/slave and video-plane integration remain open. No media-enabled image or physical playback has been verified.
+real A/V timing, APNG, group/slave and video-plane integration remain open. The media-enabled image now passes build/link checks; physical playback remains unverified.
 
 Native RGB frame publication now covers the D13x MJPEG RGB565/RGB888/ARGB8888
 output path at the adapter level, including bounded crops and immutable decoder
@@ -133,4 +133,4 @@ worker to LVGL: explicit configuration, prepare/start/pause/resume, volume,
 stop/close/replay and deferred source replacement/deletion. Host contracts
 verify RGB/YUV rendering and frame-reader lifetimes; strict target compilation
 passes. Seek, repeat/rate, groups/slaves and video-plane output remain gaps.
-Media firmware linkage and physical playback are not yet validated.
+Media firmware linkage is validated by the optional `-WithPlayer` profile. Physical playback remains NOT_RUN; see the exact image and clean source manifest in [player-stage.md](player-stage.md).

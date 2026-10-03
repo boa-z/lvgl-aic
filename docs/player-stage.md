@@ -250,8 +250,9 @@ close → destroy → new prepare。状态中的 position_us 是最新视频帧�
   d33d66747ff957f802494886b4273e5df6bcd95ba7ab42581831ea2b9c0a5767.
 - SDK output/lvgl-rgb-mpp.o SHA256:
   6532233780565f09b09f7d1ecce6ddbef32fd744c176ae2c9fb5999a49f63d8b.
-- Media-enabled image linking, real demux/codec/audio playback, physical DMA
-  lifetime and board execution: **NOT_RUN**. The current GE image has no player.
+- Media-enabled image linking: **PASS**, see the media link evidence below.
+  Real demux/codec/audio playback, physical DMA lifetime and board execution:
+  **NOT_RUN**. The earlier GE-only image has no player.
 
 ## GE regression image after RGB integration
 
@@ -301,7 +302,7 @@ queued-draw deletion, blocked worker exit, callback deletion/replacement and
 fault cleanup. The separate worker contract exercises real worker code with
 mock SDK. Strict E907 widget compilation: **PASS**; output/lvgl-player.o SHA256
 `8e14df2e234d1babe7f24ea0a386532be7927118d4168c5f40caa28e63942d9d`.
-Media-enabled firmware linking and physical playback: **NOT_RUN**.
+Media-enabled firmware linking subsequently passed; physical playback: **NOT_RUN**.
 
 ## Media link profile
 
@@ -316,3 +317,29 @@ separate `ge2d-fonts-gif-widgets-aicp-player` directory.
 LV_USE_IMAGE is an application C configuration, not an SDK Kconfig symbol.
 The widget enforces that dependency during C compilation; referencing it in
 Kconfig would silently disable this application-owned widget.
+
+## Media link evidence (2026-10-03)
+
+Standard `-WithPlayer` build above: boot/app build, static map/config check,
+image check and manifest **PASS**. Host **32/32 PASS**. Strict E907 compilation
+also passes with the audio driver enabled. No flashing or media execution.
+
+- Clean source manifest: SDK `99ba57b7`, lvgl-aic `022ab0b`, LVGL `80ca777e`.
+- Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player`.
+- Image: `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`.
+- SHA256: `09364d00b078517b83544f5545af170272cb6df8e9624960e8cdb15b0c15a74b`.
+- ELF SHA256: `8d78b326a4865ef2d4352100f225b45e878fdeaff28df57ecba0c3b46a97e45d`.
+- H264/player external render enabled; no codec file is opened automatically.
+  This profile retains widget APIs to validate their real SDK link closure.
+
+The link gate exposed adapter feature guards evaluated before application
+configuration was loaded. Player and VIN adapters now explicitly include the
+feature configuration before their guards; SCons also tracks this dependency.
+No SDK core modification was needed. This repairs VIN build selection but does
+not certify camera configuration or physical capture.
+
+Next parity work: worker seek must first drain immutable readers and queued
+frames, reset SDK callback/timestamp state, and handle paused/terminal sources.
+Then repeat/rate, slave/group lifetime and APNG/video-plane integration need
+separate implementation and evidence. The new native API does not claim binary
+or full source compatibility with SDK `lv_aic_player_set_cmd`.
