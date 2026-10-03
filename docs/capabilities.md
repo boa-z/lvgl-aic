@@ -944,10 +944,13 @@ checked completion. Reusable panel command sequences provide explicit D/C,
 cache cleaning and synchronous command completion with sticky fault retention.
 Host **62/62 PASS** and enabled-path D13x compile/component partial link **PASS**.
 
-Still missing for SDK parity: LVGL display/worker and direct-blit producer
-integration, concrete panel initialization/power/TE configuration, per-panel
-statistics and multi-display acceptance. Ordinary firmware regression keeps SPI
-transport disabled; it does not establish active SPI linkage or physical output.
+SPI now also has a bounded producer/worker handoff, OSAL worker lifecycle and
+LVGL full-frame RGB565 display binding with one/two budgeted draw buffers.
+Host **65/65 PASS**. The new `-WithSpi` profile passes enabled final firmware
+linkage and live-symbol checks across the entire SPI chain; it does not initialize
+a panel or establish physical output. Still missing for SDK parity: direct-blit
+producer integration, concrete panel initialization/power/TE configuration,
+per-panel statistics, GE/DMA pipelining and multi-display acceptance.
 
 Full GE/fonts/GIF/widgets/AICP/player/APNG/barcode regression after the SPI stages:
 boot/app/static/image/manifest **PASS**, clean component

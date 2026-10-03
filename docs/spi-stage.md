@@ -440,3 +440,30 @@ D13x compile/component partial link PASS; combined object SHA256:
 Logs: `output/spi-double-tests.log`, `output/spi-double-target.log`.
 Target throughput, physical panel output and enabled-device final linkage remain
 unverified. Hardware **NOT_RUN**.
+
+
+## Enabled SPI final firmware linkage
+
+`tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp
+-WithPlayer -WithApng -WithBarcode -WithSpi -Jobs 8` now enables the SPI component
+and retains public display/panel/session roots in the smoke profile. The static
+checker verifies live final-map symbols through display, worker, handoff, panel,
+session and SDK QSPI submit/completion functions. Normal application builds do
+not force these roots. The option uses existing board driver configuration and
+does not initialize a screen, assign new pins or send display traffic on QSPI0
+(the board's SPI NAND bus).
+
+Bootloader/application build, enabled SPI symbol gates, general static checks,
+image checks and provenance generation **PASS**. Clean component
+`355c7ec3582ba2928d6b20bf8e680166cddf2d21`, SDK
+`241ce7c3afe14d617133c706fb7a5ef5c75b2495`.
+Image SHA256: `01538f83ceb4a70256abce9de9c1ce500f36fc39ba9253e97669fa66fe0f7acf`.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi/manifest.json`.
+Final ELF contains live SPI display/worker/panel/SDK implementations. An extra
+`nm -u` audit finds the same `__data_end__` entry as the preceding non-SPI ELF;
+there are no newly unresolved SPI or atomic runtime dependencies. This evidence
+supersedes earlier partial-link-only limitations, not physical runtime limits.
+
+Hardware **NOT_RUN**. No panel object is instantiated and no flashing performed.
+Target scheduler/cache behavior, concrete panel/power/TE setup, direct-blit mode,
+statistics, GE/DMA pipelining and multi-display board acceptance remain open.
