@@ -46,3 +46,19 @@ when submission fails. If `lv_aic_video_plane_faulted` is true, stop submitting
 and retry hide/close. After successful hide/close, close and drain playback.
 Do not call the player polling API independently on a session owned by a widget.
 An automatic widget binding remains a separate integration stage.
+
+## Verified firmware
+
+Host **44/44 PASS**, strict E907 compile **PASS**. Full clean rebuild
+boot/app/static/image/manifest **PASS**, including all five video-plane API roots.
+The SDK incremental build initially reused the old link output; `scons -c`
+and a full rebuild were required after adding the linker roots.
+
+- SDK: `0a4f929868c811999e7535ce654a8f6084a53c1b`.
+- lvgl-aic: `7048a8e72f1837735ce06128b8c4dbc2053cb901`.
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `d586ca642184688e8ec08067fa8e01d5b48ffd747126b779408f218a71e2cec4`.
+- ELF SHA256: `403a700f9b0c3f75160daa0c4d80daf1901b629d0ecc390b170ef7b936497f77`.
+
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/manifest.json`.
+Physical board **NOT_RUN**.

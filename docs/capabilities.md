@@ -8,8 +8,8 @@ transforms and slave bindings across drained source replacement. APNG rate,
 zero-time replay, finite repeat and metadata use checked common commands.
 The standalone APNG widget remains usable without SDK media/audio.
 Host **44/44 PASS** and strict combined-feature E907 compile **PASS**.
-The multi-media stage clean firmware passed boot/app/static/image/manifest;
-source identities and artifact evidence are recorded in [group contract](player-group-stage.md).
+The video-plane stage clean firmware passed boot/app/static/image/manifest;
+source identities and artifact evidence are recorded in [video-plane stage](video-plane-stage.md).
 Physical validation remains **NOT_RUN**.
 
 Unified player group lifecycle, checked broadcast and publication barriers are
