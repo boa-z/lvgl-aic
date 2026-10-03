@@ -273,6 +273,9 @@ static lv_result_t lv_aic_mpp_source_open(const void *src, lv_aic_mpp_stream_t *
     if (type == LV_IMAGE_SRC_FILE) {
         if (lv_aic_mpp_is_jpeg_path(src)) *codec = MPP_CODEC_VIDEO_DECODER_MJPEG;
         else if (lv_aic_mpp_is_png_path(src)) *codec = MPP_CODEC_VIDEO_DECODER_PNG;
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+        else if (lv_aic_mpp_has_ext(src, "aicp")) *codec = MPP_CODEC_VIDEO_DECODER_AICP;
+#endif
         else return LV_RESULT_INVALID;
         result = lv_aic_mpp_stream_open_file(stream, src);
     }
@@ -286,6 +289,10 @@ static lv_result_t lv_aic_mpp_source_open(const void *src, lv_aic_mpp_stream_t *
             *codec = MPP_CODEC_VIDEO_DECODER_MJPEG;
         else if (image->data_size >= 8 && memcmp(image->data,"\x89PNG\r\n\x1a\n",8) == 0)
             *codec = MPP_CODEC_VIDEO_DECODER_PNG;
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+        else if (image->data_size >= 6 && memcmp(image->data, "AICP", 4) == 0)
+            *codec = MPP_CODEC_VIDEO_DECODER_AICP;
+#endif
         else return LV_RESULT_INVALID;
         result = lv_aic_mpp_stream_open_memory(stream,image->data,image->data_size);
     }
@@ -399,7 +406,7 @@ static lv_result_t lv_aic_mpp_parse_jpeg_header(lv_aic_mpp_stream_t *stream, int
             if (*width <= 0 || *height <= 0) {
                 return LV_RESULT_INVALID;
             }
-            if (*components != 1 && *components != 3) {
+            if (*components != 1 && *components != 3 && *components != 4) {
                 return LV_RESULT_INVALID;
             }
             uint32_t component_bytes = 3U * (uint32_t)*components;
@@ -777,8 +784,29 @@ static lv_result_t lv_aic_mpp_info_cb(lv_image_decoder_t *decoder,
     if (!dsc || !header ||
         lv_aic_mpp_source_open(dsc->src,&stream,&codec) != LV_RESULT_OK)
         return LV_RESULT_INVALID;
-    if (codec == MPP_CODEC_VIDEO_DECODER_MJPEG)
+    if (codec == MPP_CODEC_VIDEO_DECODER_MJPEG) {
         result = lv_aic_mpp_parse_jpeg_header(&stream,&width,&height,&components);
+        /* Four-component AICP is not a CMYK JPEG decoder contract. */
+        if (components == 4) result = LV_RESULT_INVALID;
+    }
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+    else if (codec == MPP_CODEC_VIDEO_DECODER_AICP) {
+        uint8_t magic[4];
+        uint32_t got = 0;
+        result = LV_RESULT_INVALID;
+        if (lv_aic_mpp_stream_read(&stream, magic, sizeof(magic), &got) == LV_FS_RES_OK &&
+            got == sizeof(magic) && memcmp(magic, "AICP", 4) == 0) {
+            result = lv_aic_mpp_parse_jpeg_header(&stream, &width, &height, &components);
+            if (components == 4) {
+#ifdef AIC_VE_DRV_V31
+                cf = LV_COLOR_FORMAT_ARGB8888;
+#else
+                result = LV_RESULT_INVALID;
+#endif
+            }
+        }
+    }
+#endif
     else result = lv_aic_mpp_parse_png_header(&stream,&width,&height,&cf);
     lv_aic_mpp_stream_close(&stream);
     if (result != LV_RESULT_OK || width <= 0 || height <= 0 ||

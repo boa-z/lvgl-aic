@@ -31,6 +31,10 @@ the combined GE2D/fonts/GIF/widgets cross-build and linked-symbol checks pass.
 Physical display/input acceptance remains pending;
 SDK media widgets remain missing.
 
+AICP now has an optional [SDK codec integration](aicp-stage.md), with
+source/header host contracts; actual AICP decoding and target acceptance
+remain unverified. The MPP table's AICP gap is not yet closed.
+
 Declined drawing normally stays with software. Unsupported compressed resources
 do not imply another decoder can read them. Whole-screen rotation and IMAGE
 rotation are different paths.

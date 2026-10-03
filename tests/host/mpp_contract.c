@@ -229,10 +229,42 @@ static void jpeg_header_boundaries(void)
     lv_aic_mpp_stream_close(&stream);
 }
 
+static void aicp_header_contract(void)
+{
+    uint8_t bytes[] = {'A','I','C','P',0xff,0xd8,0xff,0xc1,0,17,
+                      8,0,16,0,24,3,1,0x11,0,2,0x11,0,3,0x11,0};
+    lv_image_dsc_t image = {0};
+    image.header.magic = LV_IMAGE_HEADER_MAGIC;
+    image.header.cf = LV_COLOR_FORMAT_RAW;
+    image.data = bytes; image.data_size = sizeof(bytes);
+    lv_image_decoder_dsc_t dsc = {0};
+    lv_image_header_t header = {0};
+    dsc.src = &image;
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+    assert(lv_aic_mpp_info_cb(NULL, &dsc, &header) == LV_RESULT_OK);
+    assert(header.w == 24 && header.h == 16 && header.cf == LV_COLOR_FORMAT_RGB888);
+    lv_aic_mpp_stream_t stream = {0};
+    enum mpp_codec_type codec;
+    assert(lv_aic_mpp_source_open(&image, &stream, &codec) == LV_RESULT_OK);
+    assert(codec == MPP_CODEC_VIDEO_DECODER_AICP && stream.cursor == 0);
+    assert(stream.size == sizeof(bytes)); /* Prefix stays in decoder packet. */
+    lv_aic_mpp_stream_close(&stream);
+    bytes[15] = 4; /* Invalid length for four components. */
+    assert(lv_aic_mpp_info_cb(NULL, &dsc, &header) == LV_RESULT_INVALID);
+    bytes[15] = 3;
+    image.data_size--;
+    assert(lv_aic_mpp_info_cb(NULL, &dsc, &header) == LV_RESULT_INVALID);
+    image.data_size++;
+    bytes[0] = 'X';
+#endif
+    assert(lv_aic_mpp_info_cb(NULL, &dsc, &header) == LV_RESULT_INVALID);
+}
+
 int main(int argc, char **argv) {
     jpeg_header_boundaries();
     assert(argc == 2 || argc == 3);
     lv_init();
+    aicp_header_contract();
     if (argc == 3) {
         assert(strcmp(argv[2],"--memory-cache") == 0);
         memory_cache_contract(argv[1]);
