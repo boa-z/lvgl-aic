@@ -31,3 +31,10 @@ layer_head and lv_layer_t next/draw_task_head are accessed only through
 compat/lvgl_aic_private.h. The layer scan defers source retirement while queued
 tasks may still open it; it does not dispatch, cancel or synchronously wait for
 tasks. The camera contract covers this conservative gate and source lifetime.
+
+AIC canvas uses native lv_canvas_t subclass layout and clears its draw_buf
+member during destruction through compat/lvgl_aic_private.h. Owned draw-buffer
+metadata stays inside the instance; do not replace its source with native buffer
+setters. Mutate/resize only outside active rendering, as required for mutable
+canvas images. Host allocation-failure and pixel contracts plus target live-link
+gates must be rerun when changing the LVGL pin. No vendor canvas archive is used.

@@ -7,7 +7,7 @@ APNG worker and other suffixes to SDK media, retaining the same image object,
 transforms and slave bindings across drained source replacement. APNG rate,
 zero-time replay, finite repeat and metadata use checked common commands.
 The standalone APNG widget remains usable without SDK media/audio.
-Host **50/50 PASS** and strict combined-feature E907 compile **PASS**.
+Host **51/51 PASS** and strict combined-feature E907 compile **PASS**.
 The video-plane stage clean firmware passed boot/app/static/image/manifest;
 source identities and artifact evidence are recorded in [video-plane stage](video-plane-stage.md).
 Physical validation remains **NOT_RUN**.
@@ -57,6 +57,7 @@ phase documents are historical; source presence and switches are not board proof
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
 | Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
+| AIC canvas | Owned ARGB8888 CMA buffer; bounded peak allocation; positioned and clearing centered text; host pixels/lifecycle and target live-link gates | Board CMA/cache/display validation; standalone SDK MPP image/fill helper API parity |
 | Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu have host interaction contracts, a manual page and target linkage gates; physical input/rendering and direct video-window composition remain pending; camera/player use separate opt-in adapters |
 
 SDK image roller is now optional via AIC_LVGL_USE_IMG_ROLLER: application-owned
@@ -538,3 +539,13 @@ SDK E907 v9 archive disassembly confirms centered-text clears to transparent
 with zero spacing. The adapter preserves this replacement behavior; ordinary
 positioned text draws over existing content. Empty centered text clears the
 canvas. Centered measured text is bounded to 4096 x 8192 before mutation.
+
+
+#### AIC canvas firmware evidence
+
+Full GE/fonts/GIF/widgets/AICP/player/APNG boot/app/static/image/manifest
+gates PASS, including live canvas entry points. Clean sources: component
+`11e5b19d28069c88242b9b3117791f2f77a27a05`, SDK
+`6166afaec164143c7eefe6faa172b3b1346983e6`.
+SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `b0a49d708eebaa446403078990c76c5ce85f0daf73b12842eaf81cbaa066880f`. Board **NOT_RUN**.
