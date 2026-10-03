@@ -13,6 +13,8 @@ struct lv_aic_video_plane {
     struct mpp_fb *fb;
     struct aicfb_screeninfo screen;
     reader_t current,pending;
+    struct aicfb_alpha_config saved_alpha;
+    bool alpha_saved,alpha_fault;
     bool faulted,submitted;
 };
 static lv_aic_video_plane_t *owner;
@@ -42,6 +44,24 @@ lv_aic_video_plane_t *lv_aic_video_plane_open(void)
         lv_free(p);return NULL;
     }
     owner=p;return p;
+}
+bool lv_aic_video_plane_enable_ui_alpha(lv_aic_video_plane_t *p)
+{
+    if(!p || p!=owner || p->faulted || p->alpha_fault) return false;
+    if(p->alpha_saved) return true;
+    if(p->submitted || p->screen.format!=MPP_FMT_ARGB_8888) return false;
+    struct aicfb_alpha_config old={.layer_id=AICFB_LAYER_TYPE_UI};
+    if(mpp_fb_ioctl(p->fb,AICFB_GET_ALPHA_CONFIG,&old)<0 || old.layer_id!=AICFB_LAYER_TYPE_UI ||
+       old.enable>1 || old.mode>AICFB_MIXDER_ALPHA_MODE || old.value>255) return false;
+    /* Save BEFORE a potentially partial SDK update. A failed apply still owns
+     * restoration and must keep the session until close succeeds. */
+    p->saved_alpha=old;p->alpha_saved=true;
+    struct aicfb_alpha_config pixel={.layer_id=AICFB_LAYER_TYPE_UI,.enable=1,
+        .mode=AICFB_PIXEL_ALPHA_MODE,.value=255};
+    if(mpp_fb_ioctl(p->fb,AICFB_UPDATE_ALPHA_CONFIG,&pixel)<0 || !sync_scanout(p)) {
+        p->alpha_fault=true;return false;
+    }
+    return true;
 }
 static bool acquire(const void *source,reader_t *reader,struct mpp_buf *buf)
 {
@@ -77,7 +97,7 @@ bad:
 bool lv_aic_video_plane_present(lv_aic_video_plane_t *p,const void *source,
                                 int32_t x,int32_t y,uint32_t width,uint32_t height)
 {
-    if(!p || p!=owner || p->faulted || !source || x<0 || y<0 || !width || !height ||
+    if(!p || p!=owner || (p->faulted || p->alpha_fault) || !source || x<0 || y<0 || !width || !height ||
        (uint64_t)x+width>p->screen.width || (uint64_t)y+height>p->screen.height) return false;
     struct aicfb_layer_data layer={.enable=1,.layer_id=AICFB_LAYER_TYPE_VIDEO,
         .pos={x,y},.scale_size={width,height}};
@@ -89,7 +109,7 @@ bool lv_aic_video_plane_present(lv_aic_video_plane_t *p,const void *source,
     release(&p->current);p->current=p->pending;p->pending=(reader_t){0};return true;
 }
 bool lv_aic_video_plane_faulted(const lv_aic_video_plane_t *p)
-{ return p && p==owner && p->faulted; }
+{ return p && p==owner && (p->faulted || p->alpha_fault); }
 bool lv_aic_video_plane_hide(lv_aic_video_plane_t *p)
 {
     if(!p || p!=owner) return false;
@@ -103,6 +123,12 @@ bool lv_aic_video_plane_hide(lv_aic_video_plane_t *p)
 bool lv_aic_video_plane_close(lv_aic_video_plane_t *p)
 {
     if(!lv_aic_video_plane_hide(p)) return false;
+    if(p->alpha_saved) {
+        if(mpp_fb_ioctl(p->fb,AICFB_UPDATE_ALPHA_CONFIG,&p->saved_alpha)<0 || !sync_scanout(p)) {
+            p->alpha_fault=true;return false;
+        }
+        p->alpha_saved=p->alpha_fault=false;
+    }
     mpp_fb_close(p->fb);owner=NULL;lv_free(p);return true;
 }
 #endif

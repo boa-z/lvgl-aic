@@ -132,6 +132,9 @@ static unsigned plane_presents,plane_closes;
 static int32_t plane_x,plane_y;static uint32_t plane_w,plane_h;
 lv_aic_video_plane_t *lv_aic_video_plane_open(void)
 { if(plane_live) return NULL;plane_live=true;return &plane_mock; }
+static unsigned alpha_enables;
+bool lv_aic_video_plane_enable_ui_alpha(lv_aic_video_plane_t *p)
+{ assert(p==&plane_mock && plane_live);alpha_enables++;return true; }
 bool lv_aic_video_plane_hide(lv_aic_video_plane_t *p)
 {
     assert(p==&plane_mock && plane_live);if(plane_fail_close) return false;
@@ -569,6 +572,22 @@ int main(void)
     lv_display_set_offset(d,1,0);frames=1;tick();
     assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT && !plane_live);
     lv_obj_delete(o);tick();lv_display_set_offset(d,0,0);
+    assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
+    /* Top/system/bottom layers are visible roots, unlike inactive screens. */
+    lv_obj_t *roots[]={lv_display_get_layer_top(d),lv_display_get_layer_sys(d),lv_display_get_layer_bottom(d)};
+    for(unsigned i=0;i<3;i++) {
+        o=make();lv_obj_set_parent(o,roots[i]);
+        assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+        assert(lv_aic_player_set_src(o,"overlay.mp4")==LV_RESULT_OK);assert(lv_aic_player_start(o)==LV_RESULT_OK);
+        unsigned before=alpha_enables;frames=1;tick();assert(plane_live && alpha_enables>before);
+        lv_obj_set_hidden(roots[i],true);tick();assert(!plane_rgb[0]);
+        lv_obj_set_hidden(roots[i],false);tick();assert(plane_rgb[0]);
+        lv_obj_delete(o);tick();assert(!plane_live && !active);
+    }
+    lv_obj_t *inactive=lv_obj_create(NULL);o=make();lv_obj_set_parent(o,inactive);
+    assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"inactive.mp4")==LV_RESULT_OK);assert(lv_aic_player_start(o)==LV_RESULT_OK);
+    frames=1;tick();assert(!plane_live);lv_obj_delete(inactive);tick();assert(!active);
     assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
     lv_image_decoder_delete(window_decoder);
 #endif

@@ -8,6 +8,10 @@
 static unsigned opens,closes,updates,waits,retains,releases,cache;
 static unsigned fail_update,fail_wait,busy,fail_query;
 static struct aicfb_layer_data submitted;
+static unsigned fail_alpha_get,fail_alpha_set,alpha_updates;
+static enum mpp_pixel_format ui_format=MPP_FMT_ARGB_8888;
+static struct aicfb_alpha_config alpha={.layer_id=AICFB_LAYER_TYPE_UI,.enable=1,
+    .mode=AICFB_MIXDER_ALPHA_MODE,.value=173};
 struct mpp_fb { int unused; };static struct mpp_fb fb;
 struct mpp_fb *mpp_fb_open(void) { opens++;return &fb; }
 void mpp_fb_close(struct mpp_fb *p) { assert(p==&fb);closes++; }
@@ -16,10 +20,20 @@ int mpp_fb_ioctl(struct mpp_fb *p,int cmd,void *arg)
     assert(p==&fb);
     if(cmd==AICFB_GET_SCREENINFO) {
         if(fail_query) return -1;
-        *(struct aicfb_screeninfo *)arg=(struct aicfb_screeninfo){.width=800,.height=480};return 0;
+        *(struct aicfb_screeninfo *)arg=(struct aicfb_screeninfo){.format=ui_format,.width=800,.height=480};return 0;
     }
     if(cmd==AICFB_GET_LAYER_CONFIG) {
         struct aicfb_layer_data *l=arg;assert(l->layer_id==AICFB_LAYER_TYPE_VIDEO);l->enable=busy;return 0;
+    }
+    if(cmd==AICFB_GET_ALPHA_CONFIG) {
+        assert(((struct aicfb_alpha_config *)arg)->layer_id==AICFB_LAYER_TYPE_UI);
+        if(fail_alpha_get) return -1;
+        *(struct aicfb_alpha_config *)arg=alpha;return 0;
+    }
+    if(cmd==AICFB_UPDATE_ALPHA_CONFIG) {
+        alpha=*(struct aicfb_alpha_config *)arg;alpha_updates++;
+        assert(alpha.layer_id==AICFB_LAYER_TYPE_UI);
+        return fail_alpha_set?-1:0; /* Exercise partial mutation even on failure. */
     }
     if(cmd==AICFB_UPDATE_LAYER_CONFIG) {
         submitted=*(struct aicfb_layer_data *)arg;updates++;
@@ -74,6 +88,42 @@ int main(void)
     assert(lv_aic_video_plane_present(p,lv_aic_yuv_image_source(y),0,0,32,32));
     assert(submitted.buf.format==MPP_FMT_NV12 && submitted.buf.phy_addr[1]==0x43001000);
     lv_aic_yuv_image_destroy(y);assert(lv_aic_video_plane_close(p));
+    assert(retains==releases && opens==closes && !alpha_updates);
+    struct aicfb_alpha_config original=alpha;
+    ui_format=MPP_FMT_RGB_565;p=lv_aic_video_plane_open();assert(p);
+    assert(!lv_aic_video_plane_enable_ui_alpha(p) && !alpha_updates);
+    assert(lv_aic_video_plane_close(p));ui_format=MPP_FMT_ARGB_8888;
+    p=lv_aic_video_plane_open();assert(p);fail_alpha_get=1;
+    assert(!lv_aic_video_plane_enable_ui_alpha(p) && !alpha_updates);
+    fail_alpha_get=0;assert(lv_aic_video_plane_close(p));
+    for(unsigned mode=0;mode<7;mode++) {
+        p=lv_aic_video_plane_open();assert(p);
+        if(mode==0) fail_alpha_set=1;
+        if(mode==1 || mode==2) fail_wait=waits+mode;
+        bool applied=lv_aic_video_plane_enable_ui_alpha(p);
+        assert(applied==(mode>=3));
+        assert(alpha.enable && alpha.mode==AICFB_PIXEL_ALPHA_MODE && alpha.value==255);
+        if(applied) {
+            unsigned u=alpha_updates;assert(lv_aic_video_plane_enable_ui_alpha(p) && alpha_updates==u);
+            a=rgb(9);assert(lv_aic_video_plane_present(p,lv_aic_rgb_image_source(a),0,0,8,8));
+            lv_aic_rgb_image_destroy(a);assert(lv_aic_video_plane_hide(p));
+            assert(alpha.mode==AICFB_PIXEL_ALPHA_MODE); /* hide retains alpha ownership */
+        } else {
+            assert(lv_aic_video_plane_faulted(p));assert(lv_aic_video_plane_hide(p));
+            assert(lv_aic_video_plane_faulted(p));
+            a=rgb(10);assert(!lv_aic_video_plane_present(p,lv_aic_rgb_image_source(a),0,0,8,8));
+            lv_aic_rgb_image_destroy(a);
+        }
+        fail_alpha_set=0;fail_wait=0;
+        if(mode==3) fail_alpha_set=1;
+        if(mode==4 || mode==5) fail_wait=waits+mode-3;
+        if(mode>=3 && mode<=5) {
+            unsigned closed=closes;assert(!lv_aic_video_plane_close(p));
+            assert(closes==closed && lv_aic_video_plane_faulted(p) && !lv_aic_video_plane_open());
+            fail_alpha_set=0;fail_wait=0;
+        }
+        assert(lv_aic_video_plane_close(p));assert(!memcmp(&alpha,&original,sizeof(alpha)));
+    }
     assert(retains==releases && opens==closes);
     assert(lv_aic_rgb_image_decoder_deinit() && lv_aic_yuv_image_decoder_deinit());lv_deinit();return 0;
 }

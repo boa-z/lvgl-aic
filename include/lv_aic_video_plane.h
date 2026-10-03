@@ -10,6 +10,11 @@ typedef struct lv_aic_video_plane lv_aic_video_plane_t;
  * video layer. Do not use unmanaged SDK video-layer writers concurrently.
  * Does not alter UI alpha, create a transparent window, or rotate coordinates. */
 lv_aic_video_plane_t *lv_aic_video_plane_open(void);
+/* Optional, before first present: ARGB8888 UI pixel-alpha lease. Saves exact
+ * SDK UI alpha config, applies pixel alpha, restores on successful close.
+ * No unmanaged alpha writers while held. Failed apply/restore keeps ownership;
+ * retry close, never discard the handle. hide preserves the alpha lease. */
+bool lv_aic_video_plane_enable_ui_alpha(lv_aic_video_plane_t *plane);
 /* Native immutable RGB/YUV image source only. Physical screen rectangle,
  * entirely on screen; no rotation/crop. Producer must supply DMA-accessible,
  * CPU-coherent padded rows. A native reader is retained until scanout retires.

@@ -1,6 +1,6 @@
 # Current capabilities and SDK gaps
 
-## Current player/APNG status (2026-10-03)
+## Current player/APNG status (2026-10-04)
 
 The unified player now routes native `.png`/`.apng` sources to the bounded
 APNG worker and other suffixes to SDK media, retaining the same image object,
@@ -14,11 +14,13 @@ Physical validation remains **NOT_RUN**.
 
 Unified player group lifecycle, checked broadcast and publication barriers are
 now available; see [group contract](player-group-stage.md). Remaining player
-parity: physical multi-decoder validation, audio mixing, automatic layer selection and rotated-plane composition.
+parity: physical multi-decoder validation and rotated-plane composition.
+Audio mixing is unimplemented; reliable concurrent mixing is not established as
+a guarantee of the SDK reference either.
 An opt-in [video-plane session](video-plane-stage.md) now provides exclusive
 native frame scanout and VSync-protected lifetime. Explicit player binding now
-tracks a rectangular alpha-zero window and drains scanout on lifecycle changes; automatic player selection,
-UI alpha policy and physical validation remain open.
+tracks a rectangular alpha-zero window, leases/restores UI pixel alpha and drains
+scanout on lifecycle changes. Overlay roots are supported; physical validation remains open.
 APNG now supports four independent instances with shared SDK decode serialization.
 Application linking also protects SDK VE arbitration failure; the final image's
 PNG/JPEG call sites are verified by disassembly. Media now permits four independent
@@ -271,3 +273,15 @@ that dependency. Therefore the D13x image has no H.264 decoder call path to
 validate. This is an SDK/SoC applicability boundary, not evidence of a lost
 LVGL adapter feature. H.264 linkage/arbitration needs a separate supported V10
 board profile; do not force the V10 driver into D13x to satisfy a symbol check.
+
+
+## Default layer selection applicability (2026-10-04)
+
+SDK `aic_widgets/aic_player/player_backend/aic_backend_ops.c:player_select_layer`
+selects `LV_AIC_PLAYER_LAYER_UI_DOUBLE_BUF` on D13x/D21x/D12p when
+`AIC_MPP_PLAYER_VIDEO_EXT_RENDER` is enabled (also always on D12x). This port's
+current D13x external-render default is normal LVGL image composition, consistent
+with that SDK choice. Explicit video-plane mode is opt-in. Do not count the
+absence of automatic video-plane selection as a missing default behavior in
+this profile. Other SDK render profiles and rotated video-plane composition
+still require separate implementation/validation.

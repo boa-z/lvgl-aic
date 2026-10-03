@@ -16,7 +16,7 @@ are accepted; actual DE format/scaler support remains board-dependent.
 
 Rectangles use physical screen coordinates and must fit completely on screen.
 The DE performs scaling. Rotation, implicit clipping, automatic UI alpha
-changes are not implemented by the session. The player binding below is explicit; use the
+changes are opt-in through the alpha lease described below. The player binding below is explicit; use the
 existing video-window API and an alpha-capable UI plane when composing UI over
 video. RGB565 global alpha policy remains the application's responsibility.
 This is a callable scanout session, not completion of SDK player auto-layer parity.
@@ -76,8 +76,8 @@ The player's object rectangle becomes the physical scanout rectangle and its
 source becomes an alpha-zero `.fake` window. Native frames remain available to
 slave image widgets, with their independent transforms. The MPP fake decoder
 and GE replacement path must be initialized; the default display must use
-ARGB8888 and the application must configure the SDK UI plane for pixel alpha.
-The adapter does not silently alter global UI alpha settings. RGB565 output,
+ARGB8888. Explicit player plane mode acquires the UI pixel-alpha lease below;
+normal image output and raw plane open do not change alpha. RGB565 output,
 rotated/offset displays, native/style transforms, recolor, partial ancestor clipping,
 rounded ancestors and non-opaque styles are outside this initial profile and
 report FAULT. This is not yet SDK automatic layer selection or rotated-plane parity.
@@ -86,7 +86,8 @@ Position and size changes are detected on owner timer passes, including while
 paused. Hidden ancestors or inactive screens disable scanout while retaining
 the latest widget frame; becoming visible resubmits it. Window repaint and DE
 updates are not atomic and need board acceptance during motion/page changes.
-Only the default display is mapped to the SDK framebuffer.
+Only the default display is mapped to the SDK framebuffer. Active screen, top,
+system and bottom roots can submit; inactive screens stop scanout.
 
 Stop, close, source replacement, seek and object deletion retire the scanout
 reader before releasing widget image ownership. A failed disable/VSync keeps
@@ -114,3 +115,31 @@ linked `lv_aic_player_set_video_plane` API. Source identities:
 - ELF SHA256: `4c90d9075b8b68517adcd0ec9b85d538154f0b9bae5ddf0e669c3d681b5c11c6`.
 
 The combined-profile evidence directory now contains this build. Board **NOT_RUN**.
+
+
+## UI alpha lease and overlay roots (2026-10-04)
+
+`lv_aic_video_plane_enable_ui_alpha` is an explicit pre-presentation operation:
+it checks ARGB8888 UI format, queries/saves the exact SDK UI alpha configuration,
+applies enabled pixel alpha, and waits for synchronization. Repeated calls are
+idempotent. `hide` retains the lease; successful `close` restores the original
+configuration after video scanout has been disabled. Applications must not use
+unmanaged alpha writers during the lease.
+
+The snapshot is retained before the update attempt: a failed update can still
+have partially changed SDK state. Apply/restore update or VSync failure latches
+an alpha fault, refuses new frames, and retains the session until close retries
+succeed. Hiding alone cannot clear an alpha fault. Video readers can be released
+after a verified disable even if alpha restoration subsequently fails; the
+framebuffer reference/ownership remains until restoration succeeds.
+
+Explicit player plane mode now acquires this lease automatically on its first
+visible frame and restores it through existing deferred teardown. Top/system/
+bottom LVGL overlay roots are recognized as visible; only inactive screens and
+hidden ancestors suppress output. This fixes the prior false hidden state for
+players parented under `lv_layer_top()`.
+
+Host **45/45 PASS**, strict E907 **PASS**. Real session tests inject partial
+alpha writes, both VSync failures, failed restoration, retry and exact restore;
+RGB565/query failure rejects before mutation. Widget tests cover all overlay
+roots and inactive screens. Physical alpha compositing remains **NOT_RUN**.

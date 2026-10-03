@@ -49,7 +49,8 @@ typedef enum {
 lv_obj_t *lv_aic_player_create(lv_obj_t *parent);
 /* Select explicit video-plane output before opening a source (default false).
  * Requires VIDEO_PLANE plus MPP .fake decoder/GE replacement support and an
- * ARGB8888 UI display with pixel alpha enabled by the application. Unrotated,
+ * ARGB8888 UI display. Saves/applies/restores SDK UI pixel alpha while the
+ * plane is owned; no concurrent unmanaged alpha writers. Unrotated,
  * fully visible rectangular objects only; native/style transforms, partial
  * ancestor clipping, rounded ancestors and opacity are rejected at runtime.
  * Object position/size drives physical scanout and a transparent fake window.

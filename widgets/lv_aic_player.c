@@ -420,7 +420,10 @@ static bool present_plane(player_binding_t *b)
 {
     if(!b->plane_enabled || !b->frame) return true;
     lv_obj_t *obj=b->obj;lv_display_t *display=lv_obj_get_display(obj);
-    bool hidden=lv_obj_get_screen(obj)!=lv_display_get_screen_active(display);
+    lv_obj_t *root=lv_obj_get_screen(obj);
+    bool hidden=root!=lv_display_get_screen_active(display) &&
+        root!=lv_display_get_layer_top(display) && root!=lv_display_get_layer_sys(display) &&
+        root!=lv_display_get_layer_bottom(display);
     for(lv_obj_t *a=obj;a;a=lv_obj_get_parent(a))
         hidden=hidden || lv_obj_is_hidden(a);
     if(hidden) {
@@ -459,7 +462,7 @@ static bool present_plane(player_binding_t *b)
     current=lv_image_get_src(obj);
     if(!current || lv_image_src_get_type(current)!=LV_IMAGE_SRC_FILE || strcmp(current,window)) return false;
     if(!b->plane) b->plane=lv_aic_video_plane_open();
-    if(!b->plane) return false;
+    if(!b->plane || !lv_aic_video_plane_enable_ui_alpha(b->plane)) return false;
     if(source==b->plane_source && !memcmp(&area,&b->plane_area,sizeof(area))) return true;
     if(!lv_aic_video_plane_present(b->plane,source,area.x1,area.y1,width,height)) return false;
     b->plane_source=source;b->plane_area=area;return true;
