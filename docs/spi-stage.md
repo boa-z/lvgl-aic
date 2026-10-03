@@ -381,3 +381,37 @@ and component partial link PASS. Combined object SHA256:
 Logs: `output/spi-worker-tests.log`, `output/spi-worker-target.log`.
 Actual target scheduling, final enabled-device linkage, LVGL display binding,
 blit mode and board output remain unverified; hardware **NOT_RUN**.
+
+
+## LVGL 9.6 display binding
+
+`lv_aic_spi_display_create` owns one budgeted full-frame RGB565 LVGL draw buffer,
+a display and an OSAL worker, borrowing the application's configured SPI session.
+Source geometry/rotation and worker stack/priority are explicit. The session
+retains output geometry, wire format, panel callback and DMA storage ownership.
+FULL rendering hands the complete frame to the worker. LVGL's flush-wait callback
+consumes completion on the UI thread and calls flush-ready exactly once, without
+depending on a timer that cannot run while refresh is waiting. Large packing and
+transport waits execute on the worker; refresh waits for source ownership as
+required. This first binding uses a single draw buffer, not pipelined double
+buffer throughput parity.
+
+Only use the borrowed LVGL display for normal UI operations: do not change buffer,
+color format, render mode, rotation, driver data or callbacks. Close outside LVGL
+refresh/events, retrying until the worker relinquishes resources. It pauses
+refresh, stops admission, consumes any pending result and then deletes display
+and draw pixels. Direct LVGL display deletion is observed: it stops admission
+but retains the handle/pixels until this close API completes, so a worker cannot
+read freed source storage. Session/panel/CMA fault lifetime remains separate.
+
+Validation: **65/65 host PASS**, including real LVGL white RGB565 rendering,
+two consecutive refreshes with deferred worker completion, budget/angle/startup
+rejection, failed completion during close, and direct display deletion while
+source ownership is outstanding. Worker transport is mocked in this display
+contract; separate worker/handoff tests cover real host threads. D13x real-header
+compile/component partial link PASS. Combined object SHA256:
+`7233eb88b9239fbbc85d85f4585b4df8a35c348d7cfd7c6346b9aead501490e9`.
+Logs: `output/spi-display-tests.log`, `output/spi-display-target.log`.
+Enabled-device final linkage, target scheduling/cache behavior, panel setup/TE,
+direct-blit integration, statistics and multi-display board acceptance remain
+open. Hardware **NOT_RUN**.

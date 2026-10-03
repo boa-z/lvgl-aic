@@ -16,3 +16,5 @@ aicos_thread_t aicos_thread_create(const char *name,uint32_t stack,uint32_t prio
     void (*entry)(void *),void *context);
 
 #define RT_THREAD_PRIORITY_MAX 32
+
+void aicos_msleep(unsigned int milliseconds);
