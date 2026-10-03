@@ -166,6 +166,37 @@ static int ge_probe(void)
         }
         AIC_TEST_I("PASS GE I420 scale=%d pixels=%d max_error=%d guards=OK",scale,checked,worst);
     }
+    d.rotation=0; d.scale_x=d.scale_y=LV_SCALE_NONE;
+    d.pivot=(lv_point_t){0,0}; d.tile=1;
+    task.area=(lv_area_t){0,16,63,47}; task.clip_area=(lv_area_t){2,18,61,45};
+    memset(output,0xa5,64*64*3);
+    aicos_dcache_clean_invalid_range((unsigned long *)output,64*64*3);
+    lv_draw_aic_ge2d_outcome_t tiled_outcome;
+    AIC_TEST_I("BEGIN GE I420 tiled clipped 2x2");
+    if (lv_draw_aic_ge2d_image(&task,&tiled_outcome)!=LV_RESULT_OK ||
+        tiled_outcome!=LV_DRAW_AIC_GE2D_OUTCOME_ENGINE) goto done;
+    aicos_dcache_invalid_range((unsigned long *)output,64*64*3);
+    int tiled_worst=0;
+    for(int y=0;y<64;y++) {
+        for(int x=0;x<64;x++) {
+            bool inside=x>=2 && x<=61 && y>=18 && y<=45;
+            int expected=inside ? ((5*(x%32)+3*((y-16)%16))*255+109)/219 : 0;
+            for(int c=0;c<3;c++) {
+                int got=output[(y*64+x)*3+c];
+                if(!inside) { if(got!=0xa5) goto done; }
+                else {
+                    int error=got-expected;
+                    if(error<0) error=-error;
+                    if(error>tiled_worst) tiled_worst=error;
+                }
+            }
+        }
+    }
+    if(tiled_worst>3) {
+        AIC_TEST_E("FAIL GE I420 tiled max_error=%d",tiled_worst);
+        goto done;
+    }
+    AIC_TEST_I("PASS GE I420 tiled pixels=1680 max_error=%d guards=OK",tiled_worst);
     result=0;
 done:
     if (image) lv_aic_yuv_image_destroy(image);

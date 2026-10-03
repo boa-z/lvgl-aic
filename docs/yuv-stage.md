@@ -49,7 +49,7 @@ one luma channel and, except I400, one chroma channel using SDK Q16 phase rules.
 Subsampled axes round the luma step/phase down to even before halving for UV.
 Filter footprints can expand to complete chroma samples within the source;
 odd crop origins, out-of-source filter samples and the known GE split-risk
-interval decline before submission. Tiled YUV and
+interval decline before submission. Transformed tiles and
 arbitrary rotations retain the RGB conversion/rendering fallback.
 
 Host scaling coverage includes all eight layouts at 0.5x, 1.5x and 2x,
@@ -60,6 +60,17 @@ fractional clipping and anisotropic scaling at all three nonzero orthogonal
 rotations. Neutral chroma and an analytic BT.601 luma ramp form an independent
 pixel oracle (tolerance 3); every pixel outside the clip must retain its sentinel.
 All scaled board probes remain NOT_RUN.
+
+Native-size YUV tiling holds one source lease across two passes: every visible
+tile is checked before the first cache operation or write, then the same tile
+geometry is submitted synchronously. An unsupported final edge declines the
+whole task. Failure after any submitted tile retains the lease and stops
+rendering without software replay. The repeat anchor follows image_area, with
+offscreen rows/columns skipped arithmetically. Host tests cover all eight
+formats, aligned partial edges, invalid final edges, a distant anchor, owner
+retirement during the first tile and a second-tile hardware failure. A new
+2x2 I420 board probe checks 1680 clipped pixels and every outside byte against
+an analytic neutral-chroma ramp; board execution is NOT_RUN.
 
 On a submission/emit/sync failure, software replay is forbidden. One source
 lease is quarantined and further YUV submissions fail. The dispatcher keeps
@@ -138,6 +149,6 @@ dispatch leaves a second queued task WAITING, performs no additional image
 execution and increments the error counter only once. This synchronous mock
 does not establish hardware quiescence or authorize a production reset path.
 
-Remaining scope: tiled YUV, broader board CSC
+Remaining scope: transformed tiles, broader board CSC
 and clipped-rotation numeric probes,
 and camera/player/video-window ownership. This stage does not close those gaps.

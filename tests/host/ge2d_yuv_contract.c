@@ -6,6 +6,8 @@
 #include "../../draw/ge2d/lv_draw_aic_ge2d_yuv.c"
 
 static struct ge_bitblt captured;
+static struct ge_bitblt history[32];
+static int fail_submission;
 static int calls, emits, syncs, src_caches, dst_caches, fail_at, live;
 static lv_aic_yuv_image_t *retire_on_sync;
 struct mpp_ge *lv_draw_aic_ge2d_device(void) { return (void *)(uintptr_t)1; }
@@ -16,7 +18,12 @@ void lv_draw_aic_ge2d_prepare_yuv_cache(const lv_aic_yuv_frame_t *frame)
 void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *buffer, const lv_area_t *area)
 { assert(buffer && area->x1>=0 && area->y1>=0); dst_caches++; }
 int mpp_ge_bitblt(struct mpp_ge *ge, struct ge_bitblt *blt)
-{ (void)ge; captured=*blt; calls++; return fail_at==1 ? -1 : 0; }
+{
+    (void)ge; captured=*blt;
+    if(calls<32) history[calls]=*blt;
+    calls++;
+    return fail_at==1 || calls==fail_submission ? -1 : 0;
+}
 int mpp_ge_emit(struct mpp_ge *ge)
 { (void)ge; emits++; return fail_at==2 ? -1 : 0; }
 int mpp_ge_sync(struct mpp_ge *ge)
@@ -134,6 +141,9 @@ int main(void)
         }
         d.rotation=0; d.pivot=(lv_point_t){0,0};
         d.scale_x=d.scale_y=256; task.clip_area=layer.buf_area;
+        d.tile=1; task.area=(lv_area_t){64,64,127,95};
+        reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==4);
+        d.tile=0; task.area=(lv_area_t){64,64,95,79};
         lv_aic_yuv_image_destroy(image); assert(live==0);
     }
     frame.format=LV_COLOR_FORMAT_I420; d.rotation=0;
@@ -145,7 +155,30 @@ int main(void)
     assert(captured.src_buf.crop.x==2 && captured.src_buf.crop.y==2);
     assert(captured.src_buf.crop.width==24 && captured.src_buf.crop.height==12);
     d.scale_x=384; reset(); assert(lv_draw_aic_ge2d_yuv(&task)==0 && !calls);
-    d.scale_x=256; d.tile=1; assert(lv_draw_aic_ge2d_yuv(&task)==0); d.tile=0;
+    d.scale_x=256; d.tile=1;
+    task.area=(lv_area_t){64,64,127,95}; task.clip_area=layer.buf_area;
+    reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1);
+    assert(calls==4 && emits==4 && syncs==4 && src_caches==4 && dst_caches==4);
+    for(int i=0;i<4;i++) {
+        assert(history[i].dst_buf.crop.x==54+(i%2)*32);
+        assert(history[i].dst_buf.crop.y==44+(i/2)*16);
+        assert(history[i].src_buf.crop.x==0 && history[i].src_buf.crop.y==0);
+        assert(history[i].src_buf.crop.width==32 && history[i].src_buf.crop.height==16);
+    }
+    /* An invalid last column must prevent writes by every earlier tile. */
+    task.area.x2=128; reset();
+    assert(lv_draw_aic_ge2d_yuv(&task)==0 && !calls && !src_caches && !dst_caches);
+    task.area.x2=127; task.clip_area=(lv_area_t){66,66,125,93};
+    reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==4);
+    assert(history[0].src_buf.crop.x==2 && history[0].src_buf.crop.y==2);
+    assert(history[3].src_buf.crop.width==30 && history[3].src_buf.crop.height==14);
+    /* Skip a long invisible prefix without changing the repeat origin. */
+    d.image_area=(lv_area_t){-640000,-640000,-639969,-639985};
+    task.clip_area=layer.buf_area; reset();
+    assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==4);
+    d.image_area.x2=LV_COORD_MIN;
+    d.scale_x=384; reset(); assert(lv_draw_aic_ge2d_yuv(&task)==0 && !calls);
+    d.scale_x=256; d.tile=0; task.area=(lv_area_t){64,64,95,79};
     d.rotation=450; assert(lv_draw_aic_ge2d_yuv(&task)==0); d.rotation=0;
     task.clip_area=(lv_area_t){0,0,1,1}; assert(lv_draw_aic_ge2d_yuv(&task)==2);
     task.clip_area=layer.buf_area; d.opa=0; assert(lv_draw_aic_ge2d_yuv(&task)==2); d.opa=128;
@@ -161,7 +194,17 @@ int main(void)
     frame.planes[0].data=(void *)(uintptr_t)0x40001000;
     image=lv_aic_yuv_image_create(&frame,retain,release,NULL); d.src=lv_aic_yuv_image_source(image);
     retire_on_sync=image;
-    assert(lv_draw_aic_ge2d_yuv(&task)==1 && live==0);
+    d.tile=1; task.area=(lv_area_t){64,64,127,95}; reset();
+    assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==4 && live==0);
+    /* A fault after a completed first tile must retain the same frame lease
+     * and stop submission, never restart the task as a software blend. */
+    image=lv_aic_yuv_image_create(&frame,retain,release,NULL); d.src=lv_aic_yuv_image_source(image);
+    d.tile=1; task.area=(lv_area_t){64,64,127,95}; fail_submission=2;
+    reset(); assert(lv_draw_aic_ge2d_yuv(&task)==-1 && calls==2 && syncs==1);
+    assert(lv_draw_aic_ge2d_yuv(&task)==-1 && calls==2);
+    lv_aic_yuv_image_destroy(image); assert(live==1);
+    lv_aic_yuv_image_release_lease(quarantined); quarantined=NULL;
+    assert(live==0); fail_submission=0; d.tile=0; task.area=(lv_area_t){64,64,95,79};
     for (fail_at=1;fail_at<=3;fail_at++) {
         image=lv_aic_yuv_image_create(&frame,retain,release,NULL); d.src=lv_aic_yuv_image_source(image);
         reset();
