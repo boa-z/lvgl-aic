@@ -788,3 +788,26 @@ round trips, native image publication pixels, and GE rotation/scale descriptors.
 The board runner additionally checks both new packed layouts in all four color
 spaces against the CPU reference, including cropped output guards. Host and
 firmware evidence does not establish hardware CSC or panel acceptance.
+
+### Bounded CMA draw buffers for GE layers (2026-10-04)
+
+Default RGB565/RGB888/XRGB8888/ARGB8888 draw-buffer creation now prefers
+64-byte-aligned CMA in GE profiles, with a 4 MiB aggregate live-allocation
+budget (`AIC_LVGL_GE_DRAW_BUF_BUDGET`). This removes the ordinary-heap address
+barrier for child-layer composition. Existing LVGL layer accounting, stride,
+alpha clearing and buffer ownership remain active. CMA allocation/budget
+failure uses the original LVGL allocator and the existing GE address checks
+select software when needed. This applies to default draw-buffer creation,
+including default native canvases; custom font/image handlers are separate.
+
+An application link wrapper redirects creation without editing LVGL/SDK or
+mutating global handlers. Each CMA buffer owns a stable handler set and an
+allocation record. GE quarantine refuses new buffers and retains owned pixel
+allocations until reboot; full teardown during uncertain DMA remains unsupported.
+The normal owner-thread contract and bounded 1..4096 geometry apply.
+
+Host tests use real low-address memory and real LVGL layer allocation/clearing/
+release, exercising all four formats, budget/allocation fallback, handler
+isolation, fault retention and repeated LVGL lifetime. Final target disassembly
+must show the LVGL layer allocation call routed through the wrapper. Physical
+layer composition/cache acceptance remains NOT_RUN.

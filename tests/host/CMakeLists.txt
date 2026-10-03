@@ -943,3 +943,19 @@ if(EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/ge/cmdq_ops.c")
     add_test(NAME lvgl_aic_ge_cmdq_patch_contract COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_LIST_DIR}/ge_cmdq_patch_contract.py" "${AIC_SDK_ROOT}" "${CMAKE_C_COMPILER}")
 endif()
+
+if(WIN32 AND EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/include/mpp_ge.h")
+    add_executable(lvgl_aic_ge_draw_buf_contract ge_draw_buf_contract.c)
+    target_include_directories(lvgl_aic_ge_draw_buf_contract PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs" "${AIC_ROOT}/include"
+        "${AIC_ROOT}/draw/ge2d" "${AIC_ROOT}/compat"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/drv" "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+    target_compile_definitions(lvgl_aic_ge_draw_buf_contract PRIVATE AIC_LVGL_USE_GE2D=1 AIC_LVGL_BSP_MPP=1)
+    target_link_libraries(lvgl_aic_ge_draw_buf_contract PRIVATE lvgl)
+    target_link_options(lvgl_aic_ge_draw_buf_contract PRIVATE "-Wl,--wrap=lv_draw_buf_create")
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_ge_draw_buf_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_ge_draw_buf_contract COMMAND lvgl_aic_ge_draw_buf_contract)
+endif()

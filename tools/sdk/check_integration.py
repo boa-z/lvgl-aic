@@ -55,6 +55,17 @@ def fail(message):
     raise SystemExit("Gate 1 check FAILED: " + message)
 
 
+def check_ge_draw_buffer(root, map_path):
+    objdump = root / "toolchain/bin/riscv64-unknown-elf-objdump.exe"
+    if not objdump.is_file():
+        objdump = objdump.with_suffix("")
+    assembly = subprocess.check_output([str(objdump), "-d",
+        "--disassemble=lv_draw_layer_alloc_buf", str(map_path.with_suffix(".elf"))], text=True)
+    if "<__wrap_lv_draw_buf_create>" not in assembly:
+        fail("LVGL layer allocator bypasses application CMA draw-buffer policy")
+    print("GE CMA layer allocation call site: PASS")
+
+
 def check_ge_cmdq(root, map_path):
     """Check generated provenance and the actual linked operations pointer."""
     from stage_ge_cmdq import corrected, SOURCE
@@ -294,6 +305,8 @@ def main():
         if not re.search(pattern, text, re.MULTILINE):
             fail("application display rotation profile mismatch")
     check_map(map_path)
+    if args.phase == "ge2d":
+        check_ge_draw_buffer(root, map_path)
     if args.phase == "ge2d" and "CONFIG_AIC_GE_CMDQ=y" in config:
         check_ge_cmdq(root, map_path)
     if args.rotation and args.phase == "ge2d":

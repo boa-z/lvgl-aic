@@ -130,6 +130,9 @@ if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_VIDEO_PLANE'):
     for api in ('open', 'enable_ui_alpha', 'present', 'present_rotated', 'hide', 'close', 'faulted'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_video_plane_' + api])
 
+if GetDepend('AIC_LVGL_USE_GE2D'):
+    Env.AppendUnique(LINKFLAGS=['-Wl,--wrap=lv_draw_buf_create'])
+
 # 应用内生成经过指纹校验的 CMDQ 后端，不修改 SDK 源文件。
 # 链接替换仅作用于本应用；SDK 版本变化必须先复核补丁。
 if GetDepend('AIC_LVGL_USE_GE2D') and GetDepend('AIC_GE_CMDQ'):
