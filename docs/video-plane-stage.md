@@ -260,3 +260,16 @@ limit, both fault without alpha acquisition or video submission; all owners and
 readers drain. Focused plane widget contract **PASS**. Runtime source is unchanged
 from the latest combined firmware manifest; these tests do not prove physical
 pixels. Remaining board entry/scanout validation stays **NOT_RUN**.
+
+## Manual plane entry firmware (2026-10-04)
+
+Added lv_aic_plane_test UI-thread mailbox using the packaged APNG RGB fixture.
+Boot/app/static/image/manifest PASS; host regression 49/49 PASS.
+Final ELF nm confirms command registration plus poll/deinit symbols.
+Host regression does not execute the RT-Thread shell mailbox. Board NOT_RUN.
+
+- sdk: 19658be8cd06f8f75ba224e36cb5a03455d05ab0
+- lvgl-aic: 15e03afc1caaef262aa87f2a777ac3266501df5f
+- lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
+- images/d13x.elf SHA256: fbeca977b839c08d82280c26fff8d608c049d4b2d9b28b8eb426b5aa7bffca13
+- images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: 1a86228bdc4f27402ec81f741c3b365713683cbff2a9bd7411b1f2efcbbe844f
