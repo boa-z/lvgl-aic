@@ -321,3 +321,8 @@ arbitrary angles are not missing D13x reference behavior. D21x accepts image
 scale with right angles and needs a separate capability/board profile review.
 DE scaling by object rectangle is distinct from LVGL image transform scaling.
 This source-level comparison does not prove physical plane/window agreement.
+
+Player plane image offsets now follow native same-sized fake-window placement,
+including right-angle rotation, with bounded offsets and full ancestor visibility.
+Nonzero offsets with tile/auto alignment remain unsupported. Focused host and
+strict E907 pass; the latest media-path image predates this offset increment.

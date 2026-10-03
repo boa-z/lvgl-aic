@@ -567,6 +567,9 @@ int main(void)
     lv_obj_set_size(o,8,5);tick();
     assert(plane_x==4 && plane_y==3 && plane_w==5 && plane_h==8);
     lv_obj_set_size(o,6,5);lv_image_set_pivot(o,2,1);tick();
+    lv_image_set_rotation(o,900);lv_image_set_offset_x(o,2);lv_image_set_offset_y(o,1);tick();
+    assert(plane_x==4 && plane_y==4 && plane_w==5 && plane_h==6);
+    lv_image_set_offset_x(o,0);lv_image_set_offset_y(o,0);tick();
     lv_image_set_rotation(o,900);lv_display_set_rotation(d,LV_DISPLAY_ROTATION_90);
     lv_timer_pause(lv_display_get_refr_timer(d));tick();
     assert(plane_degrees==0 && plane_x==3 && plane_y==9 && plane_w==6 && plane_h==5);

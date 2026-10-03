@@ -292,3 +292,19 @@ rotation budget. APNG limits stay unchanged. Host 49/49 PASS and strict E907
 including the actual command source PASS; this increment has not been packaged
 or run on hardware. URI parsing/RT mailbox runtime and actual media remain
 NOT_RUN; see manual README for use and codec applicability.
+
+## Media-path firmware and subsequent offset increment (2026-10-04)
+
+Media-path entry boot/app/static/image/manifest PASS. Board NOT_RUN.
+- sdk: f56c2137692d3bb4496b93580d48c98e88d72dd3
+- lvgl-aic: 2e29375e121a20fa7cc84e59c0fe65bab1281e45
+- lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
+- images/d13x.elf SHA256: 1931ba32cec212f904710e9d7904cb161d16900a94b0d6b05c0438f9d1ac0ff5
+- images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: 19ed325e6a4b9eb31c8d243a87fb8e388ab9863a5cf732adabfcc1517a4bd566
+
+Subsequent source increment: image offsets now shift the transformed video
+rectangle to match native same-sized fake-window placement, including rotated
+images. Offset values are bounded to +/-4096; nonzero offsets with tile/auto
+alignment remain rejected. Ancestor clipping still rejects partial visibility.
+Focused widget contract and strict E907 PASS. This offset change is NOT in the
+firmware manifest above, and pixel/board validation remains NOT_RUN.

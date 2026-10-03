@@ -447,7 +447,7 @@ static bool present_plane(player_binding_t *b)
     if(display!=lv_display_get_default() || ox || oy ||
        lv_display_get_color_format(display)!=LV_COLOR_FORMAT_ARGB8888 ||
        lv_image_get_scale_x(obj)!=LV_SCALE_NONE ||
-       lv_image_get_scale_y(obj)!=LV_SCALE_NONE || lv_image_get_offset_x(obj) || lv_image_get_offset_y(obj) ||
+       lv_image_get_scale_y(obj)!=LV_SCALE_NONE ||
        lv_obj_get_style_image_opa(obj,LV_PART_MAIN)!=LV_OPA_COVER ||
        lv_obj_get_style_image_recolor_opa(obj,LV_PART_MAIN)>LV_OPA_MIN ||
        lv_image_get_blend_mode(obj)!=LV_BLEND_MODE_NORMAL) return false;
@@ -467,7 +467,12 @@ static bool present_plane(player_binding_t *b)
     lv_area_t transformed;
     lv_image_buf_get_transformed_area(&transformed,width,height,image_angle,
         LV_SCALE_NONE,LV_SCALE_NONE,&pivot);
-    lv_area_move(&transformed,area.x1,area.y1);area=transformed;
+    int32_t image_x=lv_image_get_offset_x(obj),image_y=lv_image_get_offset_y(obj);
+    /* Match native image placement for a same-sized fake source. Tile/auto
+     * alignment has different clipping/transform semantics; do not approximate. */
+    if((image_x || image_y) && lv_image_get_inner_align(obj)>=_LV_IMAGE_ALIGN_AUTO_TRANSFORM) return false;
+    if(image_x < -4096 || image_x > 4096 || image_y < -4096 || image_y > 4096) return false;
+    lv_area_move(&transformed,area.x1+image_x,area.y1+image_y);area=transformed;
     for(lv_obj_t *a=obj;a;a=lv_obj_get_parent(a)) {
         if(lv_obj_get_style_transform_width(a,LV_PART_MAIN) || lv_obj_get_style_transform_height(a,LV_PART_MAIN) ||
            lv_obj_get_style_blend_mode(a,LV_PART_MAIN)!=LV_BLEND_MODE_NORMAL ||
