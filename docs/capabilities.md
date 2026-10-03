@@ -899,3 +899,12 @@ RGB888 pitch 65535, aligned ARGB8888 pitch 65532 and planar/semiplanar YUV
 pitch 65535 remain accepted; 65536 is rejected without quarantining GE.
 Host **57/57 PASS**, including boundary pitches and independent chroma checks.
 This is an application-side guard; SDK code is unchanged.
+
+
+Stride-guard firmware regression: GE/fonts/GIF/widgets/AICP/player/APNG/barcode
+boot/app/static/image/manifest **PASS**, clean component
+`849dd923702d9db0a964ca64c6cfe7c5695630d8`, SDK
+`1f12ae63117686178dcd5576b1491caa6d7ba15f`. Image SHA256
+`61643bc962d1ecec22e5df8c8ed19e50f20666d7b4a78b586ff2abaf0678f8f6`.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
+Physical validation remains **NOT_RUN**; no flashing performed.
