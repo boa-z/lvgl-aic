@@ -24,10 +24,12 @@ $arguments=@('-std=gnu99','-Wall','-Wextra','-Werror',
     '-DRT_USING_NEWLIB','-DRT_USING_LIBC','-D_POSIX_C_SOURCE=1','-D_SYS__PTHREADTYPES_H_')
 foreach ($path in $includes) { $arguments+=@('-isystem',(Join-Path $sdk $path)) }
 $arguments+=('-I'+(Join-Path $component 'compat'))
-$output=Join-Path $sdk 'output/lvgl-player-session.o'
-New-Item -ItemType Directory -Force (Split-Path $output) | Out-Null
-$arguments+=@('-c',(Join-Path $component 'port/lv_aic_player_session.c'),'-o',$output)
-& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @arguments
-if ($LASTEXITCODE -ne 0) { throw 'Player session target compilation failed' }
-Get-FileHash $output -Algorithm SHA256
-Write-Output 'PASS compile-only player session; no media link or hardware execution'
+foreach ($module in @('player_session','player_allocator')) {
+    $output=Join-Path $sdk ("output/lvgl-"+$module.Replace('_','-')+'.o')
+    New-Item -ItemType Directory -Force (Split-Path $output) | Out-Null
+    $compileArgs=$arguments+@('-c',(Join-Path $component "port/lv_aic_$module.c"),'-o',$output)
+    & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
+    if ($LASTEXITCODE -ne 0) { throw "$module target compilation failed" }
+    Get-FileHash $output -Algorithm SHA256
+}
+Write-Output 'PASS compile-only player session/allocator; no media link or hardware execution'

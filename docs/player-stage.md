@@ -43,26 +43,70 @@ SDK mpp_buf 没有分配容量字段，不能用 stride × height 猜测实际�
 调用方必须从分配器取得容量，保证物理地址可由 CPU 直接访问，并保持帧租约有效。
 转换先验证原图可见跨度，再验证裁剪；颜色空间由调用方明确传入，不猜测 SDK flags。
 靠近右下边界的裁剪可能满足 CPU 可读范围，却缺少 GE 要求的完整 padding 行；
-此时现有 to_mpp 拒绝 GE，不能扩大容量绕过检查。本阶段尚未连接播放器分配器。
+此时现有 to_mpp 拒绝 GE，不能扩大容量绕过检查。下述分配器提供真实容量来源。
 
 Host contract covers all ten formats and four color spaces, crop offsets and
 remaining capacities, chroma alignment, invalid bounds/FD/format/colorimetry,
 transactional rejection and CPU-valid/GE-invalid bottom-right cropping.
 
+## Application-owned CMA allocator / 应用侧帧分配器
+
+`compat/lv_aic_player_allocator.h` and `port/lv_aic_player_allocator.c` implement
+SDK external allocation for all 14 formats accepted by its frame manager
+(six planar/semiplanar/monochrome YUV and eight RGB byte orders). NV16/NV61
+and packed YUV are deliberately not allocator outputs: SDK add_dmabuf does
+not register them, even though the separate frame conversion supports them.
+
+分配器管理最多 32 帧及显式总字节预算，记录每个 plane 实际 CMA 容量（含 32 字节
+cache-line 尾部）。SDK callback 的 width 是字节 stride，不能作为像素宽度。
+每帧分配失败回滚已分配 plane；超预算、无空槽、非法尺寸/stride 或物理地址拒绝。
+H.264 max-size 模式可以缩小输出尺寸并改变 pitch；获取容量时核实所有 plane
+地址、格式及新布局边界，不要求仍等于初次分配时的 pitch。
+
+`lv_aic_player_session_allocator` 在 start 前安装外部分配器与 1..8 个额外 decoder
+缓冲；数量不是总帧数。控制部分失败会 fault 会话，调用方仍须保留分配器直到
+close 成功。SDK 的 close_allocator 在 decoder stop 时发生，但播放器可能重启，
+故 callback 不释放上下文，由应用在 SDK 完全脱离后显式 destroy。
+
+Usage ordering (worker side, UI/GE publication remains to be implemented):
+
+1. Create allocator with an application-selected CMA budget; open session;
+   install `lv_aic_player_allocator_sdk(allocator)` before session start.
+2. Acquire an SDK session frame lease, then allocator pin/capacities. Import
+   the YUV view using explicit colorimetry and those capacities.
+3. Keep both leases until all readers finish. Release allocator pin **before**
+   SDK session release/put_frame; never allow decoder reuse while readers run.
+4. Close session before destroying allocator. Destroy refuses live/retired
+   allocations. A quarantined GE frame must retain both leases until reboot.
+
+Allocator callbacks and pins share an OSAL mutex. Allocation cleans/invalidates
+cache before VE ownership; acquiring a decoded frame invalidates without
+cleaning. SDK free retires a pinned frame, retaining CMA and budget until final
+pin release. Monotonic tickets prevent stale release across slot reuse. Host
+mutex stubs check locking discipline; they do not prove target concurrency or
+DMA coherency. The allocator does not itself publish frames or call LVGL.
+
 ## Evidence
 
-- Host **25/25 PASS**, actual SDK player/mpp_frame declarations, mocked player
+- Host **26/26 PASS**, actual SDK player/mpp_frame declarations, mocked player
   operations. New checks cover setup/metadata/start/pause/resume/seek failures,
   idempotent pause, frame saturation, stale tickets across reopen, transactional
   getters, held-frame stop/seek/close refusal, return retry, stop/destroy retry,
   restart preparation and duplicate-ID quarantine.
+- New allocator host contract: all 14 SDK formats, each plane allocation
+  failure/rollback, 32-frame limit, total budget including retired pins,
+  metadata rejection, H264 smaller layout, deferred free, stale tickets,
+  32-bit address/alignment guards and actual bounded YUV crop import. Session
+  tests cover installation order and partially applied control failures.
 - `tools/sdk/check-player-session.ps1`: D13x E907 double-float ABI, real SDK
-  player and RT-Thread pthread headers, -Wall -Wextra -Werror: PASS.
+  player/allocator and RT-Thread pthread headers, -Wall -Wextra -Werror: PASS.
   The script uses the SDK's Newlib/POSIX defines from compiler/pthread
   SConscript, including _POSIX_C_SOURCE=1 and _SYS__PTHREADTYPES_H_. It does not
   change SDK configuration or substitute host pthread declarations for target.
 - SDK output/lvgl-player-session.o SHA256:
-  b960e2e327fa6733588a25ab4d5a062a0c05f2b0e84727b2cdc531bc33b7ba7d.
+  812cec2ad03ed380e9a8d5fa7a664481918c3f6adce9a34c3f8ee94e66272d49.
+- SDK output/lvgl-player-allocator.o SHA256:
+  a64904bcfccb70d3ebf2359637f903f4b8319e87be928011f42b4742dd1b4682.
 - Media-enabled image linking, real demux/codec/audio playback, physical DMA
   lifetime and board execution: **NOT_RUN**. The current GE image has no player.
 

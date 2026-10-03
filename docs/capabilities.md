@@ -110,6 +110,8 @@ waive hardware verification or authorize flashing.
 The [player session foundation](player-stage.md) now wraps SDK preparation,
 playback/pause/restart, seek/volume/time and decoder-frame leases. It uses
 external video rendering and refuses destructive controls while readers hold
-frames. Host ABI contracts and target compilation pass; the background player,
+frames. An application-owned CMA allocator now supplies verified plane bounds,
+explicit memory budget, cache handoff and deferred free for pinned readers;
+the bounded MPP importer applies aligned YUV crops. Host ABI contracts and target compilation pass; the background player,
 widget, frame publication, APNG, group/slave and video-plane integration remain
 open. No media-enabled image or physical playback has been verified.

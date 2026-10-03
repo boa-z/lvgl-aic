@@ -1,16 +1,18 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_aic_player_session.h"
 #include <assert.h>
+#include <frame_allocator.h>
 #include <string.h>
 struct aic_player { int live; };
 static struct aic_player instance;
 static int created, destroyed, stops, prepares, starts, pauses, resumes, seeks, gets, puts;
-static int failure, returned_volume=70;
+static int failure, returned_volume=70, controls;
+static struct frame_allocator allocator;
 static int64_t position=123456;
 static unsigned frame_id;
 static struct av_media_info media={.has_video=1,.has_audio=1,.seek_able=1,.duration=1000000,
     .video_stream={32,16}};
-enum { CREATE=1,URI,PREPARE,INFO,START,PAUSE,PLAY,STOP,DESTROY,GET,PUT,SEEK,VOLUME };
+enum { CREATE=1,URI,PREPARE,INFO,START,PAUSE,PLAY,STOP,DESTROY,GET,PUT,SEEK,VOLUME,ALLOCATOR,COUNT };
 struct aic_player *aic_player_create(char *uri)
 { assert(!uri && !instance.live); if(failure==CREATE) return NULL; instance.live=1; created++; return &instance; }
 s32 aic_player_set_uri(struct aic_player *p,char *uri)
@@ -40,6 +42,15 @@ s32 aic_player_set_volum(struct aic_player *p,s32 volume)
 s32 aic_player_get_volum(struct aic_player *p,s32 *volume)
 { assert(p->live); *volume=returned_volume; return failure==VOLUME ? -1 : 0; }
 s64 aic_player_get_play_time(struct aic_player *p) { assert(p->live); return position; }
+s32 aic_player_control(struct aic_player *p,enum aic_player_command command,void *data)
+{
+    assert(p->live); controls++;
+    if(command==AIC_PLAYER_CMD_SET_VDEC_EXT_FRAME_ALLOCATOR) {
+        assert(data==&allocator); return failure==ALLOCATOR?-1:0;
+    }
+    assert(command==AIC_PLAYER_CMD_SET_VDEC_EXT_FRAME_NUM && *(s32 *)data==3);
+    return failure==COUNT?-1:0;
+}
 int main(void)
 {
     lv_aic_player_session_t s={0};
@@ -52,12 +63,24 @@ int main(void)
         assert(!lv_aic_player_session_open(&s,"/media/test.mp4"));
         assert(!s.player && !instance.live);
     }
+    for(failure=ALLOCATOR;failure<=COUNT;failure++) {
+        assert(lv_aic_player_session_open(&s,"/media/test.mp4"));
+        assert(!lv_aic_player_session_allocator(&s,&allocator,3));
+        assert(s.faulted && !lv_aic_player_session_start(&s));
+        assert(lv_aic_player_session_close(&s));
+    }
     failure=0; media.video_stream.width=0;
     assert(!lv_aic_player_session_open(&s,"/media/test.mp4")); media.video_stream.width=32;
     assert(lv_aic_player_session_open(&s,"/media/test.mp4"));
     assert(!lv_aic_player_session_open(&s,"/media/test.mp4"));
     assert(!lv_aic_player_session_acquire(&s,&lease,&frame));
+    assert(!lv_aic_player_session_allocator(&s,NULL,3));
+    assert(!lv_aic_player_session_allocator(&s,&allocator,0));
+    assert(!lv_aic_player_session_allocator(&s,&allocator,9));
+    int previous_controls=controls;
+    assert(lv_aic_player_session_allocator(&s,&allocator,3) && controls==previous_controls+2);
     assert(lv_aic_player_session_start(&s)); int before=starts;
+    assert(!lv_aic_player_session_allocator(&s,&allocator,3));
     assert(lv_aic_player_session_start(&s) && starts==before);
     assert(lv_aic_player_session_pause(&s,true)); before=pauses;
     assert(lv_aic_player_session_pause(&s,true) && pauses==before);

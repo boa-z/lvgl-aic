@@ -29,6 +29,18 @@ bool lv_aic_player_session_open(lv_aic_player_session_t *s,const char *uri)
     if(!prepare(s)) { (void)lv_aic_player_session_close(s); return false; }
     return true;
 }
+bool lv_aic_player_session_allocator(lv_aic_player_session_t *s,
+    struct frame_allocator *allocator,unsigned extra_frames)
+{
+    if(!usable(s) || s->started || s->held || !allocator || !extra_frames ||
+       extra_frames>LV_AIC_PLAYER_LEASES) return false;
+    s32 count=(s32)extra_frames;
+    if(aic_player_control(s->player,AIC_PLAYER_CMD_SET_VDEC_EXT_FRAME_ALLOCATOR,allocator) ||
+       aic_player_control(s->player,AIC_PLAYER_CMD_SET_VDEC_EXT_FRAME_NUM,&count)) {
+        s->faulted=true; return false;
+    }
+    return true;
+}
 bool lv_aic_player_session_start(lv_aic_player_session_t *s)
 {
     if(!usable(s)) return false;

@@ -22,6 +22,13 @@ typedef struct {
 /* False may leave resources live if cleanup failed: retry close, never free
  * session storage until close returns true. URI is a native SDK path. */
 bool lv_aic_player_session_open(lv_aic_player_session_t *s,const char *uri);
+/* Install before start. SDK borrows allocator through final close, including
+ * stop/start. On failure, retain allocator until close succeeds: a partially
+ * applied control may still reference it. extra_frames is additional decoder
+ * capacity, not total frame count; it must be 1..8. */
+struct frame_allocator;
+bool lv_aic_player_session_allocator(lv_aic_player_session_t *s,
+    struct frame_allocator *allocator, unsigned extra_frames);
 bool lv_aic_player_session_start(lv_aic_player_session_t *s);
 bool lv_aic_player_session_pause(lv_aic_player_session_t *s,bool paused);
 bool lv_aic_player_session_acquire(lv_aic_player_session_t *s,uint64_t *lease,

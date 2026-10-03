@@ -237,6 +237,23 @@ endif()
 # Optional real-decoder contract test; SDK headers, mocked engine/OSAL only.
 set(AIC_SDK_ROOT "" CACHE PATH "Luban-Lite SDK for MPP ABI tests")
 if(AIC_SDK_ROOT)
+    add_executable(lvgl_aic_player_allocator_contract player_allocator_contract.c
+        "${AIC_ROOT}/port/lv_aic_player_allocator.c"
+        "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/common/lv_aic_yuv_mpp.c"
+        "${AIC_ROOT}/common/lv_aic_pixel_format.c")
+    target_include_directories(lvgl_aic_player_allocator_contract PRIVATE
+        "${AIC_ROOT}/compat" "${AIC_ROOT}/common" "${AIC_ROOT}/include"
+        "${CMAKE_CURRENT_LIST_DIR}/player_stubs"
+        "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+    target_compile_definitions(lvgl_aic_player_allocator_contract PRIVATE AIC_LVGL_USE_PLAYER_SESSION=1
+        AIC_LVGL_BSP_MPP=1 AIC_LVGL_BSP_RTTHREAD=0)
+    target_link_libraries(lvgl_aic_player_allocator_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_player_allocator_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_player_allocator_contract COMMAND lvgl_aic_player_allocator_contract)
     add_executable(lvgl_aic_player_session_contract player_session_contract.c
         "${AIC_ROOT}/port/lv_aic_player_session.c")
     target_include_directories(lvgl_aic_player_session_contract PRIVATE
