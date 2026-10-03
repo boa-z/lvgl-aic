@@ -273,3 +273,12 @@ Host regression does not execute the RT-Thread shell mailbox. Board NOT_RUN.
 - lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
 - images/d13x.elf SHA256: fbeca977b839c08d82280c26fff8d608c049d4b2d9b28b8eb426b5aa7bffca13
 - images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: 1a86228bdc4f27402ec81f741c3b365713683cbff2a9bd7411b1f2efcbbe844f
+
+Manual entry gates now require live poll/deinit and shell registration symbols
+in the combined player/APNG map. The prior packaged map passes; an isolated
+copy with the shell registration removed fails at the expected symbol check.
+Both checker runs used the explicit development dirty-source allowance because
+only checker changes were pending; no new firmware provenance is claimed.
+Strict E907 compilation now includes the real RT-Thread manual command source;
+compile PASS and nm confirms its registration/poll/deinit are present (not an
+empty disabled-feature object). These checks do not execute the shell or board.

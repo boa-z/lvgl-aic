@@ -347,7 +347,9 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("player live symbol absent: " + symbol)
         if args.with_apng:
-            for symbol in ("lv_aic_player_configure_apng", "lv_aic_apng_playback_preserve"):
+            for symbol in ("lv_aic_player_configure_apng", "lv_aic_apng_playback_preserve",
+                           "lv_aic_plane_test_poll", "lv_aic_plane_test_deinit",
+                           "__fsym_lv_aic_plane_test"):
                 if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                     fail("unified player APNG symbol absent: " + symbol)
         print("player link closure: PASS (no media playback execution)")

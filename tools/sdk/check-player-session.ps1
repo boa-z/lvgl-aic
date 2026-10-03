@@ -31,10 +31,10 @@ foreach ($path in @($component,(Join-Path $component 'include'),(Join-Path $comp
     $arguments+=('-I'+$path)
 }
 $arguments+=@('-include',(Join-Path $component 'compat/lvgl_aic_build_config.h'),'-DAIC_LVGL_BSP_MPP=1')
-foreach ($module in @('video_plane','ve_client','media_runtime','player_session','player_playback','player_allocator','player_frames','player_events','player_clock','rgb_image','rgb_mpp','player','apng','apng_compose','apng_timeline','apng_decoder','apng_stream','apng_frames','apng_playback','apng_widget','player_control')) {
+foreach ($module in @('video_plane','ve_client','media_runtime','player_session','player_playback','player_allocator','player_frames','player_events','player_clock','rgb_image','rgb_mpp','player','apng','apng_compose','apng_timeline','apng_decoder','apng_stream','apng_frames','apng_playback','apng_widget','player_control','plane_test')) {
     $output=Join-Path $sdk ("output/lvgl-"+$module.Replace('_','-')+'.o')
     New-Item -ItemType Directory -Force (Split-Path $output) | Out-Null
-    $directory=if ($module -in @('player_clock','rgb_mpp','apng','apng_compose','apng_timeline')) { 'common' } elseif ($module -in @('player','apng_widget','player_control')) { 'widgets' } elseif ($module -eq 'rgb_image') { 'image/mpp' } else { 'port' }
+    $directory=if ($module -eq 'plane_test') { 'tests/manual' } elseif ($module -in @('player_clock','rgb_mpp','apng','apng_compose','apng_timeline')) { 'common' } elseif ($module -in @('player','apng_widget','player_control','plane_test')) { 'widgets' } elseif ($module -eq 'rgb_image') { 'image/mpp' } else { 'port' }
     $compileArgs=$arguments+@('-c',(Join-Path $component "$directory/lv_aic_$module.c"),'-o',$output)
     & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
     if ($LASTEXITCODE -ne 0) { throw "$module target compilation failed" }
