@@ -140,8 +140,8 @@ frame publication with deferred queue-back. It has target compilation and
 concurrent host evidence. The camera image widget adds prepare/start, pause/
 resume, stop/reopen and deferred deletion, tested against the real worker and
 mocked SDK. Worker-side sensor input selection now reports driver acknowledgment separately
-from request acceptance. Video-plane ownership, barcode, camera-
-enabled image linking and board execution remain unverified or missing.
+from request acceptance. Explicit camera video-plane ownership now shares the player window adapter;
+barcode, camera-enabled image linking and board execution remain unverified or missing.
 
 This sequence supersedes the old instruction to stop after 3C5. It does not
 waive hardware verification or authorize flashing.

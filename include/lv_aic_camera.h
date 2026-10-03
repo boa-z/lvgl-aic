@@ -30,6 +30,13 @@ lv_aic_camera_input_status_t lv_aic_camera_get_channel_status(lv_obj_t *obj);
  * LV_EVENT_VALUE_CHANGED reports state transitions; query get_state in the
  * callback. Deleting the widget from that callback is supported. */
 lv_obj_t *lv_aic_camera_create(lv_obj_t *parent);
+/* Optional exclusive native video-plane output. Configure while closed; needs
+ * ARGB8888 default display and initialized MPP/.fake decoder support.
+ * Shares player rectangle/rotation/clipping rules.
+ * rotation_budget bounds current+next CMA copies; zero permits unrotated only.
+ * No implicit selection. Geometry/plane failure reports FAULT and closes
+ * capture; stop/close/deletion drains scanout before releasing VIN readers. */
+lv_result_t lv_aic_camera_set_video_plane(lv_obj_t *obj,bool enabled,size_t rotation_budget);
 lv_result_t lv_aic_camera_set_format(lv_obj_t *obj, lv_aic_camera_format format);
 /* Explicit sensor colorimetry is mandatory before open. Configure only while
  * closed/stopped, after old transport cleanup. queue is NOT sensor input. */

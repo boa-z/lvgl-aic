@@ -4,6 +4,9 @@
 #include "lvgl_aic_private.h"
 #if defined(AIC_LVGL_USE_CAMERA) && AIC_LVGL_USE_CAMERA
 #include <string.h>
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+#include "lv_aic_plane_window.h"
+#endif
 typedef struct {
     lv_obj_t *obj;
     lv_timer_t *timer;
@@ -17,6 +20,10 @@ typedef struct {
     lv_aic_camera_format format;
     lv_aic_camera_state_t state, reported;
     bool configured, closing, stopped;
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    lv_aic_plane_window_t window;
+    bool plane_enabled,plane_failed;
+#endif
 } camera_binding_t;
 typedef struct { lv_image_t image; camera_binding_t *binding; } camera_widget_t;
 static unsigned orphan_count;
@@ -34,11 +41,20 @@ static void retire_image(camera_binding_t *b)
 {
     if(b->image) { lv_aic_yuv_image_destroy(b->image); b->image=NULL; }
 }
+static bool close_plane(camera_binding_t *b)
+{
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    return lv_aic_plane_window_close(&b->window);
+#else
+    LV_UNUSED(b);return true;
+#endif
+}
 static void tick(lv_timer_t *timer)
 {
     camera_binding_t *b=lv_timer_get_user_data(timer);
     if(!draws_idle()) return;
     if(!b->obj || b->closing) {
+        if(!close_plane(b)) return;
         if(b->obj && b->image) lv_image_set_src(b->obj,NULL);
         retire_image(b);
         if(!lv_aic_camera_capture_destroy(b->capture)) return;
@@ -59,22 +75,37 @@ static void tick(lv_timer_t *timer)
         case LV_AIC_CAPTURE_FAULT: b->state=LV_AIC_CAMERA_FAULT; break;
         default: break;
         }
-        if(state==LV_AIC_CAPTURE_FAULT) {
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+        if(b->plane_failed) b->state=LV_AIC_CAMERA_FAULT;
+#endif
+        if(b->state==LV_AIC_CAMERA_FAULT) {
             /* Fault already requested worker shutdown; preserve FAULT for the
              * caller until explicit close/stop. Release its last displayed frame. */
-            if(b->image) lv_image_set_src(b->obj,NULL);
-            retire_image(b);
+            if(close_plane(b)) {
+                if(b->image) lv_image_set_src(b->obj,NULL);
+                retire_image(b);
+            }
         }
         else if(state==LV_AIC_CAPTURE_RUNNING) {
             lv_aic_yuv_image_t *next=lv_aic_camera_capture_poll(b->capture);
             if(next) {
                 lv_aic_yuv_image_t *old=b->image;
                 b->image=next;
-                lv_image_set_src(b->obj,lv_aic_yuv_image_source(next));
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+                if(!b->plane_enabled || !old)
+#endif
+                    lv_image_set_src(b->obj,lv_aic_yuv_image_source(next));
                 if(old) lv_aic_yuv_image_destroy(old);
             }
         }
     }
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    if(b->obj && !b->closing && !b->plane_failed && b->plane_enabled && b->image &&
+       !lv_aic_plane_window_present(&b->window,b->obj,lv_aic_yuv_image_source(b->image))) {
+        b->plane_failed=true;b->state=LV_AIC_CAMERA_FAULT;
+        lv_aic_camera_capture_close(b->capture);
+    }
+#endif
     /* This must be the final action: event handlers may delete the object or
      * request a different transport state. The binding survives until next tick. */
     lv_aic_camera_input_status_t input=lv_aic_camera_capture_get_input(b->capture);
@@ -116,6 +147,19 @@ lv_obj_t *lv_aic_camera_create(lv_obj_t *parent)
     ((camera_widget_t *)obj)->binding=b;
     lv_timer_pause(b->timer); return obj;
 }
+lv_result_t lv_aic_camera_set_video_plane(lv_obj_t *obj,bool enabled,size_t rotation_budget)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_camera_class,return LV_RESULT_INVALID);
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    camera_binding_t *b=((camera_widget_t *)obj)->binding;
+    if(b->capture || b->closing || b->image || b->window.plane) return LV_RESULT_INVALID;
+    if(enabled && lv_display_get_color_format(lv_obj_get_display(obj))!=LV_COLOR_FORMAT_ARGB8888)
+        return LV_RESULT_INVALID;
+    b->plane_enabled=enabled;b->window.budget=rotation_budget;return LV_RESULT_OK;
+#else
+    LV_UNUSED(enabled);LV_UNUSED(rotation_budget);return LV_RESULT_INVALID;
+#endif
+}
 lv_result_t lv_aic_camera_configure(lv_obj_t *obj,const char *device,
     uint32_t queue,lv_aic_yuv_color_space_t space)
 {
@@ -147,6 +191,9 @@ lv_result_t lv_aic_camera_open(lv_obj_t *obj)
         b->closing=true; b->stopped=false; b->state=LV_AIC_CAMERA_STOPPING;
         lv_timer_resume(b->timer); return LV_RESULT_INVALID;
     }
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    b->plane_failed=false;
+#endif
     b->state=LV_AIC_CAMERA_OPENING; b->stopped=false;
     lv_timer_resume(b->timer); return LV_RESULT_OK;
 }

@@ -770,6 +770,7 @@ add_executable(lvgl_aic_player_plane_widget_contract player_widget_contract.c
     "${AIC_ROOT}/image/mpp/lv_aic_rgb_image.c")
 target_include_directories(lvgl_aic_player_plane_widget_contract PRIVATE
     "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${AIC_ROOT}/common")
+target_sources(lvgl_aic_player_plane_widget_contract PRIVATE "${AIC_ROOT}/common/lv_aic_plane_window.c")
 target_compile_definitions(lvgl_aic_player_plane_widget_contract PRIVATE AIC_LVGL_USE_PLAYER=1 AIC_LVGL_USE_APNG=1 AIC_LVGL_USE_VIDEO_PLANE=1)
 target_link_libraries(lvgl_aic_player_plane_widget_contract PRIVATE lvgl)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
@@ -960,3 +961,16 @@ if(WIN32 AND EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/include/mpp_ge.h")
     endif()
     add_test(NAME lvgl_aic_ge_draw_buf_contract COMMAND lvgl_aic_ge_draw_buf_contract)
 endif()
+
+add_executable(lvgl_aic_camera_plane_widget_contract camera_plane_widget_contract.c
+    "${AIC_ROOT}/widgets/lv_aic_camera.c" "${AIC_ROOT}/common/lv_aic_plane_window.c"
+    "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/image/mpp/lv_aic_yuv_image.c")
+target_include_directories(lvgl_aic_camera_plane_widget_contract PRIVATE
+    "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${AIC_ROOT}/common")
+target_compile_definitions(lvgl_aic_camera_plane_widget_contract PRIVATE AIC_LVGL_USE_CAMERA=1 AIC_LVGL_USE_VIDEO_PLANE=1)
+target_link_libraries(lvgl_aic_camera_plane_widget_contract PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_camera_plane_widget_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_camera_plane_widget_contract COMMAND lvgl_aic_camera_plane_widget_contract)
+set_tests_properties(lvgl_aic_camera_plane_widget_contract PROPERTIES TIMEOUT 15)

@@ -214,3 +214,27 @@ SDK camera choice would silently select its OV5640 default; that is not evidence
 of the user's hardware. A camera-enabled full-image profile and physical capture
 remain NOT_RUN pending a documented board camera configuration. Other port work
 can continue independently; no camera hardware is opened by this checker.
+
+## Explicit camera video-plane binding (2026-10-04)
+
+`lv_aic_camera_set_video_plane(obj, enabled, rotation_budget)` now opts a
+closed camera into the shared native video-plane path. It requires an ARGB8888
+UI and initialized component MPP/.fake decoder support. It uses the same checked rectangle, clipping, offsets, right-angle rotation
+and bounded CMA rules as player. The internal plane-window implementation is
+shared; unsupported geometry reports FAULT rather than silently showing a
+different composition. Default camera rendering remains the native image path.
+
+Frame replacement retains the old plane reader until the new scanout completes.
+Hidden cameras hide scanout, paused cameras preserve their last frame, and
+stop/close/deletion waits for plane shutdown before retiring the camera image
+and capture worker. A plane failure closes capture and reports FAULT; failed
+plane close retains the binding and VIN readers for retry/reboot as appropriate.
+
+Host coverage uses actual immutable YUV publication with mocked capture/plane
+operations: replacements, hide/show, pause, deferred deletion, failed present
+and failed close. Shared player geometry regression remains active. This is
+not sensor, DE, DMA or panel evidence. `check-vin-session.ps1 -WithVideoPlane`
+compiles the enabled camera and shared window against D13x target headers and
+checks actual camera references to window present/close. Full camera-enabled
+image linking still requires application-supplied sensor/board configuration;
+no bus or sensor selection is inferred. Barcode support remains absent.

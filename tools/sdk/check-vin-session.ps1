@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Compile-only D13x E907 double-float ABI check. Does not enable/open a camera.
-param([string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT,[switch]$WithVideoPlane)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
@@ -25,6 +25,15 @@ foreach ($path in @($component,(Join-Path $component 'include'),$lvgl,(Join-Path
     $arguments+=('-I'+$path)
 }
 $arguments+=@('-include',(Join-Path $component 'compat/lvgl_aic_build_config.h'))
+if ($WithVideoPlane) {
+    $override=Join-Path $sdk 'output/lvgl-camera-plane-config.h'
+    New-Item -ItemType Directory -Force (Split-Path $override) | Out-Null
+    [IO.File]::WriteAllText($override, "#include <rtconfig.h>`n#undef AIC_LVGL_USE_VIDEO_PLANE`n#define AIC_LVGL_USE_VIDEO_PLANE 1`n", (New-Object Text.UTF8Encoding($false)))
+    $arguments+=@('-include',$override)
+    $compileArgs=$arguments+@('-c',(Join-Path $component 'common/lv_aic_plane_window.c'),'-o',(Join-Path $sdk 'output/lvgl-plane-window.o'))
+    & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Shared plane window target compilation failed' }
+}
 foreach ($module in @('vin_session','vin_frame','camera_capture')) {
     $output=Join-Path $sdk ("output/lvgl-"+$module.Replace('_','-')+'.o')
     New-Item -ItemType Directory -Force (Split-Path $output) | Out-Null
@@ -52,6 +61,12 @@ foreach($entry in $expected.GetEnumerator()) {
         if(-not ($symbols -match ('\bT\s+'+[regex]::Escape($symbol)+'$'))) {
             throw "Enabled camera implementation absent: $symbol in $($entry.Key)"
         }
+    }
+}
+if ($WithVideoPlane) {
+    $symbols=& $nm (Join-Path $sdk 'output/lvgl-camera-widget.o')
+    foreach($symbol in @('lv_aic_plane_window_present','lv_aic_plane_window_close')) {
+        if(-not ($symbols -match ('\bU\s+'+$symbol+'$'))) { throw "Camera plane path absent: $symbol" }
     }
 }
 Write-Output 'PASS compile-only VIN session/frame/capture/widget; no camera link or hardware execution'
