@@ -2,15 +2,16 @@
 
 The application-owned frame API in include/lv_aic_yuv.h now describes borrowed
 CPU-addressable planes with independent strides and capacities. It supports
-I420, I422, I444, I400, NV12, NV21, YUY2, UYVY, NV16 and NV61, with explicit BT.601/BT.709
+I420, I422, I444, I400, NV12, NV21, YUY2, UYVY, NV16, NV61, YVYU and VYUY, with explicit BT.601/BT.709
 limited/full range. The producer owns lifetime and cache synchronization;
 these descriptors must not be passed to LVGL as if they were decoded pixels.
 
-LVGL 9.6 has no NV16/NV61 color enum. LV_AIC_YUV_NV16/NV61 are frame-only
+LVGL 9.6 has no NV16/NV61/YVYU/VYUY color enums. The corresponding
+LV_AIC_YUV_* constants are frame-only
 32-bit tags accepted by this API, its CPU converter and native GE path. They
 must never be stored in lv_image_header_t.cf. Publication still reports RAW
 source/RGB888 decoded metadata; ordinary LVGL/MPP image format mappings remain
-unchanged. Ten-format host coverage includes row-varying 4:2:2 chroma, all four
+unchanged. Twelve-format host coverage includes row-varying 4:2:2 chroma, all four
 matrices, GE transforms/tiling and 20 actual widget frame replacements per
 NV16/NV61 format without stale pixels or leaked producer references.
 
@@ -164,3 +165,13 @@ Bounded transformed tiling is now implemented; see ge-tiling-stage.md.
 Remaining scope: transformed-tile board probes, broader board CSC
 and clipped-rotation numeric probes,
 and camera/player/video-window ownership. This stage does not close those gaps.
+
+## Packed YVYU/VYUY firmware evidence (2026-10-04)
+
+Host **54/54 PASS**. Full GE/fonts/GIF/widgets/AICP/player/APNG profile
+boot/app/static/image/manifest gates **PASS**. Both new formats also have
+four-color-space cropped pixel probes in the board runner.
+Clean component `7f04e4db77383213efea4dc7cf1d52b1617e7e93`,
+SDK `ccd4100d84a5ee52f55a550a807a417d2f3ee8c6`.
+Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `96883af79cd3eb411fe201ff83a4d4424d4dfeb2db0207a4ceced10b951a5f75`. Board **NOT_RUN**.
