@@ -152,5 +152,6 @@ config AIC_LVGL_USE_PLAYER_SESSION
     default n
     depends on AIC_LVGL_PORT && AIC_MPP_PLAYER_INTERFACE && AIC_MPP_PLAYER_VIDEO_EXT_RENDER
     help
-        Serialized worker-side playback/decoder-frame ownership adapter.
-        This is not yet the player widget, event mailbox or video-plane owner.
+        Worker-side playback session, bounded CMA allocator and immutable
+        YUV frame publication bridge with deferred decoder-frame return.
+        This is not yet a playback scheduler, player widget or video-plane owner.

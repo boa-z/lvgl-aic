@@ -68,7 +68,7 @@ H.264 max-size 模式可以缩小输出尺寸并改变 pitch；获取容量时�
 close 成功。SDK 的 close_allocator 在 decoder stop 时发生，但播放器可能重启，
 故 callback 不释放上下文，由应用在 SDK 完全脱离后显式 destroy。
 
-Usage ordering (worker side, UI/GE publication remains to be implemented):
+Usage ordering (worker side, use the bridge below for UI/GE publication):
 
 1. Create allocator with an application-selected CMA budget; open session;
    install `lv_aic_player_allocator_sdk(allocator)` before session start.
@@ -86,9 +86,34 @@ pin release. Monotonic tickets prevent stale release across slot reuse. Host
 mutex stubs check locking discipline; they do not prove target concurrency or
 DMA coherency. The allocator does not itself publish frames or call LVGL.
 
+## Immutable frame publication bridge / 不可变帧发布桥
+
+`compat/lv_aic_player_frames.h` and `port/lv_aic_player_frames.c` connect real
+SDK session leases, allocator pins and the existing YUV image registry.
+Create/poll/close/destroy run on the LVGL owner; submit/drain run on one
+serialized playback worker. SDK operations never run in image release callbacks.
+
+worker 先按播放时序获取到期帧，再 submit 租约；成功后桥接层负责 pin 和 SDK
+租约，失败则原 worker 仍须归还。重复提交已持有的租约幂等。新帧替换尚未发布帧，
+已发布图像保持不可变。poll 返回新图像及 PTS，失败不修改 PTS；未初始化 decoder
+或发布失败的帧也统一交给 drain 归还。
+
+UI 销毁图像只标记归还，所有原生 GE/decoder 读者完成后，worker drain 先释放
+allocator pin，再调用 SDK put_frame。put 失败保留 SDK 租约，可重试且不会重复
+释放 pin；不可信的 pin 释放失败则隔离邮箱，保留资源。close 拒绝新发布并取消
+未发布帧，已存在的读者仍阻止 teardown。销毁桥前必须让 worker 停止使用它；
+仅看到 idle 不能授权与 worker 并发释放。GE 隔离读者可能持续到重启，不能强拆。
+
+This bridge does not implement a playback scheduler: feeding raw decoded
+frames as fast as possible would skip through a movie. PTS pacing, audio/video
+clock selection, pause/seek/repeat and source replacement belong to the pending
+background player. SDK PLAY_END also represents some decoder errors, so it
+must not be treated as proof of clean EOS. RGB publication remains pending;
+this bridge rejects RGB and error-marked frames without consuming their lease.
+
 ## Evidence
 
-- Host **26/26 PASS**, actual SDK player/mpp_frame declarations, mocked player
+- Host **27/27 PASS**, actual SDK player/mpp_frame declarations, mocked player
   operations. New checks cover setup/metadata/start/pause/resume/seek failures,
   idempotent pause, frame saturation, stale tickets across reopen, transactional
   getters, held-frame stop/seek/close refusal, return retry, stop/destroy retry,
@@ -98,8 +123,15 @@ DMA coherency. The allocator does not itself publish frames or call LVGL.
   metadata rejection, H264 smaller layout, deferred free, stale tickets,
   32-bit address/alignment guards and actual bounded YUV crop import. Session
   tests cover installation order and partially applied control failures.
+- New frame-bridge contract uses a real pthread worker, actual session and
+  allocator code, real LVGL publication/native reader leases, and mocked SDK
+  playback/CMA. Covers publication failure, duplicate submit, latest-frame
+  replacement, error rejection, delayed native reader release, failed put retry,
+  shutdown with readers, unpublished close and close during worker cache handoff.
+  SDK calls/cache operations assert worker-thread ownership. No physical pixel
+  memory is dereferenced by this test; CPU conversion has separate coverage.
 - `tools/sdk/check-player-session.ps1`: D13x E907 double-float ABI, real SDK
-  player/allocator and RT-Thread pthread headers, -Wall -Wextra -Werror: PASS.
+  player/allocator/frame bridge and RT-Thread pthread headers, -Wall -Wextra -Werror: PASS.
   The script uses the SDK's Newlib/POSIX defines from compiler/pthread
   SConscript, including _POSIX_C_SOURCE=1 and _SYS__PTHREADTYPES_H_. It does not
   change SDK configuration or substitute host pthread declarations for target.
@@ -107,14 +139,15 @@ DMA coherency. The allocator does not itself publish frames or call LVGL.
   812cec2ad03ed380e9a8d5fa7a664481918c3f6adce9a34c3f8ee94e66272d49.
 - SDK output/lvgl-player-allocator.o SHA256:
   a64904bcfccb70d3ebf2359637f903f4b8319e87be928011f42b4742dd1b4682.
+- SDK output/lvgl-player-frames.o SHA256:
+  3e477e8dad6a0d74fa9fd102a903bebdb7712318dc4cd9ca1dc7b1e1b42b5c82.
 - Media-enabled image linking, real demux/codec/audio playback, physical DMA
   lifetime and board execution: **NOT_RUN**. The current GE image has no player.
 
 ## Remaining SDK parity
 
-Implement background command/event handling (including EOS/error/seek), frame
-publication with verified allocation bounds and deferred put_frame, player
-widget controls, source replacement, repeat/rate behavior, slave and group
+Implement background command/event handling (including EOS/error/seek), PTS
+pacing and audio/video synchronization, RGB publication, player widget controls, source replacement, repeat/rate behavior, slave and group
 lifetimes, APNG backend, and explicit video-plane composition/ownership.
 Do not report this internal session as a complete player widget or as tested
 hardware decoding. All physical verification remains deferred.

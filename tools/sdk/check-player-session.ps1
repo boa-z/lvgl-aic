@@ -24,7 +24,13 @@ $arguments=@('-std=gnu99','-Wall','-Wextra','-Werror',
     '-DRT_USING_NEWLIB','-DRT_USING_LIBC','-D_POSIX_C_SOURCE=1','-D_SYS__PTHREADTYPES_H_')
 foreach ($path in $includes) { $arguments+=@('-isystem',(Join-Path $sdk $path)) }
 $arguments+=('-I'+(Join-Path $component 'compat'))
-foreach ($module in @('player_session','player_allocator')) {
+$lvgl=(Resolve-Path (Join-Path $component '../lvgl')).Path
+foreach ($path in @($component,(Join-Path $component 'include'),(Join-Path $component 'common'),
+    $lvgl,(Join-Path $lvgl 'include'),(Join-Path $lvgl 'include/lvgl'))) {
+    $arguments+=('-I'+$path)
+}
+$arguments+=@('-include',(Join-Path $component 'compat/lvgl_aic_build_config.h'),'-DAIC_LVGL_BSP_MPP=1')
+foreach ($module in @('player_session','player_allocator','player_frames')) {
     $output=Join-Path $sdk ("output/lvgl-"+$module.Replace('_','-')+'.o')
     New-Item -ItemType Directory -Force (Split-Path $output) | Out-Null
     $compileArgs=$arguments+@('-c',(Join-Path $component "port/lv_aic_$module.c"),'-o',$output)
@@ -32,4 +38,4 @@ foreach ($module in @('player_session','player_allocator')) {
     if ($LASTEXITCODE -ne 0) { throw "$module target compilation failed" }
     Get-FileHash $output -Algorithm SHA256
 }
-Write-Output 'PASS compile-only player session/allocator; no media link or hardware execution'
+Write-Output 'PASS compile-only player session/allocator/frame bridge; no media link or hardware execution'
