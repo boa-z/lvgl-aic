@@ -834,3 +834,9 @@ exercise delayed allocation, retry, actual software fill pixels, GE submission
 and completion/fallback counters. `fill_sw_fallback` now distinguishes accepted
 software fills, and board logs subtract it from reported engine work.
 Hardware execution/cache acceptance remains NOT_RUN.
+
+Lazy-layer evidence: **55/55 host PASS**; full GE/fonts/GIF/widgets/AICP/player/
+APNG boot/app/static/image/manifest **PASS**. Clean component
+`87cc9b57cfcc9a4405eceb2d4fba72c93b8a3be9`, SDK
+`06cc6063f1271e23ed37865a618a3ddd2bfc1bbd`. Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `25d3342646ef58b4626e520c6e6e7324cf70135ed0092e62823bfd26464d3103`. Board **NOT_RUN**.
