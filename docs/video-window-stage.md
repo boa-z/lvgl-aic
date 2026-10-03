@@ -29,3 +29,15 @@ probe checks 90 ARGB pixels and outside sentinels; board execution is NOT_RUN.
 
 Camera capture, player backends and lower-plane ownership remain separate
 unimplemented SDK parity requirements. This widget does not close them.
+
+## Build evidence
+
+- Host: 21/21 contracts PASS, including the real metadata/widget lifecycle.
+- Target: ge2d-fonts-gif-widgets-aicp boot/app, static, image and manifest PASS.
+- Command: tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -Jobs 8.
+- Clean SDK 98d16599, component de26344, LVGL 80ca777e.
+- Link map contains allocated video-window create/set_size/class symbols.
+- Evidence: SDK output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp.
+- Image: images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
+- SHA256: 8ff2255ac4fdfc2bbcde62996fc4296a6856971c979f4f6f145f9cc225a955fd.
+- Board: NOT_RUN. The evidence directory is reused by later profile builds.
