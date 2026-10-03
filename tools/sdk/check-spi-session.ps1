@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+# Compile checked SPI completion against real SDK headers; no device access.
+param([string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+$ErrorActionPreference='Stop'
+if (-not $SdkRoot) {
+    $candidate=Get-Item $PSScriptRoot
+    while ($candidate -and -not (Test-Path (Join-Path $candidate.FullName 'SConstruct'))) { $candidate=$candidate.Parent }
+    if (-not $candidate) { throw 'Set LVGL_AIC_SDK_ROOT' }
+    $SdkRoot=$candidate.FullName
+}
+$sdk=(Resolve-Path $SdkRoot).Path
+$component=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$lvgl=(Resolve-Path (Join-Path $component '../lvgl')).Path
+$includes=@('.', 'packages/third-party/freetype/include', 'bsp/common/include', 'bsp/artinchip/sys/d13x/include',
+    'bsp/artinchip/include/uapi', 'bsp/artinchip/hal/dvp/v1',
+    'packages/artinchip/mpp/include', 'bsp/peripheral/camera', 'kernel/rt-thread/include', 'kernel/common/include/osal',
+    'kernel/rt-thread/components/drivers/audio', 'kernel/rt-thread/components/finsh', 'kernel/rt-thread/components/drivers/include',
+    'kernel/rt-thread/components/utilities/ulog', 'bsp/artinchip/include',
+    'kernel/rt-thread/components/libc/posix/pthreads', 'kernel/rt-thread/components/libc/compilers/common/include')
+$arguments=@('-std=gnu99','-Wall','-Wextra','-Werror','-DKERNEL_RTTHREAD','-DAIC_LVGL_BSP_RTTHREAD=1',
+    '-march=rv32imafdcpzpsfoperand_xtheade','-mabi=ilp32d','-DAIC_LVGL_USE_SPI_SDK=1','-DRT_USING_NEWLIB','-DRT_USING_LIBC','-D_POSIX_C_SOURCE=1','-D_SYS__PTHREADTYPES_H_')
+foreach ($path in $includes) { $arguments+=@('-isystem',(Join-Path $sdk $path)) }
+$arguments+=('-I'+(Join-Path $component 'compat'))
+foreach ($path in @($component,(Join-Path $component 'include'),$lvgl,(Join-Path $lvgl 'include'),(Join-Path $lvgl 'include/lvgl'))) {
+    $arguments+=('-I'+$path)
+}
+$arguments+=@('-include',(Join-Path $component 'compat/lvgl_aic_build_config.h'))
+$arguments+=@('-isystem',(Join-Path $sdk 'bsp/artinchip/include/hal'))
+$output=Join-Path $sdk 'output/lvgl-spi-sdk.o'
+New-Item -ItemType Directory -Force (Split-Path $output) | Out-Null
+$compileArgs=$arguments+@('-c',(Join-Path $component 'port/lv_aic_spi_sdk.c'),'-o',$output)
+& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
+if($LASTEXITCODE -ne 0) { throw 'SPI completion target compilation failed' }
+$symbols=& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-nm.exe') $output
+if($LASTEXITCODE -ne 0) { throw 'SPI completion nm failed' }
+foreach($symbol in @('rt_spi_wait_completion','rt_spi_get_transfer_status')) {
+    if(-not ($symbols -cmatch ('\bU\s+'+$symbol+'$'))) { throw "Missing SDK reference: $symbol" }
+}
+if(-not ($symbols -cmatch '\bT\s+lv_aic_spi_sdk_wait_complete$')) { throw 'Missing completion implementation' }
+Get-FileHash $output -Algorithm SHA256
+Write-Output 'PASS checked SPI completion compile; no SDK transport link or hardware execution'

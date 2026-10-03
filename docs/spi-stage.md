@@ -83,3 +83,33 @@ Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barc
 Unused SPI APIs may be discarded from the final firmware; this regression
 establishes target compilation/general integration, not SPI device linkage or
 physical output. Hardware remains **NOT_RUN**.
+
+
+## SDK checked completion bridge
+
+Opt-in `AIC_LVGL_USE_SPI_SDK` provides `lv_aic_spi_sdk_wait_complete` as the
+transfer core's wait callback. Its context is the underlying borrowed
+`struct rt_spi_device *`, not the panel wrapper. It checks bus/ops pointers,
+requires both wait_completion and gstatus, propagates `rt_spi_wait_completion`
+failure, and then accepts only HAL OK or explicit TRAN_DONE. In-progress,
+FIFO errors and unknown status bits all fail, even when a completion signal
+was received. Device exclusivity and an accepted asynchronous submission are
+preconditions; this callback does not acquire lifetime ownership of the bus.
+
+Why not use the SDK panel wrapper directly: `aic_spi_lcd_wait_completion` is void
+and drops the lower result; `rt_spi_get_transfer_status` defaults to OK when
+no gstatus callback exists. Both would otherwise create false completion proof.
+The lower D13x driver waits with a timeout and exposes HAL error bits through
+gstatus. Also, SDK `spi_flush` returns zero for nonnegative transfer counts,
+so its short-write path still needs a checked submission adapter. QSPI display
+mode uses void submission operations and needs separate validation.
+
+Host **60/60 PASS** includes missing operations, wait failure, normal completion,
+all 31 nonterminal/error bits and each combined with TRAN_DONE. Strict D13x
+compile **PASS** via `tools/sdk/check-spi-session.ps1`, which uses actual SDK
+headers and checks references to both lower RT SPI functions. Object SHA256
+`99d52305f8869fbc06d062908a988bc319874dc04b0211af0ef4399c9bc13919`;
+logs `output/spi-sdk-tests.log`, `output/spi-sdk-target.log`.
+No runtime SDK link/transfer, SPI panel initialization or board execution is
+claimed. Checked submission, device ownership and display integration remain
+next stages; hardware **NOT_RUN**.

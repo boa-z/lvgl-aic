@@ -86,6 +86,9 @@ includes += [os.path.join(cwd, 'common'), os.path.join(cwd, 'image', 'mpp'),
              os.path.join(cwd, 'draw', 'ge2d'), os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'include'),
              os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 've', 'include'),
              os.path.join(AIC_ROOT, 'bsp', 'artinchip', 'include', 'uapi')]
+if GetDepend('AIC_LVGL_USE_SPI_SDK'):
+    includes += [os.path.join(AIC_ROOT, 'bsp', 'artinchip', 'include', 'hal')]
+
 group += DefineGroup('Application-LVGL-AIC', src, depend=['AIC_LVGL_PORT'], CPPPATH=includes,
                      CPPDEFINES=['AIC_LVGL_BSP_RTTHREAD=1', 'AIC_LVGL_BSP_MPP=1'])
 
