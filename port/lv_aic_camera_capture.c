@@ -20,7 +20,7 @@ struct lv_aic_camera_capture {
     enum mpp_pixel_format format;
     lv_aic_yuv_color_space_t space;
     lv_aic_capture_state_t state;
-    bool closing, pause_requested, finished;
+    bool closing, pause_requested, start_requested, finished;
 };
 /* UI-owned singleton; prevents competing worker threads entering SDK globals. */
 static lv_aic_camera_capture_t *active;
@@ -59,10 +59,10 @@ static bool invalidate_frame(const lv_aic_yuv_frame_t *f)
 static void worker(void *argument)
 {
     lv_aic_camera_capture_t *c=argument;
-    if(!lv_aic_vin_open(&c->vin,c->camera,c->channel,c->format,3) || !lv_aic_vin_start(&c->vin)) fault(c);
+    if(!lv_aic_vin_open(&c->vin,c->camera,c->channel,c->format,3)) fault(c);
     for(;;) {
         lock(c);
-        bool closing=c->closing, paused=c->pause_requested;
+        bool closing=c->closing, paused=c->pause_requested, start=c->start_requested;
         if(closing) for(unsigned i=0;i<VIN_MAX_BUF_NUM;i++)
             if(c->slots[i].state==READY) c->slots[i].state=RETURN;
         unlock(c);
@@ -84,6 +84,15 @@ static void worker(void *argument)
                 return;
             }
             aicos_msleep(5); continue;
+        }
+        if(!c->vin.streaming) {
+            if(!start) {
+                lock(c);
+                if(!c->closing) c->state=LV_AIC_CAPTURE_READY;
+                unlock(c);
+                aicos_msleep(5); continue;
+            }
+            if(!lv_aic_vin_start(&c->vin)) { fault(c); continue; }
         }
         if(paused!=c->vin.paused) {
             if(!(paused ? lv_aic_vin_pause(&c->vin) : lv_aic_vin_resume(&c->vin))) { fault(c); continue; }
@@ -112,7 +121,7 @@ static void worker(void *argument)
         unlock(c);
     }
 }
-lv_aic_camera_capture_t *lv_aic_camera_capture_open(const char *camera,uint32_t channel,
+lv_aic_camera_capture_t *lv_aic_camera_capture_prepare(const char *camera,uint32_t channel,
     lv_aic_yuv_format_t format,lv_aic_yuv_color_space_t space)
 {
     if(active || !camera || !camera[0] || strlen(camera)>=16 || channel>=VIN_MAX_CHANNELS ||
@@ -133,6 +142,21 @@ lv_aic_camera_capture_t *lv_aic_camera_capture_open(const char *camera,uint32_t 
     if(!aicos_thread_create("aic_capture",8192,20,worker,c)) {
         active=NULL; aicos_mutex_delete(c->mutex); lv_free(c); return NULL;
     }
+    return c;
+}
+bool lv_aic_camera_capture_start(lv_aic_camera_capture_t *c)
+{
+    if(!c) return false;
+    lock(c);
+    bool accepted=!c->closing && !c->finished;
+    if(accepted) c->start_requested=true;
+    unlock(c); return accepted;
+}
+lv_aic_camera_capture_t *lv_aic_camera_capture_open(const char *camera,uint32_t channel,
+    lv_aic_yuv_format_t format,lv_aic_yuv_color_space_t space)
+{
+    lv_aic_camera_capture_t *c=lv_aic_camera_capture_prepare(camera,channel,format,space);
+    if(c) (void)lv_aic_camera_capture_start(c);
     return c;
 }
 lv_aic_yuv_image_t *lv_aic_camera_capture_poll(lv_aic_camera_capture_t *c)

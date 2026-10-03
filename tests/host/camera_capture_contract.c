@@ -15,7 +15,7 @@ static pthread_cond_t wake=PTHREAD_COND_INITIALIZER;
 static unsigned tokens, timeout_requested, queued;
 static aic_thread_entry_t entry;
 static void *entry_arg;
-static atomic_int done, blocked, caches, returned, freed, off_calls, fail_off, fail_return;
+static atomic_int done, blocked, caches, returned, freed, off_calls, fail_off, fail_return, on_calls;
 static int fail_thread, fail_init;
 static void worker_only(void) { assert(pthread_equal(pthread_self(),thread)); }
 aicos_mutex_t aicos_mutex_create(void)
@@ -39,7 +39,7 @@ void aicos_dcache_invalid_range(unsigned long *addr,unsigned long size)
 int mpp_vin2_init(struct vin_dev_ctx *c)
 { worker_only(); if(fail_init) return -1; c->state=VIN_STATE_READY; return 0; }
 void mpp_vin2_deinit(struct vin_dev_ctx *c)
-{ worker_only(); assert(queued==7); c->state=VIN_STATE_INIT; atomic_fetch_add(&freed,1); }
+{ worker_only(); assert(queued==7 || queued==0); c->state=VIN_STATE_INIT; atomic_fetch_add(&freed,1); }
 int mpp_vin2_vb_init(u32 ch,struct vin_dev_ctx *c) { worker_only(); (void)ch; (void)c; return 0; }
 void mpp_vin2_vb_deinit(u32 ch,struct vin_dev_ctx *c) { worker_only(); (void)ch; (void)c; }
 int mpp_vin2_ioctl(int cmd,void *arg,u32 ch,struct vin_dev_ctx *c)
@@ -76,6 +76,7 @@ int mpp_vin2_ioctl(int cmd,void *arg,u32 ch,struct vin_dev_ctx *c)
         unsigned i=0; while(i<3 && !(queued&(1U<<i))) i++;
         assert(i<3); queued&=~(1U<<i); *(uint32_t *)arg=i; break;
     }
+    case VIN_STREAM_ON: atomic_fetch_add(&on_calls,1); break;
     case VIN_STREAM_OFF:
         atomic_fetch_add(&off_calls,1); if(atomic_load(&fail_off)) return -1; break;
     default: break;
@@ -110,6 +111,26 @@ int main(void)
     assert(capture); wait_count(&done,1); pthread_join(thread,NULL);
     assert(lv_aic_camera_capture_state(capture)==LV_AIC_CAPTURE_FAULT);
     assert(lv_aic_camera_capture_destroy(capture)); fail_init=0;
+    /* Preparing must not queue, stream or dequeue. Close before start is safe. */
+    capture=lv_aic_camera_capture_prepare("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED);
+    assert(capture); wait_state(capture,LV_AIC_CAPTURE_READY);
+    assert(!atomic_load(&on_calls) && !atomic_load(&returned) && !atomic_load(&blocked));
+    assert(!lv_aic_camera_capture_poll(capture));
+    lv_aic_camera_capture_close(capture);
+    assert(!lv_aic_camera_capture_start(capture));
+    wait_count(&done,1); pthread_join(thread,NULL);
+    assert(lv_aic_camera_capture_destroy(capture)); atomic_store(&freed,0);
+    /* Early/idempotent start and pause requests are serviced by worker. */
+    capture=lv_aic_camera_capture_prepare("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED);
+    assert(capture); lv_aic_camera_capture_pause(capture,true);
+    assert(lv_aic_camera_capture_start(capture));
+    assert(lv_aic_camera_capture_start(capture));
+    wait_state(capture,LV_AIC_CAPTURE_PAUSED);
+    assert(atomic_load(&on_calls)==1 && !atomic_load(&blocked));
+    lv_aic_camera_capture_close(capture);
+    wait_count(&done,1); pthread_join(thread,NULL);
+    assert(lv_aic_camera_capture_destroy(capture));
+    atomic_store(&freed,0); atomic_store(&returned,0); atomic_store(&off_calls,0);
     capture=lv_aic_camera_capture_open("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED);
     assert(capture);
     assert(!lv_aic_camera_capture_open("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED));

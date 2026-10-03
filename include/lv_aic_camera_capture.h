@@ -7,13 +7,21 @@ extern "C" {
 #endif
 typedef struct lv_aic_camera_capture lv_aic_camera_capture_t;
 typedef enum {
-    LV_AIC_CAPTURE_OPENING, LV_AIC_CAPTURE_RUNNING, LV_AIC_CAPTURE_PAUSED,
+    LV_AIC_CAPTURE_OPENING, LV_AIC_CAPTURE_READY, LV_AIC_CAPTURE_RUNNING, LV_AIC_CAPTURE_PAUSED,
     LV_AIC_CAPTURE_CLOSING, LV_AIC_CAPTURE_CLOSED, LV_AIC_CAPTURE_FAULT
 } lv_aic_capture_state_t;
 /* UI-owner API. Initialize the YUV decoder first. Device operations run on
  * an independent worker; exclusively reserve SDK VIN for this capture. */
 lv_aic_camera_capture_t *lv_aic_camera_capture_open(const char *camera, uint32_t channel,
     lv_aic_yuv_format_t format, lv_aic_yuv_color_space_t space);
+/* Prepare configures the device/pool asynchronously without queueing or starting
+ * capture. READY confirms completion. channel is a VIN queue index, not the
+ * SDK camera sensor input selector (VIN1/VIN2). */
+lv_aic_camera_capture_t *lv_aic_camera_capture_prepare(const char *camera, uint32_t channel,
+    lv_aic_yuv_format_t format, lv_aic_yuv_color_space_t space);
+/* Accept an idempotent start request while OPENING/READY/RUNNING/PAUSED.
+ * Device success/failure is reported asynchronously by state(). */
+bool lv_aic_camera_capture_start(lv_aic_camera_capture_t *capture);
 /* Returns a new immutable image, or NULL when no frame is ready. Caller owns
  * it and must detach widgets/finish queued draws before destroying it. */
 lv_aic_yuv_image_t *lv_aic_camera_capture_poll(lv_aic_camera_capture_t *capture);

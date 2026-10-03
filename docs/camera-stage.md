@@ -4,7 +4,7 @@ The internal compat/lv_aic_vin_session.h API is the first device-side layer of
 the SDK camera port. It calls the real mpp_vin2 API for camera discovery/input
 format, output negotiation, buffer pool allocation, queue/start, pause/resume,
 dequeue/return, stop and close. It accepts SDK NV12, NV16 and YUV400 capture
-formats. It is not yet a camera widget or frame-to-LVGL publisher.
+formats. The session itself is not a camera widget; the worker below publishes frames.
 
 Enable AIC_LVGL_USE_VIN only with AIC_MPP_VIN and AIC_DVP_DRV configured by the
 application. The default test image leaves the camera disabled. The application
@@ -64,8 +64,13 @@ This regression image is not evidence of a linked or running VIN device.
 
 include/lv_aic_camera_capture.h now provides a UI-owner API backed by an SDK
 OSAL worker (8 KiB stack, priority 20). Open starts capture asynchronously;
-state reports OPENING/RUNNING/PAUSED/CLOSING/CLOSED/FAULT. This is an internal
-transport API, not yet the SDK camera widget's open/start contract.
+state reports OPENING/READY/RUNNING/PAUSED/CLOSING/CLOSED/FAULT. Prepare
+configures the pool without queueing buffers or starting the sensor. Start is
+an idempotent asynchronous request, accepted during opening or after READY;
+the existing open convenience API still requests immediate start. Close while
+prepared releases the pool without STREAM_ON or dequeue. Pause requests made
+before start are applied before the first dequeue. This is a transport API,
+not yet the SDK camera widget binding.
 
 The worker exclusively performs VIN operations and invalidates completed DMA
 planes before publishing their metadata. Poll creates immutable YUV images
@@ -99,3 +104,18 @@ Camera-enabled image linking and hardware execution remain NOT_RUN.
 
 Remaining work includes SDK camera widget binding, video-plane ownership and
 SDK player backends. The camera gap remains open.
+
+## Prepared capture stage
+
+Host 23/23 PASS and real SDK compile-only checks PASS after splitting prepare
+and start. Added concurrent tests verify no queue/STREAM_ON/dequeue in READY,
+close-before-start, rejected start after close, early repeated start requests,
+and pause-before-first-dequeue. The capture object SHA256 for this stage is
+72d8c6ae77c142f83b526b46c37ccdd9e10f07ba9bc2d3b17e674864cb1aebed.
+No newer camera-enabled image or board evidence is implied.
+
+Channel terminology matters: the transport parameter is a VIN queue index.
+The SDK widget's set_channel calls camera_set_channel(camera_dev, ch), a sensor
+input selector; its VIN1=0 and VIN2=2 constants are not queue indices. Sensor
+selection needs a separate worker-side operation and must not index vin_buf
+with those constants. Widget binding and sensor selection remain pending.
