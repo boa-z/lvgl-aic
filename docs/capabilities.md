@@ -375,3 +375,15 @@ Legacy list/menu now have a dedicated manual page. Host pointer hit tests verify
 menu entry/back navigation and preserve the existing carousel/swipe page index;
 page refresh and repeated teardown pass. This page increment has not yet been
 packaged into a target image. Physical scrolling/touch/rendering remains NOT_RUN.
+
+## Navigation acceptance page firmware (2026-10-04)
+
+Full host regression 49/49 PASS. The combined target now includes the dedicated
+list/menu page; boot/app/static/image/manifest PASS. The prior page-only host
+evidence is superseded for target integration, not physical acceptance.
+Board scrolling/touch/display NOT_RUN. Clean build source identities:
+- sdk: aa9c72556fd24dde2ec3505f9cbd61dfb1d49b2a
+- lvgl-aic: 8867241e7a2eaaae9f81527efcb0b898b482d8b9
+- lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
+- images/d13x.elf SHA256: d22a01573346f54222737c729818000ebee5ae32696cb157d758fa579be97597
+- images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: cf2c9f4043106035a5cf38b88cf24afc307654e1a5125c2c206d3c1b995c31c8
