@@ -24,9 +24,18 @@ Non-V31 rejects flower; AIC_BUILD_AICP_V31_TESTS=ON accepts its ARGB header.
 Both platform contracts pass; the V31 host configuration passes 14/14 tests.
 Fixtures are read from the external SDK without copying vendor assets.
 
-Remaining: enabled-codec target link and board pixel parity.
+Remaining: board resource-probe hookup and board pixel parity.
 Target build entry: `tools/sdk/build.ps1 -Phase ge2d -WithAicp`.
 It enables the SDK codec, stages bird/flower with SHA256 inventory, and checks
-the live create_aicp_decoder symbol. This profile is not yet build-validated.
+the live create_aicp_decoder symbol.
 The four-component fixture remains unsupported on non-V31 targets.
+
+Cross-build PASS at component 9ad728d / SDK 1d01d0d6 with
+`-Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp`:
+boot/app, codec live-symbol gate, image integrity and provenance checks pass.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp`.
+Image SHA256:
+`cdc829726af4ea0876630e487ddb41479f92f1ee8f4fe6c2dea6a6505de241f6`.
+Board NOT_RUN. This image links the codec and contains assets; it does not
+yet invoke the AICP fixtures in the startup resource probe.
 Do not enable the codec in a release solely on the basis of these host tests.
