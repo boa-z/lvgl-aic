@@ -35,6 +35,7 @@
 #include <mpp_fb.h>
 #if AIC_LVGL_USE_GE2D
 #include "lv_draw_aic_ge2d_display.h"
+#include "lv_draw_aic_ge2d.h"
 #endif
 
 #ifndef CACHE_LINE_SIZE
@@ -58,6 +59,7 @@ typedef struct {
     bool use_pan_display;
     bool use_rotation;
     bool powered_on;
+    bool dma_quarantined;
 } lv_aic_display_ctx_t;
 
 static uint32_t lv_aic_align_up(uint32_t value, uint32_t alignment)
@@ -170,6 +172,8 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
         return;
     }
 
+    if (ctx->dma_quarantined) return; /* Keep LVGL source ownership until reboot. */
+
     if (!lv_display_flush_is_last(display)) {
         lv_display_flush_ready(display);
         return;
@@ -202,9 +206,10 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
         target.header.cf = ctx->lv_color_format;
         rotated = lv_draw_aic_ge2d_display_rotate(&source, &target, lv_display_get_rotation(display));
         if (rotated < 0) {
-            LV_LOG_ERROR("GE display rotation failed; frame not presented");
+            LV_LOG_ERROR("GE display DMA fault; retaining buffers until reboot");
             ctx->last_presented_valid = false;
-            lv_display_flush_ready(display);
+            ctx->dma_quarantined = true;
+            /* Completion is unknown: do not release LVGL's source for reuse. */
             return;
         }
 #endif
@@ -284,6 +289,9 @@ int lv_aic_display_init(lv_display_t **display)
         return LV_AIC_ERR_INVALID_STATE;
     }
     *display = NULL;
+#if AIC_LVGL_USE_GE2D
+    if (lv_draw_aic_ge2d_faulted()) return LV_AIC_ERR_DISPLAY;
+#endif
 
     ctx = (lv_aic_display_ctx_t *)lv_malloc_zeroed(sizeof(*ctx));
     if (ctx == NULL) {
@@ -437,6 +445,10 @@ void lv_aic_display_deinit(lv_display_t *display)
         return;
     }
 
+    if (ctx->dma_quarantined) {
+        LV_LOG_ERROR("GE display DMA fault; deinit requires reboot");
+        return;
+    }
     lv_display_set_driver_data(display, NULL);
     lv_display_delete(display);
 

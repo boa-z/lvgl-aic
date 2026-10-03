@@ -23,6 +23,7 @@ static bool buffer_valid(const lv_draw_buf_t *buf)
 int lv_draw_aic_ge2d_display_rotate(const lv_draw_buf_t *src, lv_draw_buf_t *dst,
                                    lv_display_rotation_t rotation)
 {
+    if (lv_draw_aic_ge2d_faulted()) return -1;
     struct mpp_ge *device = lv_draw_aic_ge2d_device();
     enum mpp_pixel_format format;
     if (!device || !buffer_valid(src) || !buffer_valid(dst) ||
@@ -55,9 +56,10 @@ int lv_draw_aic_ge2d_display_rotate(const lv_draw_buf_t *src, lv_draw_buf_t *dst
     lv_area_t da = {0, 0, dst->header.w - 1, dst->header.h - 1};
     lv_draw_aic_ge2d_prepare_src_cache(src, &sa);
     lv_draw_aic_ge2d_prepare_dst_cache(dst, &da);
-    if (mpp_ge_bitblt(device, &blt) < 0) return -1;
-    if (mpp_ge_emit(device) < 0) return -1;
-    if (mpp_ge_sync(device) < 0) return -1;
+    if (mpp_ge_bitblt(device, &blt) < 0 || mpp_ge_emit(device) < 0 || mpp_ge_sync(device) < 0) {
+        lv_draw_aic_ge2d_quarantine();
+        return -1;
+    }
     return 1;
 }
 #endif

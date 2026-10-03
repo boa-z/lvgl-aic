@@ -49,3 +49,39 @@ failures and recovery, and CMA allocation/free balances at teardown.
 
 Remaining: 180/270 target configuration coverage and physical portrait/landscape checks. SPI and multiple
 displays are still outside this implementation.
+
+
+## GE rotation DMA fault quarantine
+
+The whole-screen rotation path previously returned hardware errors without
+latching shared GE quarantine, released LVGL flush ownership and allowed a later
+software retry/deinit. An emit/sync failure does not prove DMA has stopped, so
+that could reuse or free a source still being read by GE. Rotation now quarantines
+the shared client on any bitblt/emit/sync failure and reports existing quarantine
+as failure rather than a software-fallback decline.
+
+Framebuffer flush now marks the display quarantined, invalidates snapshot state
+and deliberately withholds flush-ready. It does not present, advance buffers,
+retry in software or release the LVGL source. Deinit retains the display, rotation
+allocation and framebuffer handle; new display initialization is rejected while
+shared GE remains faulted. Reboot is the recovery boundary. A refresh waiting on
+the failed flush can remain blocked; this is deliberate resource retention, not a
+successful presentation or recoverable timeout. Pre-submission geometry decline
+still permits software fallback, and ordinary framebuffer ioctl error handling
+is unchanged.
+
+Validation: **68/68 host PASS**, injecting all three hardware failure stages,
+checking shared quarantine/no subsequent GE calls, and checking persistent flush,
+no software replay/snapshot, retained CMA and rejected reinitialization. Existing
+healthy deinit, software fallback and framebuffer failure tests still pass.
+Strict real-header D13x compilation PASS for both modified modules:
+- `output/quarantine-lv_draw_aic_ge2d_display.o`: SHA256
+  `0c7d7d15b6d6a4a0655385c6add3357697db4e3d41b8a3f743de0ad59af01ecf`.
+- `output/quarantine-lv_aic_display.o`: SHA256
+  `c5e7ef9178f8e24bdf2e45b0c6174d37d06a9b158579fb0f37ad0a965c767778`.
+
+Objects are under SDK output. Host logs are component
+`output/ge-rotate-quarantine-build.log` and `output/ge-rotate-quarantine-tests.log`.
+Full rotated firmware refresh and hardware fault acceptance remain pending.
+Hardware **NOT_RUN**. This fix is also a prerequisite for any future SPI GE
+conversion, which must additionally preserve its source lifetime on GE failure.

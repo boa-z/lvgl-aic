@@ -6,7 +6,9 @@
 #include "lv_draw_aic_ge2d_display.h"
 #include <mpp_ge.h>
 static int stage, fail_at;
-static bool available = true;
+static bool available = true, quarantined;
+bool lv_draw_aic_ge2d_faulted(void) { return quarantined; }
+void lv_draw_aic_ge2d_quarantine(void) { quarantined=true; }
 static struct ge_bitblt captured;
 struct mpp_ge *lv_draw_aic_ge2d_device(void)
 { return available ? (struct mpp_ge *)(uintptr_t)1 : NULL; }
@@ -41,9 +43,14 @@ int main(void)
             dst.header.h = rot == 2 ? 48 : 80;
             dst.header.stride = dst.header.w * lv_color_format_get_size(formats[f]) + 16;
             for (fail_at = 0; fail_at <= 3; fail_at++) {
-                stage = 0;
+                stage = 0;quarantined=false;
                 assert(lv_draw_aic_ge2d_display_rotate(&src, &dst, rot) == (fail_at ? -1 : 1));
                 assert(stage == (fail_at ? fail_at + 2 : 5));
+                assert(quarantined==(fail_at!=0));
+                if(fail_at) {
+                    int before=stage;
+                    assert(lv_draw_aic_ge2d_display_rotate(&src,&dst,rot)==-1 && stage==before);
+                }
                 assert(captured.ctrl.flags == flags[rot - 1]);
                 assert(!captured.ctrl.alpha_en);
                 assert(captured.dst_buf.size.width == (int)dst.header.w);
@@ -51,7 +58,7 @@ int main(void)
             }
         }
     }
-    fail_at = stage = 0;
+    fail_at = stage = 0;quarantined=false;
     assert(lv_draw_aic_ge2d_display_rotate(&src, &dst, 0) == 0);
     available = false;
     assert(lv_draw_aic_ge2d_display_rotate(&src, &dst, 1) == 0);

@@ -11,6 +11,8 @@
 static uint8_t framebuffer[64 * 32 * 4 * 2];
 static int ge_result, pans, syncs, cleans, allocations;
 static int failed_ioctl;
+static bool ge_quarantined;
+bool lv_draw_aic_ge2d_faulted(void) { return ge_quarantined; }
 struct mpp_fb *mpp_fb_open(void) { return (struct mpp_fb *)(uintptr_t)1; }
 void mpp_fb_close(struct mpp_fb *fb) { assert(fb); }
 int mpp_fb_ioctl(struct mpp_fb *fb, int cmd, void *args)
@@ -42,6 +44,7 @@ int lv_draw_aic_ge2d_display_rotate(const lv_draw_buf_t *src, lv_draw_buf_t *dst
     assert(rotation == LV_DISPLAY_ROTATION_90);
     assert(src->header.w == 32 && src->header.h == 64);
     assert(dst->header.w == 64 && dst->header.h == 32);
+    if(ge_result<0) ge_quarantined=true;
     return ge_result;
 }
 static void flush(lv_display_t *d)
@@ -49,7 +52,8 @@ static void flush(lv_display_t *d)
     d->flushing = 1;
     d->flushing_last = 1;
     lv_aic_flush_cb(d, NULL, NULL);
-    assert(!d->flushing);
+    lv_aic_display_ctx_t *ctx=lv_display_get_driver_data(d);
+    assert((bool)d->flushing==ctx->dma_quarantined);
 }
 int main(void)
 {
@@ -62,15 +66,8 @@ int main(void)
     flush(d);
     assert(pans == 1 && syncs == 1 && cleans == 0);
     assert(ctx->last_presented_valid && ctx->present_index == 1);
-    unsigned count = lv_aic_display_flush_count_get();
-    ge_result = -1;
-    flush(d);
-    assert(pans == 1 && syncs == 1 && cleans == 0);
-    assert(!ctx->last_presented_valid && ctx->present_index == 1);
-    assert(lv_aic_display_flush_count_get() == count);
     lv_draw_buf_t copy;
     uint32_t frame;
-    assert(lv_aic_display_snapshot(d, &copy, &frame) == LV_AIC_ERR_DISPLAY);
     ge_result = 0;
     flush(d);
     assert(pans == 2 && syncs == 2 && cleans == 2);
@@ -90,6 +87,18 @@ int main(void)
     }
     lv_aic_display_deinit(d);
     assert(allocations == 0);
-    lv_deinit();
+    /* A fresh display proves DMA fault never releases or retries its buffers. */
+    assert(lv_aic_display_init(&d)==LV_AIC_OK);ctx=lv_display_get_driver_data(d);
+    unsigned count=lv_aic_display_flush_count_get();int before_pans=pans,before_cleans=cleans;
+    ge_result=-1;flush(d);
+    assert(ctx->dma_quarantined && !ctx->last_presented_valid && d->flushing);
+    assert(lv_aic_display_snapshot(d,&copy,&frame)==LV_AIC_ERR_DISPLAY);
+    ge_result=0;flush(d); /* No software replay even if GE subsequently declines. */
+    assert(pans==before_pans && cleans==before_cleans && lv_aic_display_flush_count_get()==count);
+    lv_aic_display_deinit(d);
+    assert(allocations==1 && lv_display_get_driver_data(d)==ctx);
+    lv_display_t *replacement=NULL;
+    assert(lv_aic_display_init(&replacement)==LV_AIC_ERR_DISPLAY && !replacement && allocations==1);
+    /* Intentionally retain quarantined state until process exit, mirroring reboot. */
     return 0;
 }
