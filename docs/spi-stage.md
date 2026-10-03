@@ -43,3 +43,31 @@ flush/claim integration, per-panel statistics and multi-display acceptance.
 No sensor/panel hardware is inferred or initialized. No camera/SPI final firmware
 link, physical SPI transfer, panel output or performance acceptance is claimed
 by this stage; hardware status is **NOT_RUN**.
+
+
+## Checked transfer-session core
+
+`lv_aic_spi_transfer_create/submit/drain/close` now manage borrowed transmit
+storage and checked transport callbacks. One owner worker calls these APIs;
+callbacks may attempt reentry but receive BUSY. Concurrent thread access is not
+supported. Each submit confirms completion of any previous transfer before
+repacking. Accepted submission marks the pixels pending; close waits before
+freeing metadata. The session never frees caller pixel storage. Invalid frame
+parameters do not submit; they may drain an earlier pending transfer first.
+A false start/wait callback permanently faults the session, retains metadata
+and borrowed storage, and blocks later repack, submission and close. There is
+no force-reset operation while DMA ownership is uncertain.
+
+This core does not allocate DMA pixels, claim a bus, initialize a panel or
+provide a real SDK transport adapter yet. The application callback must perform
+cache handoff before DMA and return true from wait only when no DMA reader can
+remain. SDK `aic_spi_lcd_wait_completion` returns void and discards the underlying
+`rt_spi_wait_completion` status; using it as unconditional success would break
+this contract. The D13x lower driver waits with a finite timeout, so the future
+adapter must preserve that failure instead of silently releasing tx storage.
+
+Host **59/59 PASS**, log `output/spi-transfer-tests.log`: repeated lifecycle,
+wait-before-rewrite with retained byte snapshots, invalid submission, callback
+reentry, submission failure and completion failure with sticky retention.
+Real SDK SPI adapter, device exclusivity, panel setup, LVGL flush integration,
+DMA timing and board output remain incomplete/NOT_RUN.

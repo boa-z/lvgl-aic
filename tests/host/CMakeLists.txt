@@ -994,3 +994,12 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(lvgl_aic_spi_frame_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 endif()
 add_test(NAME lvgl_aic_spi_frame_contract COMMAND lvgl_aic_spi_frame_contract)
+
+add_executable(lvgl_aic_spi_transfer_contract spi_transfer_contract.c
+    "${AIC_ROOT}/common/lv_aic_spi_transfer.c" "${AIC_ROOT}/common/lv_aic_spi_frame.c")
+target_include_directories(lvgl_aic_spi_transfer_contract PRIVATE "${AIC_ROOT}/include")
+target_link_libraries(lvgl_aic_spi_transfer_contract PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_spi_transfer_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_spi_transfer_contract COMMAND lvgl_aic_spi_transfer_contract)
