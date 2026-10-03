@@ -371,3 +371,22 @@ Logs: `output/camera-barcode-link.log`, `output/camera-barcode-only-link.log`,
 OS/VIN/LVGL dependencies intentionally remain unresolved in this partial link;
 it is not a bootable camera-enabled firmware, sensor configuration or execution
 evidence. Those gates remain **NOT_RUN**. No runtime source changed in this stage.
+
+
+### Barcode error recovery and restart contracts
+
+The real pthread capture/widget contract now injects every non-OK adapter
+result (EMPTY, BUSY, INVALID, NOMEM, INIT_FAILED, TOO_LONG). Each is delivered
+through the mailbox with zero length, leaves caller bytes unchanged and keeps
+VIN RUNNING. A later successful decode is still delivered. Sensor selection
+during a blocked decode invalidates that completion; a subsequent frame from
+the continuing session can produce a result after driver acknowledgment.
+This does not claim that the SDK's next frame has switched inputs immediately.
+
+A widget callback now also exercises stop, rejects start during STOPPING, drains
+the actual worker, then starts from STOPPED without re-registering the callback
+or barcode mode. The replacement session decodes again and its callback deletes
+the widget; cleanup reaches zero. **57/57 host PASS**, log
+`output/camera-barcode-recovery-tests.log`. VIN and decoder remain mocked;
+physical error recovery, input-switch timing and actual decoder restart behavior
+remain **NOT_RUN**. No runtime code or firmware configuration changed.

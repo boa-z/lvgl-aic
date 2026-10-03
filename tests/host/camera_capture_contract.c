@@ -121,7 +121,7 @@ static void wait_input(lv_aic_camera_capture_t *capture,lv_aic_camera_input_stat
     }
     assert(!"input state timed out");
 }
-static atomic_int scan_calls, scan_blocked;
+static atomic_int scan_calls, scan_blocked, scan_result;
 static int scan_hold;
 lv_aic_barcode_result_t lv_aic_barcode_decode(const lv_aic_yuv_frame_t *frame,
     uint8_t *output,size_t capacity,size_t *length)
@@ -131,6 +131,8 @@ lv_aic_barcode_result_t lv_aic_barcode_decode(const lv_aic_yuv_frame_t *frame,
     pthread_mutex_lock(&gate);
     while(scan_hold) { atomic_store(&scan_blocked,1); pthread_cond_wait(&wake,&gate); }
     atomic_store(&scan_blocked,0); pthread_mutex_unlock(&gate);
+    lv_aic_barcode_result_t result=(lv_aic_barcode_result_t)atomic_load(&scan_result);
+    if(result!=LV_AIC_BARCODE_OK) { *length=0; return result; }
     output[0]='A'; output[1]=0; output[2]='Z'; *length=3;
     return LV_AIC_BARCODE_OK;
 }
@@ -172,6 +174,35 @@ static void test_barcode(void)
     assert(!lv_aic_camera_capture_barcode_poll(c,output,3,&length,&result));
     assert(lv_aic_camera_capture_destroy(c));
 }
+static void test_barcode_recovery(void)
+{
+    lv_aic_camera_capture_t *c=lv_aic_camera_capture_open("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED);
+    assert(c); wait_count(&blocked,1);
+    assert(lv_aic_camera_capture_barcode_configure(c,true,true));
+    uint8_t output[3]={9,9,9}; size_t length; lv_aic_barcode_result_t result;
+    for(int error=LV_AIC_BARCODE_EMPTY;error<=LV_AIC_BARCODE_TOO_LONG;error++) {
+        atomic_store(&scan_result,error);
+        int scans=atomic_load(&scan_calls);
+        wake_worker(1,false);wait_count(&scan_calls,scans+1);wait_count(&blocked,1);
+        assert(lv_aic_camera_capture_barcode_poll(c,output,sizeof(output),&length,&result));
+        assert(result==(lv_aic_barcode_result_t)error && length==0 && output[0]==9);
+        assert(lv_aic_camera_capture_state(c)==LV_AIC_CAPTURE_RUNNING);
+    }
+    atomic_store(&scan_result,LV_AIC_BARCODE_OK);
+    pthread_mutex_lock(&gate);scan_hold=1;pthread_mutex_unlock(&gate);
+    wake_worker(1,false);wait_count(&scan_blocked,1);
+    /* Sensor selection invalidates decoding from the previous input. */
+    assert(lv_aic_camera_capture_select_input(c,2));
+    pthread_mutex_lock(&gate);scan_hold=0;pthread_cond_signal(&wake);pthread_mutex_unlock(&gate);
+    wait_input(c,LV_AIC_INPUT_APPLIED);wait_count(&blocked,1);
+    assert(!lv_aic_camera_capture_barcode_poll(c,output,sizeof(output),&length,&result));
+    int scans=atomic_load(&scan_calls);
+    wake_worker(1,false);wait_count(&scan_calls,scans+1);wait_count(&blocked,1);
+    assert(lv_aic_camera_capture_barcode_poll(c,output,sizeof(output),&length,&result));
+    assert(result==LV_AIC_BARCODE_OK && length==3 && output[2]=='Z');
+    lv_aic_camera_capture_close(c);wake_worker(0,true);
+    wait_count(&done,1);pthread_join(thread,NULL);assert(lv_aic_camera_capture_destroy(c));
+}
 static lv_obj_t *scan_widget;
 static pthread_t ui_owner;
 static int callback_calls, callback_delete;
@@ -180,7 +211,8 @@ static void barcode_callback(const char *data,int length,char *out,int capacity)
     assert(pthread_equal(pthread_self(),ui_owner));
     assert(length==3 && data[0]=='A' && !data[1] && data[2]=='Z');
     assert(out && capacity==1); *out=42; callback_calls++;
-    if(callback_delete) lv_obj_delete(scan_widget);
+    if(callback_delete==2) assert(lv_aic_camera_stop(scan_widget)==LV_RESULT_OK);
+    else if(callback_delete) lv_obj_delete(scan_widget);
     else assert(lv_aic_camera_close(scan_widget)==LV_RESULT_OK);
     /* Deleting the widget must not invalidate this callback's borrowed input. */
     assert(data[0]=='A' && data[2]=='Z');
@@ -219,6 +251,34 @@ static void test_widget_barcode(void)
         assert(!lv_aic_camera_pending_cleanup());
     }
     lv_display_delete(display);
+}
+static void test_barcode_restart(void)
+{
+    lv_display_t *display=lv_display_create(16,16);
+    scan_widget=lv_aic_camera_create(lv_screen_active());assert(scan_widget);
+    char output=0;
+    assert(lv_aic_camera_configure(scan_widget,"camera",0,LV_AIC_YUV_BT601_LIMITED)==LV_RESULT_OK);
+    assert(lv_aic_camera_barcode_callback(scan_widget,barcode_callback,&output,1)==LV_RESULT_OK);
+    assert(lv_aic_camera_barcode_only(scan_widget)==LV_RESULT_OK);
+    assert(lv_aic_camera_barcode_enable(scan_widget)==LV_RESULT_OK);
+    assert(lv_aic_camera_open(scan_widget)==LV_RESULT_OK);
+    for(unsigned cycle=0;cycle<2;cycle++) {
+        callback_delete=cycle ? 1 : 2;
+        assert(lv_aic_camera_start(scan_widget)==LV_RESULT_OK);wait_count(&blocked,1);
+        int scans=atomic_load(&scan_calls), calls=callback_calls;
+        wake_worker(1,false);wait_count(&scan_calls,scans+1);wait_count(&blocked,1);
+        for(unsigned i=0;i<20 && callback_calls==calls;i++) { lv_tick_inc(25);lv_timer_handler(); }
+        assert(callback_calls==calls+1 && output==42);
+        if(!cycle) {
+            assert(lv_aic_camera_get_state(scan_widget)==LV_AIC_CAMERA_STOPPING);
+            assert(lv_aic_camera_start(scan_widget)==LV_RESULT_INVALID);
+            assert(lv_image_get_src(scan_widget)==NULL);
+        }
+        wake_worker(0,true);wait_count(&done,1);pthread_join(thread,NULL);
+        lv_tick_inc(25);lv_timer_handler();
+        if(!cycle) assert(lv_aic_camera_get_state(scan_widget)==LV_AIC_CAMERA_STOPPED);
+    }
+    assert(!lv_aic_camera_pending_cleanup());lv_display_delete(display);
 }
 int main(void)
 {
@@ -365,5 +425,7 @@ int main(void)
     assert(!lv_aic_camera_pending_cleanup()); lv_display_delete(display);
     test_barcode();
     test_widget_barcode();
+    test_barcode_recovery();
+    test_barcode_restart();
     assert(lv_aic_yuv_image_decoder_deinit()); lv_deinit(); return 0;
 }
