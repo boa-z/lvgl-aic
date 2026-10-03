@@ -440,7 +440,7 @@ static bool present_plane(player_binding_t *b)
         ox=lv_display_get_physical_horizontal_resolution(display)-ox;
         oy=lv_display_get_physical_vertical_resolution(display)-oy;
     }
-    unsigned image_angle=lv_image_get_rotation(obj);
+    int32_t image_angle=lv_image_get_rotation(obj);
     if(image_angle%900U) return false;
     unsigned degrees=(image_angle/10U+360U-(unsigned)rotation*90U)%360U;
     if(degrees && !b->plane_rotation_budget) return false;
