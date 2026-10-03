@@ -548,3 +548,12 @@ bus claim and panel context remain alive without replay or early free.
 evidence; it does not prove target cache behavior, pin sequencing, QSPI IRQ timing
 or panel output. Hardware **NOT_RUN**. Production source is unchanged in this
 regression increment; the blit/statistics enabled-firmware refresh remains pending.
+
+
+## Latest combined firmware refresh
+
+The final firmware has now been rebuilt with direct blit, per-display statistics
+and the GE address-span correction. Clean source identities, image SHA256 and
+all build/link/image gate results are recorded at the top of
+[validation record](validation.md). This supersedes pending final-link notes in
+the intervening sections. Hardware remains **NOT_RUN**.

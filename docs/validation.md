@@ -1,5 +1,36 @@
 # Validation record
 
+## Current combined GE/widget/SPI regression (2026-10-04)
+
+The latest combined profile enables GE2D, FreeType, GIF, widgets, AICP, player,
+APNG, barcode and SPI. Host contracts **67/67 PASS**, including composed SPI
+renderer/worker/driver lifetime and GE DMA-window boundaries. Bootloader and
+application build, static integration/live-symbol checks, image verification and
+provenance generation **PASS**. This includes the direct-blit/statistics APIs and
+the complete GE draw-buffer address-span fix; earlier pending final-link notes
+for those increments are superseded by this record.
+
+- Component: `7f578cc509ed94e660d0dfe567bb13d6822a8a8c` (clean).
+- SDK: `62587ac5434615eb282735093549b04ee4b0ac88` (clean).
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `1f4eb864d64148ed5960772dc882b76a2e217e41843720552f9b9b820aca61c4`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi/manifest.json`.
+- Image: same evidence directory, `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`.
+
+SPI final-map gates cover display, worker, panel, session and SDK transport.
+Independent ELF inspection confirms `claim_blit`, `blit`, `blit_take` and `stats`.
+This smoke image does not instantiate an SPI panel or redirect the NAND bus.
+Physical board execution is **NOT_RUN** and no flashing was performed. Historical
+operator UI acceptance does not establish acceptance of this image.
+
+Remaining implementation/acceptance scope includes explicit panel power/TE and
+initialization binding, stage-specific transport timing and GE/DMA pipelining,
+multi-display execution, and the documented GE/media/camera/widget board gates.
+The YUV audit confirms existing per-plane 32-bit bounds, 16-bit stride and full
+row capacity checks in `lv_aic_yuv_to_mpp`, plus cache-end guards before GE
+submission; the new RGB draw-buffer fix does not replace those checks.
+
+
 ## Current status index (2026-10-01)
 
 Earlier paths, kernel patches, scope and pending statements below describe

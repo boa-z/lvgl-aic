@@ -1,5 +1,10 @@
 # Current capabilities and SDK gaps
 
+Latest combined evidence: **67/67 host PASS** and GE/widget/SPI full firmware
+build/link/image/provenance **PASS**; see [current validation](validation.md).
+Board acceptance remains scoped to previously supplied logs; the new image is
+**NOT_RUN**. Milestone counts below describe their historical checkpoints.
+
 ## Current player/APNG status (2026-10-04)
 
 The unified player now routes native `.png`/`.apng` sources to the bounded
