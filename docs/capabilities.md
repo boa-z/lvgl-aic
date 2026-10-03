@@ -150,3 +150,8 @@ Optional auto-restart now uses asynchronous seek-to-zero after a terminal event
 and observed stream progress. It does not retry faults, unseekable media or
 terminal-without-progress; applications can disable it in the terminal callback.
 SDK audio termination remains ambiguous, so this is not clean-EOF certification.
+
+The [APNG container foundation](apng-stage.md) now validates bounded PNG/APNG
+structure and extracts standalone frame PNGs without SDK/LVGL dependencies.
+All 100 frames in three existing SDK examples were extracted and host-decoded;
+this does not yet provide frame composition or APNG widget playback.
