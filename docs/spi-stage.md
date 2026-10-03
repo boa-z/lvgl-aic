@@ -257,3 +257,33 @@ combined object SHA256
 `a94eddf1402b17f5f1afeef999fc0bbe19a6c790316e7f794b9f92ffcee42c44`.
 Logs: `output/spi-write-tests.log`, `output/spi-write-target.log`.
 Hardware NOT_RUN; this is not evidence of a working physical SPI display.
+
+
+## Reusable panel command sequence
+
+`lv_aic_spi_panel_create` snapshots up to 64 explicit command/data descriptors.
+All payload spans, 64-byte alignment/cache-rounded capacity and wire lane/prefix
+fields are validated before hardware activity. Payloads remain borrowed immutable
+DMA storage. The application supplies synchronous checked D/C control, optional
+for prefix-framed panels, and the final D/C level. Geometry is explicit; no panel
+commands, pins, offsets or byte order are guessed.
+
+Bind `lv_aic_spi_panel_prepare` and the returned panel context to session prepare.
+Each step sets D/C, verifies terminal bus state, cleans the dedicated cache span,
+then performs checked command write/completion before continuing. Descriptor
+changes after create do not alter the snapshot. Geometry mismatch rejects without
+hardware activity. A pin/transport/status failure becomes sticky and prevents
+replay; close refuses busy or faulted state. Payload/context lifetime extends to
+reboot on fault. First close the referencing session successfully, then the panel.
+This adapter relies on the session/application's exclusive bus ownership; it does
+not independently claim hardware or permit sharing a device with other clients.
+
+Validation: **62/62 host PASS** including repeated frame command ordering,
+preflight rejection, descriptor snapshot, geometry rejection, close reentrancy,
+wait failure stopping later commands, pin failure without submission and sticky
+fault retention. Strict D13x compile/component partial link PASS; combined SHA256
+`551a29c63c779f2ba6907bb9ff6db6eefeded57a7502a2dac20753d0b091a546`.
+Logs: `output/spi-script-tests.log`, `output/spi-script-target.log`.
+This is the reusable sequence executor, not a specific panel's initialization
+script. LVGL display/worker integration, device-specific configuration and actual
+SPI execution remain open. Hardware **NOT_RUN**.

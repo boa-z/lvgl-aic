@@ -1024,3 +1024,14 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(lvgl_aic_spi_session_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 endif()
 add_test(NAME lvgl_aic_spi_session_contract COMMAND lvgl_aic_spi_session_contract)
+
+add_executable(lvgl_aic_spi_panel_contract spi_panel_contract.c
+    "${AIC_ROOT}/port/lv_aic_spi_panel.c" "${AIC_ROOT}/port/lv_aic_spi_sdk.c")
+target_include_directories(lvgl_aic_spi_panel_contract PRIVATE "${AIC_ROOT}/include"
+    "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/spi_stubs")
+target_compile_definitions(lvgl_aic_spi_panel_contract PRIVATE AIC_LVGL_USE_SPI_SDK=1)
+target_link_libraries(lvgl_aic_spi_panel_contract PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_spi_panel_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_spi_panel_contract COMMAND lvgl_aic_spi_panel_contract)
