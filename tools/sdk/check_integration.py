@@ -437,6 +437,11 @@ def main():
                        "lv_aic_player_allocator_create", "aic_player_create", "aic_player_get_frame"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("player live symbol absent: " + symbol)
+        for api in ('set_width', 'set_height', 'set_pivot', 'get_pivot', 'set_rotation', 'get_rotation', 'set_scale', 'get_scale', 'set_scale_x', 'get_scale_x', 'set_scale_y', 'get_scale_y', 'set_offset_x', 'get_offset_x', 'set_offset_y', 'get_offset_y', 'set_inner_align', 'get_inner_align'):
+            symbol = "lv_aic_player_" + api
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("player transform/size live symbol absent: " + symbol)
+        print("Player transform and deferred-size live symbols: PASS")
         if args.with_apng:
             for symbol in ("lv_aic_player_configure_apng", "lv_aic_apng_playback_preserve",
                            "lv_aic_plane_test_poll", "lv_aic_plane_test_deinit",

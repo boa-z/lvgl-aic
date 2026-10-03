@@ -107,6 +107,7 @@ if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_IMG_ROLLER') and 
 if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_PLAYER'):
     for api in ('create', 'configure', 'set_video_plane', 'set_video_plane_rotation_budget', 'set_src', 'start', 'stop', 'close',
                 'pause', 'resume', 'seek', 'set_auto_restart', 'get_auto_restart',
+                'set_width', 'set_height', 'set_pivot', 'get_pivot', 'set_rotation', 'get_rotation', 'set_scale', 'get_scale', 'set_scale_x', 'get_scale_x', 'set_scale_y', 'get_scale_y', 'set_offset_x', 'get_offset_x', 'set_offset_y', 'get_offset_y', 'set_inner_align', 'get_inner_align',
                 'get_auto_restart_count', 'set_group', 'get_group', 'set_rate', 'get_rate', 'set_volume', 'get_state', 'get_status', 'pending_cleanup'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_player_' + api])
 
