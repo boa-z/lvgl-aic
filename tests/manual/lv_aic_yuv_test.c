@@ -197,6 +197,52 @@ static int ge_probe(void)
         goto done;
     }
     AIC_TEST_I("PASS GE I420 tiled pixels=1680 max_error=%d guards=OK",tiled_worst);
+    /* Source Y=16+5*x+3*y, neutral chroma. Independent rational inverse
+     * mapping checks transformed cells, including seams and untouched gaps. */
+    for (unsigned probe=0;probe<2;probe++) {
+        d.scale_x=d.scale_y=512; d.rotation=probe ? 900 : 0;
+        d.pivot=probe ? (lv_point_t){16,8} : (lv_point_t){0,0};
+        task.clip_area=task.area;
+        memset(output,0xa5,64*64*3);
+        aicos_dcache_clean_invalid_range((unsigned long *)output,64*64*3);
+        AIC_TEST_I("BEGIN GE I420 tile scale=512 rotation=%u",probe*90);
+        if (lv_draw_aic_ge2d_image(&task,&tiled_outcome)!=LV_RESULT_OK ||
+            tiled_outcome!=LV_DRAW_AIC_GE2D_OUTCOME_ENGINE) goto done;
+        aicos_dcache_invalid_range((unsigned long *)output,64*64*3);
+        tiled_worst=0;
+        int checked=0;
+        for (int y=0;y<64;y++) {
+            for (int x=0;x<64;x++) {
+                int rx=x%32, ry=(y-16)%16;
+                bool inside=y>=16 && y<=47 && (!probe || rx>=2);
+                int expected=0;
+                if(inside) {
+                    int twice_luma=probe ? 216+5*ry-3*rx : 5*rx+3*ry;
+                    expected=(twice_luma*255+219)/438;
+                    checked++;
+                }
+                for (int c=0;c<3;c++) {
+                    int got=output[(y*64+x)*3+c];
+                    if(!inside) {
+                        if(got!=0xa5) {
+                            AIC_TEST_E("FAIL tile guard x=%d y=%d rot=%u",x,y,probe*90);
+                            goto done;
+                        }
+                    }
+                    else {
+                        int error=got-expected;
+                        if(error<0) error=-error;
+                        if(error>tiled_worst) tiled_worst=error;
+                    }
+                }
+            }
+        }
+        if(checked!=(probe ? 1920 : 2048) || tiled_worst>3) {
+            AIC_TEST_E("FAIL I420 tile rot=%u pixels=%d max_error=%d",probe*90,checked,tiled_worst);
+            goto done;
+        }
+        AIC_TEST_I("PASS I420 tile rot=%u pixels=%d max_error=%d guards=OK",probe*90,checked,tiled_worst);
+    }
     result=0;
 done:
     if (image) lv_aic_yuv_image_destroy(image);

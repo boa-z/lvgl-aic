@@ -19,7 +19,7 @@
 #define DST_STRIDE (DST_W * 4)
 
 static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
-                       bool pivoted, bool expect_engine, bool tiled)
+                       bool pivoted, bool expect_engine, bool tiled, uint16_t rotation)
 {
     uint8_t *source = aicos_malloc_align(MEM_CMA, SRC_STRIDE * SRC_W, 32);
     uint8_t *output = aicos_malloc_align(MEM_CMA, DST_STRIDE * DST_W, 32);
@@ -30,7 +30,7 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
     lv_draw_aic_ge2d_outcome_t outcome;
     lv_area_t drawn;
     int result = -1, worst = 0, checked = 0;
-    bool submitted = false;
+    bool submitted = false, unsafe_dma = false;
     if (!source || !output) goto done;
     lv_memzero(source, SRC_STRIDE * SRC_W);
     for (int y = 0; y < SRC_W; y++) {
@@ -52,7 +52,7 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
     lv_draw_image_dsc_init(&d);
     d.src = &src; d.scale_x = sx; d.scale_y = sy;
     d.header = src.header;
-    d.tile = tiled;
+    d.tile = tiled; d.rotation = rotation;
     d.pivot = (lv_point_t){pivoted ? 7 : 0, pivoted ? 9 : 0};
     d.opa = argb ? 128 : LV_OPA_COVER;
     /* Nonzero layer origin catches accidental display-vs-buffer coordinates. */
@@ -62,6 +62,7 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
     task.draw_dsc = &d; task.area = (lv_area_t){124, 224, 155, 255};
     task.clip_area = clipped ? (lv_area_t){125, 227, 144, 239} : layer.buf_area;
     if (tiled) {
+        if (sx != 256 || sy != 256 || rotation) d.pivot = (lv_point_t){16,16};
         d.image_area = task.area;
         task.area = (lv_area_t){124, 224, 187, 287};
         task.clip_area = (lv_area_t){125, 227, 180, 280};
@@ -69,7 +70,10 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
     aicos_dcache_clean_range((unsigned long *)source, SRC_STRIDE * SRC_W);
     aicos_dcache_clean_invalid_range((unsigned long *)output, DST_STRIDE * DST_W);
     submitted = true;
-    if (lv_draw_aic_ge2d_image(&task, &outcome) != LV_RESULT_OK) goto done;
+    if (lv_draw_aic_ge2d_image(&task, &outcome) != LV_RESULT_OK) {
+        /* A failed submission/emit/sync cannot prove hardware quiescence. */
+        unsafe_dma=true; goto done;
+    }
     if (!expect_engine) {
         if (outcome != LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE) goto done;
         AIC_TEST_I("PASS scale fallback sx=%u sy=%u", (unsigned)sx, (unsigned)sy);
@@ -81,7 +85,7 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
         goto done;
     }
     aicos_dcache_invalid_range((unsigned long *)output, DST_STRIDE * DST_W);
-    lv_image_buf_get_transformed_area(&drawn, SRC_W, SRC_W, 0, sx, sy, &d.pivot);
+    lv_image_buf_get_transformed_area(&drawn, SRC_W, SRC_W, rotation, sx, sy, &d.pivot);
     lv_area_move(&drawn, task.area.x1, task.area.y1);
     if (tiled) drawn = task.area;
     if (!lv_area_intersect(&drawn, &drawn, &task.clip_area)) goto done;
@@ -101,13 +105,18 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
             }
             /* Independent rational mapping, not the production phase helper.
              * Linear colour ramps test both axes and fractional clip origins. */
-            u = ((int64_t)(ax-124-d.pivot.x)*256*65536)/sx + (int64_t)d.pivot.x*65536;
-            v = ((int64_t)(ay-224-d.pivot.y)*256*65536)/sy + (int64_t)d.pivot.y*65536;
-            if (tiled) {
-                u = ((ax - d.image_area.x1) % SRC_W) * 65536;
-                v = ((ay - d.image_area.y1) % SRC_W) * 65536;
+            int local_x = tiled ? (ax-d.image_area.x1)%SRC_W : ax-124;
+            int local_y = tiled ? (ay-d.image_area.y1)%SRC_W : ay-224;
+            int dx=local_x-d.pivot.x, dy=local_y-d.pivot.y;
+            int inverse_x=rotation==900 ? dy : rotation==1800 ? -dx : rotation==2700 ? -dy : dx;
+            int inverse_y=rotation==900 ? -dx : rotation==1800 ? -dy : rotation==2700 ? dx : dy;
+            u=((int64_t)inverse_x*256*65536)/sx+(int64_t)d.pivot.x*65536;
+            v=((int64_t)inverse_y*256*65536)/sy+(int64_t)d.pivot.y*65536;
+            if (!tiled && (u < 3*65536 || v < 3*65536 || u > 28*65536 || v > 28*65536)) continue;
+            if (p[3] != 255) {
+                AIC_TEST_E("FAIL destination alpha x=%d y=%d value=%u",x,y,(unsigned)p[3]);
+                goto done;
             }
-            else if (u < 3*65536 || v < 3*65536 || u > 28*65536 || v > 28*65536) continue;
             expected[0] = 40 + (int)((2*u+2*v+32768)/65536);
             expected[1] = 30 + (int)((5*v+32768)/65536);
             expected[2] = 20 + (int)((6*u+32768)/65536);
@@ -128,6 +137,10 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
     result = 0;
 done:
     if (submitted) lv_image_cache_drop(&src);
+    if (unsafe_dma) {
+        AIC_TEST_E("FAIL GE scale execution; retaining CMA buffers until reboot");
+        return -1;
+    }
     if (source) aicos_free_align(MEM_CMA, source);
     if (output) aicos_free_align(MEM_CMA, output);
     if (result != 0) AIC_TEST_E("FAIL scale sx=%u sy=%u argb=%d clip=%d pivot=%d",
@@ -141,21 +154,27 @@ int lv_aic_ge2d_scale_test_run(void)
     for (int argb = 0; argb < 2; argb++) {
         for (unsigned i = 0; i < 3; i++) {
             AIC_TEST_I("BEGIN sx=%u sy=%u argb=%d", (unsigned)ratios[i], (unsigned)ratios[i], argb);
-            if (scale_probe(ratios[i], ratios[i], argb, false, false, true, false)) return -1;
+            if (scale_probe(ratios[i], ratios[i], argb, false, false, true, false,0)) return -1;
         }
     }
     AIC_TEST_I("BEGIN nonuniform sx=384 sy=192 RGB");
-    if (scale_probe(384,192,false,false,false,true,false)) return -1;
+    if (scale_probe(384,192,false,false,false,true,false,0)) return -1;
     AIC_TEST_I("BEGIN nonuniform clipped pivot RGB");
-    if (scale_probe(384,192,false,true,true,true,false)) return -1;
+    if (scale_probe(384,192,false,true,true,true,false,0)) return -1;
     AIC_TEST_I("BEGIN nonuniform clipped pivot ARGB");
-    if (scale_probe(384,192,true,true,true,true,false)) return -1;
-    if (scale_probe(15,256,false,false,false,false,false)) return -1;
-    if (scale_probe(4097,256,false,true,false,false,false)) return -1;
-    if (scale_probe(264,256,false,false,false,false,false)) return -1;
+    if (scale_probe(384,192,true,true,true,true,false,0)) return -1;
+    if (scale_probe(15,256,false,false,false,false,false,0)) return -1;
+    if (scale_probe(4097,256,false,true,false,false,false,0)) return -1;
+    if (scale_probe(264,256,false,false,false,false,false,0)) return -1;
     for (int argb = 0; argb < 2; argb++) {
         AIC_TEST_I("BEGIN native tile argb=%d", argb);
-        if (scale_probe(256,256,argb,true,false,true,true)) return -1;
+        if (scale_probe(256,256,argb,true,false,true,true,0)) return -1;
+    }
+    for (int argb=0;argb<2;argb++) {
+        for (unsigned angle=0;angle<3600;angle+=900) {
+            AIC_TEST_I("BEGIN tile sx=384 sy=512 rot=%u argb=%d",angle/10,argb);
+            if (scale_probe(384,512,argb,true,true,true,true,(uint16_t)angle)) return -1;
+        }
     }
     AIC_TEST_I("PASS 3C2 numeric probes; panel edges/touch still require confirmation");
     return 0;

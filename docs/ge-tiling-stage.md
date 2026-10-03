@@ -30,8 +30,7 @@ outside the clip. Physical execution of these probes remains NOT_RUN.
 - Manifest records clean source states; later documentation commits are not
   part of this image. This profile directory is replaced by subsequent builds.
 
-Remaining: explicit decoder close-count instrumentation, expanded transformed
-tile board probes and physical-board numeric acceptance.
+Remaining: explicit decoder close-count instrumentation, physical-board numeric acceptance of the transformed probes below.
 
 ## Bounded transformed tiles / 受限变换平铺
 
@@ -73,3 +72,27 @@ Clean target regression build for transformed tiling:
   hardware pixels and all new camera hardware acceptance remain NOT_RUN.
 - This directory replaces the historical evidence above; this documentation
   commit is newer than the source commits that built the image.
+
+## Transformed tile board probes
+
+The startup GE scale suite now runs eight additional probes: RGB888 and
+ARGB8888, each at scale_x=384, scale_y=512 with 0/90/180/270-degree rotation.
+Every case uses a nonzero layer origin, pivot (16,16), clipped 2x2 native grid,
+an affine source color ramp and independent rational inverse rotation/scaling.
+It checks 3024 drawn pixels per case (including cell seams), preserved ARGB
+output alpha, and every outside-clip pixel. ARGB mixes pixel/global alpha.
+Tolerance remains three color levels. An executor failure retains both CMA
+buffers until reboot because completion of possible DMA is unknown.
+
+The I420 suite adds two probes: 2x native-grid tiling and 2x+90-degree tiling.
+Neutral chroma permits a closed-form BT.601-limited luma oracle. The cases
+check 2048/1920 drawn pixels respectively, including transformed cell seams;
+the 90-degree case also requires the untouched two-column gap in each cell.
+All remaining output bytes must retain 0xa5. Both cases require ENGINE outcome.
+
+Expected serial sequence includes `BEGIN tile sx=384 sy=512 rot=... argb=...`
+and `PASS pixels=3024 ... clip_guard=OK engine=1`, then I420's
+`PASS I420 tile rot=0 pixels=2048 ... guards=OK` and
+`PASS I420 tile rot=90 pixels=1920 ... guards=OK`.
+These probes are implemented but physical execution is NOT_RUN. They supplement,
+not replace, panel/input acceptance and the deferred camera/video-plane gates.
