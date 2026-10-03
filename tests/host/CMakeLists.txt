@@ -238,6 +238,7 @@ endif()
 set(AIC_SDK_ROOT "" CACHE PATH "Luban-Lite SDK for MPP ABI tests")
 if(AIC_SDK_ROOT)
     add_executable(lvgl_aic_ge2d_yuv_contract ge2d_yuv_contract.c
+        "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_scale.c"
         "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/common/lv_aic_yuv_mpp.c"
         "${AIC_ROOT}/common/lv_aic_pixel_format.c" "${AIC_ROOT}/image/mpp/lv_aic_yuv_image.c"
         "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_rotate.c")

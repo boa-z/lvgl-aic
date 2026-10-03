@@ -3,6 +3,7 @@
 #include "lv_draw_aic_ge2d_yuv.h"
 #include "lv_draw_aic_ge2d_utils.h"
 #include "lv_draw_aic_ge2d_rotate.h"
+#include "lv_draw_aic_ge2d_scale.h"
 #include "lv_aic_yuv_mpp.h"
 #include "lv_aic_yuv_image_private.h"
 #include "lv_aic_pixel_format.h"
@@ -30,10 +31,12 @@ static int submit(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame)
     lv_area_t transformed, clip, local, crop, dst_area;
     unsigned flags;
     uint32_t floor=0;
+    bool scaled=d->scale_x!=LV_SCALE_NONE || d->scale_y!=LV_SCALE_NONE;
 #if defined(AIC_CHIP_D13X) || defined(AIC_CHIP_G73X)
     floor=0x40000000;
 #endif
-    if (!dst || !ge || d->tile || d->scale_x!=LV_SCALE_NONE || d->scale_y!=LV_SCALE_NONE ||
+    if (!dst || !ge || d->tile || (scaled && d->rotation) ||
+        d->scale_x<16 || d->scale_x>4096 || d->scale_y<16 || d->scale_y>4096 ||
         d->rotation%900 || d->skew_x || d->skew_y || d->recolor_opa>LV_OPA_MIN ||
         d->bitmap_mask_src || d->clip_radius || d->colorkey || d->blend_mode!=LV_BLEND_MODE_NORMAL ||
         d->pivot.x < -4096 || d->pivot.x > 4096 || d->pivot.y < -4096 || d->pivot.y > 4096 ||
@@ -59,7 +62,7 @@ static int submit(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame)
     }
     if (d->opa<=LV_OPA_MIN) return 2;
     lv_image_buf_get_transformed_area(&transformed,frame->width,frame->height,d->rotation,
-                                     LV_SCALE_NONE,LV_SCALE_NONE,&d->pivot);
+                                     d->scale_x,d->scale_y,&d->pivot);
     if ((int64_t)transformed.x1+task->area.x1<INT32_MIN ||
         (int64_t)transformed.y1+task->area.y1<INT32_MIN ||
         (int64_t)transformed.x2+task->area.x1>INT32_MAX ||
@@ -72,12 +75,51 @@ static int submit(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame)
                        (int32_t)((int64_t)clip.y1-task->area.y1),
                        (int32_t)((int64_t)clip.x2-task->area.x1),
                        (int32_t)((int64_t)clip.y2-task->area.y1)};
-    if (!lv_aic_ge2d_rotation_crop(frame->width,frame->height,&local,&d->pivot,
-                                   d->rotation,&crop,&flags)) return 0;
+    if (scaled) {
+        lv_aic_ge2d_scale_axis_t x,y;
+        if (!lv_aic_ge2d_scale_axis(frame->width,local.x1,lv_area_get_width(&clip),
+                                     d->pivot.x,d->scale_x,&x) ||
+            !lv_aic_ge2d_scale_axis(frame->height,local.y1,lv_area_get_height(&clip),
+                                     d->pivot.y,d->scale_y,&y) ||
+            lv_aic_ge2d_scale_split_risk(x.step_16,lv_area_get_width(&clip))) return 0;
+        crop=(lv_area_t){x.crop,y.crop,x.crop+x.extent-1,y.crop+y.extent-1};
+        flags=MPP_ROTATION_0;
+        blt.scale_phase.scale_phase_en=1;
+        blt.scale_phase.scaler_en=1;
+        blt.scale_phase.dx_16[0]=x.step_16;
+        blt.scale_phase.dy_16[0]=y.step_16;
+        blt.scale_phase.h_phase_16[0]=x.phase_16;
+        blt.scale_phase.v_phase_16[0]=y.phase_16;
+    }
+    else if (!lv_aic_ge2d_rotation_crop(frame->width,frame->height,&local,&d->pivot,
+                                        d->rotation,&crop,&flags)) return 0;
     int32_t w=lv_area_get_width(&crop), h=lv_area_get_height(&crop);
     bool sub_x=frame->format!=LV_COLOR_FORMAT_I400 && frame->format!=LV_COLOR_FORMAT_I444;
     bool sub_y=frame->format==LV_COLOR_FORMAT_I420 || frame->format==LV_COLOR_FORMAT_NV12 ||
                frame->format==LV_COLOR_FORMAT_NV21;
+    if (scaled) {
+        /* GE consumes complete chroma samples. Extend the filter footprint,
+         * never shift an odd crop origin and thereby change sampling phase. */
+        if (sub_x && (w&1) && crop.x1+w<(int32_t)frame->width) w++;
+        if (sub_y && (h&1) && crop.y1+h<(int32_t)frame->height) h++;
+        blt.scale_phase.channel_num=frame->format==LV_COLOR_FORMAT_I400 ? 1 : 2;
+        if (sub_x) {
+            blt.scale_phase.dx_16[0]&=~1;
+            blt.scale_phase.h_phase_16[0]&=~1;
+        }
+        if (sub_y) {
+            blt.scale_phase.dy_16[0]&=~1;
+            blt.scale_phase.v_phase_16[0]&=~1;
+        }
+        if (blt.scale_phase.channel_num==2) {
+            blt.scale_phase.in_w_ch1=w>>sub_x;
+            blt.scale_phase.in_h_ch1=h>>sub_y;
+            blt.scale_phase.dx_16[1]=blt.scale_phase.dx_16[0]>>sub_x;
+            blt.scale_phase.dy_16[1]=blt.scale_phase.dy_16[0]>>sub_y;
+            blt.scale_phase.h_phase_16[1]=blt.scale_phase.h_phase_16[0]>>sub_x;
+            blt.scale_phase.v_phase_16[1]=blt.scale_phase.v_phase_16[0]>>sub_y;
+        }
+    }
     if (w<8 || h<8 || lv_area_get_width(&clip)<8 || lv_area_get_height(&clip)<8 ||
         (sub_x && ((crop.x1|w)&1)) || (sub_y && ((crop.y1|h)&1))) return 0;
     dst_area=(lv_area_t){(int32_t)((int64_t)clip.x1-layer->buf_area.x1),

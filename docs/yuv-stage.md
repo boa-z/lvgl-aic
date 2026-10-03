@@ -44,8 +44,18 @@ CSC flags and independent plane addresses, cleans source planes, prepares the
 destination cache and waits for GE completion before releasing its frame lease.
 Source/destination aliasing, inaccessible planes, geometry below the SDK's
 8-pixel minimum, odd subsampled crops and unsupported effects decline before
-any cache operation or submission. Scale, tiled YUV and arbitrary rotations
-currently retain the RGB conversion/rendering fallback.
+any cache operation or submission. Bounded unrotated scaling now configures
+one luma channel and, except I400, one chroma channel using SDK Q16 phase rules.
+Subsampled axes round the luma step/phase down to even before halving for UV.
+Filter footprints can expand to complete chroma samples within the source;
+odd crop origins, out-of-source filter samples and the known GE split-risk
+interval decline before submission. Tiled YUV, scale plus rotation and
+arbitrary rotations retain the RGB conversion/rendering fallback.
+
+Host scaling coverage includes all eight layouts at 0.5x, 1.5x and 2x,
+fractional-phase clipping, channel dimensions, source bounds and no-submit
+fallback for scale plus rotation. These are descriptor/cache/lifetime mocks,
+not GE filter pixel validation; scaled board pixel probes remain pending.
 
 On a submission/emit/sync failure, software replay is forbidden. One source
 lease is quarantined and further YUV submissions fail. The dispatcher keeps
@@ -119,6 +129,6 @@ dispatch leaves a second queued task WAITING, performs no additional image
 execution and increments the error counter only once. This synchronous mock
 does not establish hardware quiescence or authorize a production reset path.
 
-Remaining scope: YUV scaling with chroma phase, tiled YUV, broader board CSC
+Remaining scope: YUV scaling plus rotation, tiled YUV, broader board CSC
 and clipped-rotation numeric probes,
 and camera/player/video-window ownership. This stage does not close those gaps.

@@ -78,6 +78,43 @@ int main(void)
             assert(captured.src_buf.crop.width==28 && captured.src_buf.crop.height==12);
             task.clip_area=layer.buf_area;
         }
+        d.rotation=0;
+        const unsigned scales[]={128,384,512};
+        for (unsigned s=0;s<3;s++) {
+            d.scale_x=d.scale_y=scales[s];
+            task.clip_area=(lv_area_t){64,64,87,75};
+            reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1);
+            assert(calls==1 && emits==1 && syncs==1);
+            bool sub_x=formats[f]!=LV_COLOR_FORMAT_I400 && formats[f]!=LV_COLOR_FORMAT_I444;
+            bool sub_y=formats[f]==LV_COLOR_FORMAT_I420 || formats[f]==LV_COLOR_FORMAT_NV12 ||
+                       formats[f]==LV_COLOR_FORMAT_NV21;
+            int step=16777216/scales[s];
+            assert(captured.scale_phase.scale_phase_en && captured.scale_phase.scaler_en);
+            assert(captured.scale_phase.channel_num==(formats[f]==LV_COLOR_FORMAT_I400 ? 1 : 2));
+            assert(captured.scale_phase.dx_16[0]==(sub_x ? step&~1 : step));
+            assert(captured.scale_phase.dy_16[0]==(sub_y ? step&~1 : step));
+            assert(captured.scale_phase.h_phase_16[0]==0 && captured.scale_phase.v_phase_16[0]==0);
+            if (formats[f]!=LV_COLOR_FORMAT_I400) {
+                assert(captured.scale_phase.dx_16[1]==(step>>sub_x));
+                assert(captured.scale_phase.dy_16[1]==(step>>sub_y));
+                assert(captured.scale_phase.in_w_ch1==(captured.src_buf.crop.width>>sub_x));
+                assert(captured.scale_phase.in_h_ch1==(captured.src_buf.crop.height>>sub_y));
+            }
+            assert(captured.src_buf.crop.x+captured.src_buf.crop.width<=32);
+            assert(captured.src_buf.crop.y+captured.src_buf.crop.height<=16);
+            assert(!sub_x || !(captured.src_buf.crop.width&1));
+            assert(!sub_y || !(captured.src_buf.crop.height&1));
+        }
+        d.scale_x=d.scale_y=384;
+        task.clip_area=(lv_area_t){68,68,91,79};
+        reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1);
+        assert(captured.src_buf.crop.x==2 && captured.src_buf.crop.y==2);
+        /* 4 / 1.5 = 2 + 2/3: independent expected Q16 fractional phase. */
+        assert(captured.scale_phase.h_phase_16[0]==43688);
+        assert(captured.scale_phase.v_phase_16[0]==43688);
+        d.rotation=900; reset();
+        assert(lv_draw_aic_ge2d_yuv(&task)==0 && !calls && !src_caches);
+        d.rotation=0; d.scale_x=d.scale_y=256; task.clip_area=layer.buf_area;
         lv_aic_yuv_image_destroy(image); assert(live==0);
     }
     frame.format=LV_COLOR_FORMAT_I420; d.rotation=0;
