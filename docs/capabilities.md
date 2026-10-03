@@ -120,7 +120,7 @@ PLAY_END remains an ambiguous terminal notification, not clean EOS evidence.
 The background playback worker now supports prepare/start/pause/volume,
 RGB/YUV publication, asynchronous seek and deferred close, using SDK get_frame synchronization.
 Host ABI contracts and target compilation pass; repeat controls,
-real A/V timing, APNG, group/slave and video-plane integration remain open. The media-enabled image now passes build/link checks; physical playback remains unverified.
+real A/V timing, APNG, multi-player groups and video-plane integration remain open. The media-enabled image now passes build/link checks; physical playback remains unverified.
 
 Native RGB frame publication now covers the D13x MJPEG RGB565/RGB888/ARGB8888
 output path at the adapter level, including bounded crops and immutable decoder
@@ -132,5 +132,12 @@ The optional native `lv_aic_player` image widget now connects the background
 worker to LVGL: explicit configuration, prepare/start/pause/resume, volume,
 seek, stop/close/replay and deferred source replacement/deletion. Host contracts
 verify RGB/YUV rendering and frame-reader lifetimes; strict target compilation
-passes. Repeat/rate, groups/slaves and video-plane output remain gaps. Seek currently drains readers and rebuilds the SDK session to isolate callback generations; exact media seeking still requires board validation.
+passes. Repeat/rate, multi-player groups and video-plane output remain gaps. Seek currently drains readers and rebuilds the SDK session to isolate callback generations; exact media seeking still requires board validation.
 Media firmware linkage is validated by the optional `-WithPlayer` profile. Physical playback remains NOT_RUN; see the exact image and clean source manifest in [player-stage.md](player-stage.md).
+
+Native display-only slave players now share the master's immutable image and
+support independent native image transforms, deferred attach/detach/rebind and
+automatic unlink on master deletion. They use no additional decoder session or
+full-frame pixel copy. Host rendering/lifetime contracts and target compilation
+pass; physical multi-view composition and simultaneous panel scanout are not
+certified. See [player-stage.md](player-stage.md).

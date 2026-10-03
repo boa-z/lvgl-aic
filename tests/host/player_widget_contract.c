@@ -2,6 +2,7 @@
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_aic_player.h"
 #include "lv_aic_yuv_image_private.h"
+#include "lv_aic_rgb_image_private.h"
 #include "lvgl_aic_private.h"
 #include <assert.h>
 #include <stdlib.h>
@@ -10,6 +11,7 @@ struct lv_aic_player_playback { lv_aic_playback_status_t status; unsigned reader
 static lv_aic_player_playback_t *active;
 static unsigned created,freed,retained,released,frames;
 static bool allow_exit=true,fail_prepare,rgb;
+static uint8_t pixel=255;
 static char last_uri[128];
 typedef struct { lv_aic_player_playback_t *player; uint8_t y[16],uv[16],rgb[48]; } producer_t;
 lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const lv_aic_playback_options_t *options)
@@ -42,12 +44,12 @@ bool lv_aic_player_playback_poll(lv_aic_player_playback_t *p,lv_aic_player_image
     if(!frames) return false;
     frames--; producer_t *data=calloc(1,sizeof(*data)); assert(data); data->player=p;
     if(rgb) {
-        memset(data->rgb,255,sizeof(data->rgb));
+        memset(data->rgb,pixel,sizeof(data->rgb));
         lv_aic_rgb_frame_t f={.width=4,.height=4,.stride=12,.format=LV_COLOR_FORMAT_RGB888,
             .data=data->rgb,.capacity=sizeof(data->rgb)};
         out->rgb=lv_aic_rgb_image_create(&f,retain,release,data); assert(out->rgb);
     } else {
-        memset(data->y,235,sizeof(data->y)); memset(data->uv,128,sizeof(data->uv));
+        memset(data->y,pixel?235:16,sizeof(data->y)); memset(data->uv,128,sizeof(data->uv));
         lv_aic_yuv_frame_t f={.width=4,.height=4,.format=LV_AIC_YUV_NV16,
             .color_space=LV_AIC_YUV_BT601_LIMITED,.planes={{data->y,4,16},{data->uv,4,16}}};
         out->yuv=lv_aic_yuv_image_create(&f,retain,release,data); assert(out->yuv);
@@ -87,6 +89,9 @@ int main(void)
     lv_display_set_color_format(d,LV_COLOR_FORMAT_RGB888);
     lv_display_set_buffers(d,pixels,NULL,sizeof(pixels),LV_DISPLAY_RENDER_MODE_DIRECT);
     lv_display_set_flush_cb(d,flush); lv_timer_pause(lv_display_get_refr_timer(d));
+    lv_obj_t *screen=lv_screen_active();
+    lv_obj_set_style_bg_color(screen,lv_color_black(),0);
+    lv_obj_set_style_bg_opa(screen,LV_OPA_COVER,0);
     lv_obj_t *o=make(); fail_prepare=true;
     assert(lv_aic_player_set_src(o,"one.mp4")==LV_RESULT_INVALID); tick();
     assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT); fail_prepare=false;
@@ -141,6 +146,58 @@ int main(void)
     assert(lv_aic_player_start(o)==LV_RESULT_INVALID);
     assert(lv_aic_player_close(o)==LV_RESULT_OK); tick(); lv_obj_delete(o); tick();
     o=make(); lv_obj_delete(o); tick();
+    /* Slaves share one immutable source/producer across independent transforms. */
+    o=make(); assert(lv_aic_player_set_src(o,"shared.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK); lv_obj_set_pos(o,0,0);
+    lv_obj_t *s1=lv_aic_slave_player_create(screen),*s2=lv_aic_slave_player_create(screen);
+    assert(s1 && s2 && !lv_aic_slave_player_get_master(s1));
+    assert(lv_aic_slave_player_set_master(s1,o)==LV_RESULT_OK);
+    assert(lv_aic_slave_player_set_master(s2,o)==LV_RESULT_OK);
+    assert(lv_aic_slave_player_get_master(s1)==o);
+    lv_obj_set_pos(s1,5,0); lv_obj_set_pos(s2,10,0);
+    lv_image_set_pivot(s2,0,0); lv_image_set_antialias(s2,false);
+    lv_image_set_scale(s2,128); /* Native transforms remain independent. */
+    for(unsigned i=0;i<4;i++) {
+        rgb=(i&1)!=0; pixel=(i&2)?255:0; frames=1; tick(); tick(); lv_refr_now(d);
+        assert(lv_image_get_src(o)==lv_image_get_src(s1) && lv_image_get_src(o)==lv_image_get_src(s2));
+        for(unsigned y=0;y<4;y++) for(unsigned x=0;x<12;x++) {
+            assert(pixels[y*48+x]==pixel && pixels[y*48+15+x]==pixel);
+            if(y<2 && x<6) assert(pixels[y*48+30+x]==pixel);
+        }
+        assert(retained-released==1); /* No extra decoder buffers for slaves. */
+    }
+    /* Detach during queued draw retains the source until a safe timer pass. */
+    d->layer_head->draw_task_head=&pending;
+    assert(lv_aic_slave_player_set_master(s1,NULL)==LV_RESULT_OK);
+    tick(); assert(lv_image_get_src(s1));
+    d->layer_head->draw_task_head=NULL; tick(); assert(!lv_image_get_src(s1));
+    assert(lv_aic_slave_player_set_master(s1,o)==LV_RESULT_OK); tick();
+    /* Last owner deletion cannot free a slave decoder's native reader. */
+    const lv_aic_rgb_frame_t *rgb_view;
+    lv_aic_rgb_image_t *rgb_reader=lv_aic_rgb_image_acquire(lv_image_get_src(s2),&rgb_view); assert(rgb_reader);
+    lv_obj_delete(o); assert(!lv_aic_slave_player_get_master(s1) && !lv_aic_slave_player_get_master(s2));
+    tick(); tick(); assert(active && !lv_image_get_src(s1) && !lv_image_get_src(s2));
+    assert(rgb_view->data[0]==255 && retained-released==1);
+    lv_aic_rgb_image_release_lease(rgb_reader); tick(); assert(!active);
+    /* Rebind survives old-master deletion, and slave-first deletion unlinks. */
+    o=make(); lv_obj_t *other=make();
+    assert(lv_aic_player_set_src(o,"rebind.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);
+    assert(lv_aic_slave_player_set_master(s1,o)==LV_RESULT_OK);
+    assert(lv_aic_slave_player_set_master(s2,o)==LV_RESULT_OK); rgb=false; frames=1; tick();
+    assert(lv_aic_slave_player_set_master(s1,other)==LV_RESULT_OK);
+    lv_obj_delete(s2); lv_obj_delete(o); tick(); tick();
+    assert(lv_aic_slave_player_get_master(s1)==other && !lv_image_get_src(s1));
+    lv_obj_delete(other); tick(); assert(!lv_aic_slave_player_get_master(s1));
+    lv_obj_delete(s1); tick();
+    /* Master seek/stop clears attached slaves; native readers still defer exit. */
+    o=make(); s1=lv_aic_slave_player_create(screen);
+    assert(lv_aic_slave_player_set_master(s1,o)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"seek.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK); frames=1; tick(); tick();
+    assert(lv_image_get_src(s1)); assert(lv_aic_player_seek(o,1)==LV_RESULT_OK); tick();
+    assert(!lv_image_get_src(s1));
+    lv_obj_delete(o); lv_obj_delete(s1); tick(); tick();
     assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
     lv_display_delete(d); assert(lv_aic_yuv_image_decoder_deinit()); assert(lv_aic_rgb_image_decoder_deinit()); lv_deinit();
     return 0;

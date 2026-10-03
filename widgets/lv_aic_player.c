@@ -7,11 +7,17 @@
 #if !LV_USE_IMAGE
 #error "The AIC player widget requires LV_USE_IMAGE"
 #endif
-typedef struct {
+typedef struct player_binding player_binding_t;
+typedef struct slave_binding slave_binding_t;
+/* One immutable image descriptor shared by widget owners; decoder/GE readers
+ * independently retain its storage after the last widget owner releases. */
+typedef struct { lv_aic_player_image_t image; size_t owners; } player_frame_t;
+struct player_binding {
     lv_obj_t *obj;
     lv_timer_t *timer;
     lv_aic_player_playback_t *playback;
-    lv_aic_player_image_t image;
+    player_frame_t *frame;
+    slave_binding_t *slaves;
     lv_aic_playback_options_t options;
     lv_aic_playback_status_t status;
     lv_aic_player_state_t state,reported;
@@ -19,8 +25,16 @@ typedef struct {
     int volume,reported_volume;
     uint64_t reported_seek;
     bool configured,closing,stopped,reopen,start_requested;
-} player_binding_t;
+};
 typedef struct { lv_image_t image; player_binding_t *binding; } player_widget_t;
+struct slave_binding {
+    lv_obj_t *obj;
+    lv_timer_t *timer;
+    player_binding_t *master;
+    slave_binding_t *next;
+    player_frame_t *frame;
+};
+typedef struct { lv_image_t image; slave_binding_t *binding; } slave_widget_t;
 static unsigned orphans;
 static bool draws_idle(void)
 {
@@ -28,12 +42,91 @@ static bool draws_idle(void)
         for(lv_layer_t *l=d->layer_head;l;l=l->next) if(l->draw_task_head) return false;
     return true;
 }
+static void release_frame(player_frame_t *frame)
+{
+    if(frame && --frame->owners==0) {
+        lv_aic_player_image_destroy(&frame->image); lv_free(frame);
+    }
+}
+static void update_slave_frame(slave_binding_t *s,player_frame_t *next)
+{
+    if(s->frame==next) return;
+    if(next) next->owners++;
+    if(s->obj) lv_image_set_src(s->obj,next?lv_aic_player_image_source(&next->image):NULL);
+    release_frame(s->frame); s->frame=next;
+}
+static void publish_slaves(player_binding_t *b,player_frame_t *frame)
+{
+    slave_binding_t *s=b->slaves;
+    while(s) {
+        slave_binding_t *next=s->next;
+        if(s->obj && s->master==b) update_slave_frame(s,frame);
+        s=next;
+    }
+}
 static void retire(player_binding_t *b)
 {
-    if(b->image.rgb || b->image.yuv) {
+    publish_slaves(b,NULL);
+    if(b->frame) {
         if(b->obj) lv_image_set_src(b->obj,NULL);
-        lv_aic_player_image_destroy(&b->image);
+        release_frame(b->frame); b->frame=NULL;
     }
+}
+static void unlink_slave(slave_binding_t *s)
+{
+    if(s->master) {
+        slave_binding_t **entry=&s->master->slaves;
+        while(*entry && *entry!=s) entry=&(*entry)->next;
+        if(*entry) *entry=s->next;
+    }
+    s->master=NULL; s->next=NULL;
+}
+static void slave_tick(lv_timer_t *timer)
+{
+    slave_binding_t *s=lv_timer_get_user_data(timer);
+    if(!draws_idle()) return;
+    player_frame_t *next=s->obj && s->master?s->master->frame:NULL;
+    update_slave_frame(s,next);
+    if(!s->obj) { orphans--; lv_timer_delete(timer); lv_free(s); }
+    else if(!s->master) lv_timer_pause(timer);
+}
+static void slave_destructor(const lv_obj_class_t *class_p,lv_obj_t *obj)
+{
+    (void)class_p; slave_binding_t *s=((slave_widget_t *)obj)->binding;
+    if(!s) return;
+    unlink_slave(s); s->obj=NULL; orphans++; lv_timer_resume(s->timer);
+}
+const lv_obj_class_t lv_aic_slave_class={
+    .base_class=&lv_image_class,.instance_size=sizeof(slave_widget_t),.destructor_cb=slave_destructor,
+    .width_def=LV_SIZE_CONTENT,.height_def=LV_SIZE_CONTENT,.name="aic_slave_player",
+};
+lv_obj_t *lv_aic_slave_player_create(lv_obj_t *parent)
+{
+    lv_obj_t *obj=lv_obj_class_create_obj(&lv_aic_slave_class,parent); if(!obj) return NULL;
+    lv_obj_class_init_obj(obj);
+    slave_binding_t *s=lv_malloc_zeroed(sizeof(*s));
+    if(!s) { lv_obj_delete(obj); return NULL; }
+    s->timer=lv_timer_create(slave_tick,20,s);
+    if(!s->timer) { lv_free(s); lv_obj_delete(obj); return NULL; }
+    s->obj=obj; ((slave_widget_t *)obj)->binding=s; lv_timer_pause(s->timer); return obj;
+}
+lv_result_t lv_aic_slave_player_set_master(lv_obj_t *obj,lv_obj_t *master)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_slave_class,return LV_RESULT_INVALID);
+    if(master) { LV_CHECK_OBJ(master,&lv_aic_player_class,return LV_RESULT_INVALID); }
+    slave_binding_t *s=((slave_widget_t *)obj)->binding;
+    unlink_slave(s);
+    if(master) {
+        s->master=((player_widget_t *)master)->binding;
+        s->next=s->master->slaves; s->master->slaves=s;
+    }
+    lv_timer_resume(s->timer); return LV_RESULT_OK;
+}
+lv_obj_t *lv_aic_slave_player_get_master(lv_obj_t *obj)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_slave_class,return NULL);
+    slave_binding_t *s=((slave_widget_t *)obj)->binding;
+    return s->master?s->master->obj:NULL;
 }
 static bool prepare(player_binding_t *b)
 {
@@ -77,9 +170,14 @@ static void tick(lv_timer_t *timer)
         else if(b->state==LV_AIC_PLAYER_PLAYING || b->state==LV_AIC_PLAYER_TERMINAL) {
             lv_aic_player_image_t next={0};
             if(lv_aic_player_playback_poll(b->playback,&next)) {
-                lv_aic_player_image_t old=b->image; b->image=next;
-                lv_image_set_src(b->obj,lv_aic_player_image_source(&b->image));
-                lv_aic_player_image_destroy(&old);
+                player_frame_t *frame=lv_malloc(sizeof(*frame));
+                if(frame) {
+                    *frame=(player_frame_t){.image=next,.owners=1};
+                    player_frame_t *old=b->frame; b->frame=frame;
+                    lv_image_set_src(b->obj,lv_aic_player_image_source(&frame->image));
+                    publish_slaves(b,frame);
+                    release_frame(old);
+                } else lv_aic_player_image_destroy(&next);
             }
         }
     }
@@ -93,6 +191,11 @@ static void destructor(const lv_obj_class_t *class_p,lv_obj_t *obj)
 {
     (void)class_p; player_binding_t *b=((player_widget_t *)obj)->binding;
     if(!b) return;
+    /* Break object links now; slave image owners survive until their own idle
+     * draw pass, and native readers may outlive both widget objects. */
+    while(b->slaves) {
+        slave_binding_t *s=b->slaves; unlink_slave(s); lv_timer_resume(s->timer);
+    }
     b->obj=NULL; b->reopen=false; orphans++;
     lv_aic_player_playback_close(b->playback); lv_timer_resume(b->timer);
 }

@@ -6,6 +6,17 @@
 extern "C" {
 #endif
 extern const lv_obj_class_t lv_aic_player_class;
+extern const lv_obj_class_t lv_aic_slave_class;
+/* Display-only image subclass. Attach/detach on the LVGL owner thread, outside
+ * draw callbacks. NULL master detaches; source updates on an idle timer pass.
+ * Shares decoder frames, never starts another decoder or copies frame pixels.
+ * Use native image transforms, never lv_image_set_src. Master deletion clears
+ * the binding automatically; pending readers retain storage normally.
+ * Updates are timer-based, not a cross-display scanout synchronization promise.
+ * Keep pumping timers until pending_cleanup()==0 after deleting either class. */
+lv_obj_t *lv_aic_slave_player_create(lv_obj_t *parent);
+lv_result_t lv_aic_slave_player_set_master(lv_obj_t *slave,lv_obj_t *master);
+lv_obj_t *lv_aic_slave_player_get_master(lv_obj_t *slave);
 typedef enum {
     LV_AIC_PLAYER_CLOSED, LV_AIC_PLAYER_OPENING, LV_AIC_PLAYER_READY,
     LV_AIC_PLAYER_PLAYING, LV_AIC_PLAYER_PAUSED, LV_AIC_PLAYER_TERMINAL,

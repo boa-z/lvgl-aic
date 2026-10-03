@@ -71,6 +71,9 @@ if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_PLAYER'):
                 'pause', 'resume', 'seek', 'set_volume', 'get_state', 'get_status', 'pending_cleanup'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_player_' + api])
 
+    for api in ('create', 'set_master', 'get_master'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_slave_player_' + api])
+
 # 打包素材变更必须使最终镜像失效，避免复用旧素材。
 if GetDepend('AIC_LVGL_USE_MPP_DEC') and GetDepend('AIC_LVGL_SMOKE_APP'):
     Import('PRJ_OUT_DIR', 'PRJ_CHIP')

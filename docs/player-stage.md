@@ -272,7 +272,7 @@ SDK tooling still reports its existing short-version/pywin32 environment warning
 
 ## Remaining SDK parity
 
-Implement repeat/rate behavior, slave and group
+Implement repeat/rate behavior and multi-player group
 lifetimes, APNG backend, and explicit video-plane composition/ownership.
 Do not report the current widget as complete SDK player parity or as tested
 hardware decoding. All physical verification remains deferred.
@@ -338,7 +338,7 @@ feature configuration before their guards; SCons also tracks this dependency.
 No SDK core modification was needed. This repairs VIN build selection but does
 not certify camera configuration or physical capture.
 
-Worker seek is now implemented below. Repeat/rate, slave/group lifetime and APNG/video-plane integration need
+Worker seek is now implemented below. Repeat/rate, multi-player group lifetime and APNG/video-plane integration need
 separate implementation and evidence. The new native API does not claim binary
 or full source compatibility with SDK `lv_aic_player_set_cmd`.
 
@@ -388,3 +388,36 @@ symbols. Clean sources: SDK `0026b35e`, component `cd92461`, LVGL `80ca777e`.
 - ELF SHA256: `7deae145681f4adc8f4c404e3ffb12398fb40f436242b900ecd94986f7652c02`.
 - This profile rebuild replaces the previous media image in that directory;
   previous hashes above are historical. No flashing or hardware tests ran.
+
+## Shared-frame slave player (2026-10-03)
+
+`lv_aic_slave_player_create` creates a display-only LVGL image subclass.
+`lv_aic_slave_player_set_master(slave, master)` binds it to a native player;
+NULL detaches. Get the current binding with `lv_aic_slave_player_get_master`.
+Attach/rebind/detach takes effect at a safe timer pass; master frame publication
+updates attached slaves in the same timer callback. Slave widgets accept native
+image scale/rotation/pivot/alignment independently. Do not call lv_image_set_src
+on either master or slave. Playback controls remain on the master.
+
+Master and slaves share one immutable image descriptor and decoded view cache.
+A small reference count covers widget owners; no additional decoder or frame
+pixel copy is introduced for slaves. A slow native/GE reader can still retain
+old storage and apply normal bounded-frame backpressure. Last widget release
+retires the image, with underlying decoder/GE leases preserving storage until
+reads complete (or indefinitely for quarantined DMA).
+
+Deleting a master immediately unlinks surviving slaves; their old image owners
+remain until queued draws finish. Slave-first deletion removes the list entry.
+Rebinding never leaves a pointer to the old master. Seek/stop/source replacement
+clears all attached slave sources before waiting for native readers/worker exit.
+Slave orphan timers are included in lv_aic_player_pending_cleanup; keep running
+LVGL timers until zero before shutdown. This is LVGL multi-view composition, not
+an additional hardware video plane or a cross-display scanout synchronization
+contract. Multi-player decode/group support is still separate.
+
+Host suite **32/32 PASS**: widget tests now render alternating RGB/YUV and
+black/white frames into three views with independent scaling, verify one
+producer allocation, deferred detach during queued drawing, rebind, master-
+first/slave-first deletion, reader survival after master deletion, and seek
+retirement. E907 strict compilation **PASS**. Physical multi-view GE rendering,
+memory pressure and lifecycle stress remain **NOT_RUN**.
