@@ -959,3 +959,22 @@ boot/app/static/image/manifest **PASS**, clean component
 Image SHA256 `7857af1e1078c07d7e09c2966229c7a188ea3e78c2b9728ee060b61506eb9867`.
 Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
 Board validation **NOT_RUN**; no flashing performed.
+
+
+### GE complete allocation address-window validation
+
+The shared GE buffer gate now validates nonzero data_size and the complete
+allocation against the 32-bit DMA address space, before any pointer truncation.
+D13x/G73x retain the 0x40000000 lower bound. Previously only the truncated start
+address was checked, permitting a wrapped allocation or a wide host pointer to
+appear reachable. IMAGE/LAYER/FILL/display paths using the gate now decline these
+buffers before hardware submission; existing software fallback policy is unchanged.
+
+**67/67 host PASS**, including actual shared-validator tests for lower boundary,
+exact upper endpoint, one-byte overflow, empty span and a >32-bit pointer whose
+low bits would otherwise pass. Strict real-header D13x GE utility compilation
+PASS; SDK `output/lvgl-ge-address-utils.o` SHA256:
+`c335178f361272648e3bae936ab5c9e9c19667acda9bb3d6243f5fed5a3c3dc9`.
+Host logs: `output/ge-address-build.log`, `output/ge-address-tests.log`.
+No cache/DMA calls occur in the boundary contract. Full firmware refresh and
+hardware execution of this increment remain pending; hardware **NOT_RUN**.

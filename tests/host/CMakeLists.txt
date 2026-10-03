@@ -1084,3 +1084,17 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME lvgl_aic_spi_pipeline_contract COMMAND lvgl_aic_spi_pipeline_contract)
 set_tests_properties(lvgl_aic_spi_pipeline_contract PROPERTIES TIMEOUT 30)
+
+if(EXISTS "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi/mpp_types.h")
+add_executable(lvgl_aic_ge2d_address_contract ge2d_address_contract.c)
+target_include_directories(lvgl_aic_ge2d_address_contract PRIVATE "${AIC_ROOT}/include"
+    "${AIC_ROOT}/compat" "${AIC_ROOT}/common" "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs"
+    "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+target_compile_definitions(lvgl_aic_ge2d_address_contract PRIVATE AIC_LVGL_USE_GE2D=1 AIC_LVGL_BSP_MPP=1 AIC_CHIP_D13X=1)
+target_link_libraries(lvgl_aic_ge2d_address_contract PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_ge2d_address_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_ge2d_address_contract COMMAND lvgl_aic_ge2d_address_contract)
+
+endif()

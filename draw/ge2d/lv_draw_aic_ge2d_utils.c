@@ -25,12 +25,19 @@
 
 bool lv_draw_aic_ge2d_buf_address_valid(const lv_draw_buf_t *draw_buf)
 {
-    if (draw_buf == NULL || draw_buf->data == NULL) {
+    if (draw_buf == NULL || draw_buf->data == NULL || draw_buf->data_size == 0) {
         return false;
     }
 
+    /* GE addresses are 32-bit even when a host pointer is wider. Validate the
+     * complete advertised allocation before truncating any address for DMA. */
+    uintptr_t address = (uintptr_t)draw_buf->data;
+    if (address > UINT32_MAX || (uint64_t)draw_buf->data_size >
+        (uint64_t)UINT32_MAX + 1U - address) {
+        return false;
+    }
 #if defined(AIC_CHIP_D13X) || defined(AIC_CHIP_G73X)
-    if ((uint32_t)(ulong)draw_buf->data < (uint32_t)LV_AIC_GE2D_GE_ADDR_MIN) {
+    if (address < LV_AIC_GE2D_GE_ADDR_MIN) {
         return false;
     }
 #endif

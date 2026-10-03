@@ -26,7 +26,8 @@ extern "C" {
  * @brief True when the GE block can address the buffer.
  *
  * The D13x/G73x GE engine reaches memory through a fixed window; a buffer
- * below 0x40000000 is not reachable. This threshold is inherited from the
+ * below 0x40000000 is not reachable. All targets require a nonempty allocation
+ * fully contained in the 32-bit DMA address space. This threshold is inherited from the
  * vendor-validated port instead of being re-derived from the register manual.
  */
 bool lv_draw_aic_ge2d_buf_address_valid(const lv_draw_buf_t *draw_buf);
