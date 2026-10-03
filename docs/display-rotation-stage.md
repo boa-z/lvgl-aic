@@ -26,6 +26,22 @@ step, unavailable engine, overlap and address/capacity rejection.
 These use mocked hardware and do not prove actual pixels, cache coherency,
 PAN/VSync interaction or board throughput.
 
-Remaining: target build with rotation enabled, flush/presentation failure
+## Target build evidence
+
+Application-owned Kconfig `AIC_LVGL_DISPLAY_ROTATION` selects 0/1/2/3
+quarter turns, independently of the SDK legacy LVGL menu.
+Build with `tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -Rotation 90`.
+The script also accepts 180 and 270, stores separate evidence directories
+and restores the smoke defconfig after success or failure.
+
+90-degree cross-build passed at component `2a80f72`, SDK `305cff9a`:
+boot/app build, static configuration checks, image checks and manifest PASS.
+The live map contains `lv_draw_aic_ge2d_display_rotate`.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-rotate90`.
+Image SHA256:
+`0882c5c520600c13b13ea9560e086e84d56aba3bd60bfdcbf8e869a85e45f292`.
+All three source repositories were clean in that manifest. Board NOT_RUN.
+
+Remaining: 180/270 target configuration coverage, flush/presentation failure
 contract coverage and physical portrait/landscape checks. SPI and multiple
 displays are still outside this implementation.

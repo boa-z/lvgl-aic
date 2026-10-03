@@ -183,6 +183,12 @@ def main():
         if not re.search(pattern, text, re.MULTILINE):
             fail("application display rotation profile mismatch")
     check_map(map_path)
+    if args.rotation and args.phase == "ge2d":
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        if not re.search(r"^\s+0x[0-9a-f]+\s+lv_draw_aic_ge2d_display_rotate\s*$",
+                         text, re.MULTILINE):
+            fail("GE display rotation live symbol absent")
+        print("GE display rotation live symbol: PASS")
     if args.phase in ("mpp", "ge2d"):
         text = map_path.read_text(encoding="utf-8", errors="replace")
         for symbol in ("lv_aic_mpp_decoder_init", "mpp_decoder_decode", "lv_aic_mpp_test_run",
