@@ -676,3 +676,40 @@ and preserve its sticky fault/close semantics across SPI transport failures.
 Full firmware linkage and physical GE/SPI execution for this backend **NOT_RUN**.
 Two copies plus staging costs are deliberate lifetime protection; throughput
 improvement has not been measured and GE/DMA overlap is not implemented.
+
+## Optional GE session integration (2026-10-04)
+
+Call `lv_aic_spi_session_enable_ge2d(session, max_source_width,
+max_source_height, staging_budget)` before starting the worker or attempting any
+submission. The session owns the converter; the existing transfer/worker/display
+APIs need no changes. CPU packing remains the default. The staging budget is
+separate from the session tx budget. The setup API returns false without changing
+configuration when GE is disabled, allocations/open fail, normal mode is selected,
+setup is repeated, or a submission was already attempted.
+
+Transfer first waits for previous SPI completion, then runs conversion, panel
+preparation and SPI submission in that order. Geometry outside staging bounds or
+SDK scaler limits falls back to CPU only when GE preflight returns INVALID, before
+any commands. Invalid CPU input remains INVALID. GE FAULT is sticky at both
+converter and transfer layers: no panel preparation/SPI submission, no CPU replay,
+no release of bus claim, tx or GE staging. SPI faults after successful GE likewise
+retain session resources. Successful close drains SPI, closes GE and frees staging,
+then releases the session claim and owned tx. Original source remains CPU-borrowed
+on all paths, preserving the existing worker/handoff completion contract.
+
+Validation: **69/69 host PASS**. The GE contract now links the real session,
+transfer, converter and SDK SPI bridge. It checks GE pixels/rotation descriptors,
+CPU size fallback, previous transfer drain, setup rollback/rejection, GE failure
+suppressing SPI, and SPI completion failure retaining GE resources and bus/tx
+claims. Engine/driver/cache remain modeled; physical execution is **NOT_RUN**.
+D13x strict compile and partial link PASS using
+`tools/sdk/check-spi-session.ps1 -WithGe`, with defined converter/session symbols
+and no unresolved component SPI functions. SDK `output/lvgl-spi-session-linked.o`
+SHA256: `12a12386ebc1b2a6d0a363149e00a7a54d382f0cf67c143844f9c7e45a81a299`.
+Logs: `output/spi-ge-session-build.log`, `output/spi-ge-session-tests.log`,
+`output/spi-ge-session-target.log`.
+
+Smoke final-link roots and integration gates now require session enable and,
+for GE profiles, all converter APIs. A fresh full-firmware run is pending.
+This is synchronous GE conversion followed by asynchronous SPI, not overlapping
+GE/SPI DMA. Panel binding, TE/power callbacks and board throughput remain pending.

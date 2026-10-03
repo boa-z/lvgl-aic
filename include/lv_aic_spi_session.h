@@ -38,6 +38,15 @@ lv_aic_spi_session_t *lv_aic_spi_session_open(const lv_aic_spi_session_config_t 
  * before freeing. FAULT retains both allocation and bus claim until reboot. */
 lv_aic_spi_session_t *lv_aic_spi_session_open_owned(const lv_aic_spi_session_config_t *config,
     size_t pixel_budget);
+/* Opt in before worker startup / any submit attempt. Own a dedicated CMDQ GE
+ * converter with a separate staging budget (excludes session tx). Returns false
+ * if GE/BSP is disabled, unavailable, normal mode, already enabled or too late.
+ * No configuration change on failure. INVALID preflight geometry uses CPU pack;
+ * actual GE failure is sticky FAULT and never falls back. Source remains a CPU
+ * borrow only, including after GE failure. Retains staging on any session fault.
+ * GE filtering can differ from CPU nearest; timings include both staging copies. */
+bool lv_aic_spi_session_enable_ge2d(lv_aic_spi_session_t *session,
+    uint32_t max_source_width,uint32_t max_source_height,size_t staging_budget);
 lv_aic_spi_result_t lv_aic_spi_session_submit(lv_aic_spi_session_t *session,
     const lv_aic_spi_rgb565_frame_t *source,unsigned clockwise_degrees);
 lv_aic_spi_result_t lv_aic_spi_session_drain(lv_aic_spi_session_t *session);

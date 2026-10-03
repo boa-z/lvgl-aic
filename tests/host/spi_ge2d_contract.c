@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_aic_spi_ge2d.h"
+#include "lv_aic_spi_session.h"
+#include <rtdevice.h>
 #include "lvgl.h"
 #include <mpp_ge.h>
 #include <aic_osal.h>
@@ -16,6 +18,20 @@ static int fail_at,fail_alloc;
 static bool normal_mode,fail_open;
 static struct ge_bitblt command;
 static lv_aic_spi_ge2d_t *active;
+static uint8_t *tx;
+static unsigned submissions,waits,status;
+static bool spi_fail;
+static uint8_t submitted[56];
+static void present(void) {}
+int rt_spi_wait_completion(struct rt_spi_device *d)
+{ assert(d && !memcmp(tx,submitted,56));waits++;status=0;return spi_fail?-1:0; }
+rt_uint32_t rt_spi_get_transfer_status(struct rt_spi_device *d) { assert(d);return status; }
+int rt_spi_nonblock_set(struct rt_spi_device *d,unsigned mode) { assert(d && mode==1);return 0; }
+size_t rt_qspi_transfer_message(struct rt_qspi_device *d,struct rt_qspi_message *m)
+{
+    assert(d && m->parent.send_buf==tx && m->parent.length==56);
+    memcpy(submitted,tx,56);submissions++;status=1;return 56;
+}
 void *aicos_malloc_align(unsigned int type,size_t bytes,size_t alignment)
 {
     assert(type==MEM_CMA && alignment==64 && bytes<=4096);
@@ -30,7 +46,10 @@ void mpp_ge_close(struct mpp_ge *g) { assert(g);closed++; }
 enum ge_mode mpp_ge_get_mode(struct mpp_ge *g)
 { assert(g);return normal_mode?GE_MODE_NORMAL:GE_MODE_CMDQ; }
 void aicos_dcache_clean_range(unsigned long *p,unsigned long bytes)
-{ assert(p && bytes && stage++==0); }
+{
+    if((void *)p==tx) { assert(bytes==64 && status==0);return; }
+    assert(p && bytes && stage++==0);
+}
 void aicos_dcache_clean_invalid_range(unsigned long *p,unsigned long bytes)
 { assert(p && bytes && stage++==1); }
 void aicos_dcache_invalid_range(unsigned long *p,unsigned long bytes)
@@ -117,6 +136,55 @@ int main(void)
     for(unsigned i=0;i<sizeof(output);i++) assert(output[i]==0xa5);
     assert(lv_aic_spi_ge2d_close(active)==LV_AIC_SPI_OK);active=NULL;
     assert(allocs==frees && opened==closed);
+    /* Real session -> transfer -> GE converter -> SDK SPI bridge. */
+    tx=arena+500000;tx=(uint8_t *)(((uintptr_t)tx+63)&~(uintptr_t)63);
+    struct rt_spi_ops ops={present,present,present,present,present};
+    struct rt_spi_bus bus={&ops};struct rt_qspi_device device={{&bus}};
+    lv_aic_spi_session_config_t config={.device=&device,.tx=tx,.capacity=64,
+        .width=7,.height=4,.data_lines=1,.swap_bytes=true};
+    lv_aic_spi_session_t *session=lv_aic_spi_session_open(&config);assert(session);
+    assert(!lv_aic_spi_session_enable_ge2d(session,5,4,511));
+    assert(lv_aic_spi_session_enable_ge2d(session,5,4,512));
+    assert(!lv_aic_spi_session_enable_ge2d(session,5,4,512));
+    stage=0;before=calls;
+    assert(lv_aic_spi_session_submit(session,&src,90)==LV_AIC_SPI_OK);
+    assert(calls==before+1 && submissions==1 && stage==6);
+    assert(lv_aic_spi_pack_rgb565(&src,expected,sizeof(expected),7,4,90,true));
+    assert(!memcmp(tx,expected,56));
+    src.height=3;before=calls; /* Too small to scale: CPU before hardware commands. */
+    assert(lv_aic_spi_session_submit(session,&src,180)==LV_AIC_SPI_OK);
+    assert(calls==before && submissions==2 && waits==1);
+    assert(lv_aic_spi_pack_rgb565(&src,expected,sizeof(expected),7,4,180,true));
+    assert(!memcmp(tx,expected,56));src.height=4;
+    assert(lv_aic_spi_session_close(session)==LV_AIC_SPI_OK);
+    assert(waits==2 && allocs==frees && opened==closed);
+    session=lv_aic_spi_session_open(&config);assert(session);
+    assert(lv_aic_spi_session_submit(session,&src,0)==LV_AIC_SPI_OK);
+    assert(!lv_aic_spi_session_enable_ge2d(session,5,4,512)); /* Too late; cleanup allocation. */
+    assert(lv_aic_spi_session_close(session)==LV_AIC_SPI_OK);
+    assert(allocs==frees && opened==closed);
+
+    /* GE fault suppresses SPI and retains the session bus/tx claim too. */
+    session=lv_aic_spi_session_open(&config);assert(session);
+    assert(lv_aic_spi_session_enable_ge2d(session,5,4,512));
+    stage=0;fail_at=3;before=submissions;unsigned free_mark=frees,close_mark=closed;
+    memset(tx,0xa5,64);
+    assert(lv_aic_spi_session_submit(session,&src,90)==LV_AIC_SPI_FAULT);
+    assert(lv_aic_spi_session_close(session)==LV_AIC_SPI_FAULT);
+    assert(lv_aic_spi_session_submit(session,&src,0)==LV_AIC_SPI_FAULT);
+    assert(submissions==before && frees==free_mark && closed==close_mark);
+    for(unsigned i=0;i<64;i++) assert(tx[i]==0xa5);
+    assert(!lv_aic_spi_session_open(&config));
+    /* Different bus and tx, successful GE followed by SPI completion fault. */
+    struct rt_spi_bus bus2={&ops};struct rt_qspi_device device2={{&bus2}};
+    config.device=&device2;tx+=128;config.tx=tx;
+    session=lv_aic_spi_session_open(&config);assert(session);
+    assert(lv_aic_spi_session_enable_ge2d(session,5,4,512));
+    stage=0;fail_at=0;spi_fail=true;free_mark=frees;close_mark=closed;
+    assert(lv_aic_spi_session_submit(session,&src,90)==LV_AIC_SPI_OK);
+    assert(lv_aic_spi_session_close(session)==LV_AIC_SPI_FAULT);
+    assert(frees==free_mark && closed==close_mark && !lv_aic_spi_session_open(&config));
+    spi_fail=false;
     for(fail_at=1;fail_at<=3;fail_at++) {
         active=lv_aic_spi_ge2d_create(5,4,7,4,512);assert(active);
         memset(pixels,0x31,sizeof(pixels));memset(output,0xa5,sizeof(output));stage=0;
@@ -130,7 +198,7 @@ int main(void)
         assert(lv_aic_spi_ge2d_close(active)==LV_AIC_SPI_FAULT);
         assert(calls==before && frees==free_before && closed==close_before);
     }
-    /* Retain six allocations and three clients, matching reboot-only recovery. */
-    assert(allocs-frees==6 && opened-closed==3);
+    /* Retain ten allocations and five clients, matching reboot-only recovery. */
+    assert(allocs-frees==10 && opened-closed==5);
     return 0;
 }

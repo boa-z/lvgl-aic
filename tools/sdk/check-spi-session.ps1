@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Compile checked SPI completion against real SDK headers; no device access.
-param([string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT,[switch]$WithGe)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
@@ -12,13 +12,14 @@ $sdk=(Resolve-Path $SdkRoot).Path
 $component=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $lvgl=(Resolve-Path (Join-Path $component '../lvgl')).Path
 $includes=@('.', 'packages/third-party/freetype/include', 'bsp/common/include', 'bsp/artinchip/sys/d13x/include',
-    'bsp/artinchip/include/uapi', 'bsp/artinchip/hal/dvp/v1',
+    'bsp/artinchip/include/uapi', 'bsp/artinchip/include/drv', 'bsp/artinchip/hal/dvp/v1',
     'packages/artinchip/mpp/include', 'bsp/peripheral/camera', 'kernel/rt-thread/include', 'kernel/common/include/osal',
     'kernel/rt-thread/components/drivers/audio', 'kernel/rt-thread/components/finsh', 'kernel/rt-thread/components/drivers/include',
     'kernel/rt-thread/components/utilities/ulog', 'bsp/artinchip/include',
     'kernel/rt-thread/components/libc/posix/pthreads', 'kernel/rt-thread/components/libc/compilers/common/include')
 $arguments=@('-std=gnu99','-Wall','-Wextra','-Werror','-DKERNEL_RTTHREAD','-DAIC_LVGL_BSP_RTTHREAD=1',
     '-march=rv32imafdcpzpsfoperand_xtheade','-mabi=ilp32d','-DAIC_LVGL_USE_SPI_SDK=1','-DRT_USING_NEWLIB','-DRT_USING_LIBC','-D_POSIX_C_SOURCE=1','-D_SYS__PTHREADTYPES_H_')
+if($WithGe) { $arguments+=@('-DAIC_LVGL_USE_GE2D=1','-DAIC_LVGL_BSP_MPP=1') }
 foreach ($path in $includes) { $arguments+=@('-isystem',(Join-Path $sdk $path)) }
 $arguments+=('-I'+(Join-Path $component 'compat'))
 foreach ($path in @($component,(Join-Path $component 'include'),$lvgl,(Join-Path $lvgl 'include'),(Join-Path $lvgl 'include/lvgl'))) {
@@ -42,7 +43,7 @@ Get-FileHash $output -Algorithm SHA256
 Write-Output 'PASS checked SPI submit/completion compile; no SDK transport link or hardware execution'
 
 $objects=@($output)
-foreach($source in @('port/lv_aic_spi_display.c','port/lv_aic_spi_worker.c','port/lv_aic_spi_handoff.c','port/lv_aic_spi_panel.c','port/lv_aic_spi_session.c','common/lv_aic_spi_transfer.c','common/lv_aic_spi_frame.c')) {
+foreach($source in @('port/lv_aic_spi_ge2d.c','port/lv_aic_spi_display.c','port/lv_aic_spi_worker.c','port/lv_aic_spi_handoff.c','port/lv_aic_spi_panel.c','port/lv_aic_spi_session.c','common/lv_aic_spi_transfer.c','common/lv_aic_spi_frame.c')) {
     $object=Join-Path $sdk ('output/'+[IO.Path]::GetFileNameWithoutExtension($source)+'.o')
     $compileArgs=$arguments+@('-c',(Join-Path $component $source),'-o',$object)
     & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
@@ -55,8 +56,14 @@ $linkArgs=@('-m','elf32lriscv','-r','-o',$combined)+$objects
 if($LASTEXITCODE -ne 0) { throw 'SPI session partial link failed' }
 $symbols=& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-nm.exe') $combined
 if($LASTEXITCODE -ne 0) { throw 'SPI session nm failed' }
-foreach($api in @('open','open_owned','submit','drain','close')) {
+foreach($api in @('open','open_owned','enable_ge2d','submit','drain','close')) {
     if(-not ($symbols -cmatch ('\bT\s+lv_aic_spi_session_'+$api+'$'))) { throw "Missing session API: $api" }
+}
+if($WithGe) {
+    foreach($api in @('create','convert','close')) {
+        if(-not ($symbols -cmatch ('\bT\s+lv_aic_spi_ge2d_'+$api+'$'))) { throw "Missing GE implementation: $api" }
+    }
+    Write-Output 'PASS GE conversion/session partial link (no hardware execution)'
 }
 if($symbols -cmatch '\bU\s+lv_aic_spi_') { throw 'Unresolved component SPI dependency' }
 Get-FileHash $combined -Algorithm SHA256

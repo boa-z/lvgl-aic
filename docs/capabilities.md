@@ -987,7 +987,7 @@ hardware execution of this increment remain pending; hardware **NOT_RUN**.
 ### SPI GE conversion backend status
 
 A dedicated CMDQ RGB565 rotate/resize backend with two budgeted CMA staging
-buffers is available (`lv_aic_spi_ge2d.h`). Host contract and D13x compile PASS;
-not yet selected by the SPI session/worker. Physical filtering/performance and
+buffers is available (`lv_aic_spi_ge2d.h`). Host combined session contract and D13x compile/partial link PASS;
+selected explicitly by `lv_aic_spi_session_enable_ge2d` before worker startup. Physical filtering/performance and
 full firmware linkage remain NOT_RUN. See [spi-stage.md](spi-stage.md) for source
 ownership, fault retention and SDK arbitration boundaries.

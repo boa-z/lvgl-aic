@@ -3,6 +3,7 @@
 #if defined(AIC_LVGL_USE_SPI_SDK) && AIC_LVGL_USE_SPI_SDK
 #include "lv_aic_spi_session.h"
 #include "lv_aic_spi_sdk.h"
+#include "lv_aic_spi_ge2d.h"
 #include "lvgl.h"
 #include <rtdevice.h>
 #include <aic_osal.h>
@@ -13,6 +14,7 @@ struct lv_aic_spi_session {
     size_t cache_bytes;
     bool owns_tx;
     lv_aic_spi_transfer_t *transfer;
+    lv_aic_spi_ge2d_t *ge;
     struct lv_aic_spi_session *next;
 };
 static lv_aic_spi_session_t *sessions;
@@ -85,6 +87,32 @@ lv_aic_spi_session_t *lv_aic_spi_session_open_owned(const lv_aic_spi_session_con
     else s->owns_tx=true;
     return s;
 }
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
+static lv_aic_spi_result_t transform(void *context,const lv_aic_spi_rgb565_frame_t *source,
+    uint8_t *output,size_t capacity,uint32_t width,uint32_t height,unsigned degrees,bool swap)
+{
+    lv_aic_spi_session_t *s=context;
+    lv_aic_spi_result_t result=lv_aic_spi_ge2d_convert(s->ge,source,output,capacity,degrees,swap);
+    if(result==LV_AIC_SPI_INVALID)
+        return lv_aic_spi_pack_rgb565(source,output,capacity,width,height,degrees,swap)?
+            LV_AIC_SPI_OK:LV_AIC_SPI_INVALID;
+    return result;
+}
+#endif
+bool lv_aic_spi_session_enable_ge2d(lv_aic_spi_session_t *s,uint32_t mw,uint32_t mh,size_t budget)
+{
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
+    if(!s || !s->transfer || s->ge) return false;
+    lv_aic_spi_ge2d_t *ge=lv_aic_spi_ge2d_create(mw,mh,s->config.width,s->config.height,budget);
+    if(!ge) return false;
+    if(!lv_aic_spi_transfer_set_transform(s->transfer,transform,s)) {
+        lv_aic_spi_ge2d_close(ge);return false;
+    }
+    s->ge=ge;return true;
+#else
+    (void)s;(void)mw;(void)mh;(void)budget;return false;
+#endif
+}
 lv_aic_spi_result_t lv_aic_spi_session_submit(lv_aic_spi_session_t *s,
     const lv_aic_spi_rgb565_frame_t *source,unsigned degrees)
 { return s ? lv_aic_spi_transfer_submit(s->transfer,source,degrees) : LV_AIC_SPI_INVALID; }
@@ -98,6 +126,13 @@ lv_aic_spi_result_t lv_aic_spi_session_close(lv_aic_spi_session_t *s)
         if(result!=LV_AIC_SPI_OK) return result;
         s->transfer=NULL;
     }
+#if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
+    if(s->ge) {
+        lv_aic_spi_result_t result=lv_aic_spi_ge2d_close(s->ge);
+        if(result!=LV_AIC_SPI_OK) return result;
+        s->ge=NULL;
+    }
+#endif
     /* Never hold the shared registry across driver completion waits. */
     if(!take_registry()) return LV_AIC_SPI_BUSY;
     lv_aic_spi_session_t **slot=&sessions;

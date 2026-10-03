@@ -26,8 +26,18 @@ typedef struct {
  * SDK's void aic_spi_lcd_wait_completion is NOT a checked completion adapter. */
 lv_aic_spi_transfer_t *lv_aic_spi_transfer_create(uint8_t *tx,size_t capacity,
     uint32_t width,uint32_t height,bool swap_bytes,const lv_aic_spi_transfer_ops_t *ops);
+/* Optional setup-only transform. Configure once before the first submit attempt.
+ * Callback must synchronously finish output writes and must never expose caller
+ * source/tx to uncertain DMA. FAULT latches transfer quarantine; other results
+ * suppress transport submission. Context lives until successful transfer close.
+ * An INVALID result must be pre-submission and leave output unchanged. */
+typedef lv_aic_spi_result_t (*lv_aic_spi_transform_cb_t)(void *context,
+    const lv_aic_spi_rgb565_frame_t *source,uint8_t *output,size_t capacity,
+    uint32_t width,uint32_t height,unsigned degrees,bool swap_bytes);
+bool lv_aic_spi_transfer_set_transform(lv_aic_spi_transfer_t *transfer,
+    lv_aic_spi_transform_cb_t transform,void *context);
 /* Wait previous transfer before repacking; input is borrowed only during call.
- * Uses CPU nearest resize/rotation from lv_aic_spi_pack_rgb565. */
+ * Defaults to CPU nearest resize/rotation from lv_aic_spi_pack_rgb565. */
 lv_aic_spi_result_t lv_aic_spi_transfer_submit(lv_aic_spi_transfer_t *transfer,
     const lv_aic_spi_rgb565_frame_t *source,unsigned clockwise_degrees);
 lv_aic_spi_result_t lv_aic_spi_transfer_drain(lv_aic_spi_transfer_t *transfer);

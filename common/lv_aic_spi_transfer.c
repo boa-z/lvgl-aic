@@ -6,7 +6,9 @@ struct lv_aic_spi_transfer {
     size_t capacity;
     uint32_t width,height;
     lv_aic_spi_transfer_ops_t ops;
-    bool swap,pending,busy,fault;
+    lv_aic_spi_transform_cb_t transform;
+    void *transform_context;
+    bool swap,pending,busy,fault,started;
 };
 lv_aic_spi_transfer_t *lv_aic_spi_transfer_create(uint8_t *tx,size_t capacity,
     uint32_t width,uint32_t height,bool swap,const lv_aic_spi_transfer_ops_t *ops)
@@ -19,6 +21,12 @@ lv_aic_spi_transfer_t *lv_aic_spi_transfer_create(uint8_t *tx,size_t capacity,
     if(!s) return NULL;
     s->tx=tx;s->capacity=capacity;s->width=width;s->height=height;
     s->swap=swap;s->ops=*ops;return s;
+}
+bool lv_aic_spi_transfer_set_transform(lv_aic_spi_transfer_t *s,
+    lv_aic_spi_transform_cb_t transform,void *context)
+{
+    if(!s || !transform || s->busy || s->started || s->transform || s->fault) return false;
+    s->transform=transform;s->transform_context=context;return true;
 }
 static lv_aic_spi_result_t finish(lv_aic_spi_transfer_t *s)
 {
@@ -34,12 +42,17 @@ lv_aic_spi_result_t lv_aic_spi_transfer_submit(lv_aic_spi_transfer_t *s,
 {
     if(!s) return LV_AIC_SPI_INVALID;
     if(s->busy) return LV_AIC_SPI_BUSY;
-    s->busy=true;
+    s->busy=true;s->started=true;
     lv_aic_spi_result_t result=finish(s);
     if(result==LV_AIC_SPI_OK) {
-        if(!lv_aic_spi_pack_rgb565(source,s->tx,s->capacity,s->width,s->height,degrees,s->swap))
+        if(s->transform)
+            result=s->transform(s->transform_context,source,s->tx,s->capacity,
+                s->width,s->height,degrees,s->swap);
+        else if(!lv_aic_spi_pack_rgb565(source,s->tx,s->capacity,s->width,s->height,degrees,s->swap))
             result=LV_AIC_SPI_INVALID;
-        else {
+        if(result!=LV_AIC_SPI_OK && result!=LV_AIC_SPI_INVALID && result!=LV_AIC_SPI_BUSY)
+            { s->fault=true;result=LV_AIC_SPI_FAULT; }
+        if(result==LV_AIC_SPI_OK) {
             s->pending=true; /* Even failed submission may have started DMA. */
             if(!s->ops.start(s->ops.context,s->tx,(size_t)s->width*s->height*2)) {
                 s->fault=true;result=LV_AIC_SPI_FAULT;

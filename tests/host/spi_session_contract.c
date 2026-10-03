@@ -66,6 +66,7 @@ int main(void)
     struct rt_qspi_device device={{&bus}},other={{&bus}};
     lv_aic_spi_session_config_t c={.device=&device,.tx=tx,.capacity=64,.width=3,.height=2,.data_lines=1,.swap_bytes=true,
         .prepare=prepare,.prepare_context=&prepares};
+    assert(!lv_aic_spi_session_enable_ge2d(NULL,5,4,512));
     c.capacity=12;assert(!lv_aic_spi_session_open(&c));c.capacity=64;
     status=1;assert(!lv_aic_spi_session_open(&c));status=0;
     lv_aic_spi_session_t *s=lv_aic_spi_session_open(&c);assert(s);

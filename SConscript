@@ -89,7 +89,7 @@ includes += [os.path.join(cwd, 'common'), os.path.join(cwd, 'image', 'mpp'),
 if GetDepend('AIC_LVGL_USE_SPI_SDK'):
     # Smoke profile links enabled SPI APIs without initializing a panel or bus.
     if GetDepend('AIC_LVGL_SMOKE_APP'):
-        for api in ('lv_aic_spi_display_stats', 'lv_aic_spi_display_claim_blit', 'lv_aic_spi_display_blit', 'lv_aic_spi_display_blit_take', 'lv_aic_spi_display_create_buffered', 'lv_aic_spi_display_create', 'lv_aic_spi_display_get', 'lv_aic_spi_display_result', 'lv_aic_spi_display_close', 'lv_aic_spi_panel_set_lifecycle', 'lv_aic_spi_panel_create', 'lv_aic_spi_panel_prepare', 'lv_aic_spi_panel_close', 'lv_aic_spi_session_open_owned', 'lv_aic_spi_session_close'):
+        for api in ('lv_aic_spi_display_stats', 'lv_aic_spi_display_claim_blit', 'lv_aic_spi_display_blit', 'lv_aic_spi_display_blit_take', 'lv_aic_spi_display_create_buffered', 'lv_aic_spi_display_create', 'lv_aic_spi_display_get', 'lv_aic_spi_display_result', 'lv_aic_spi_display_close', 'lv_aic_spi_panel_set_lifecycle', 'lv_aic_spi_panel_create', 'lv_aic_spi_panel_prepare', 'lv_aic_spi_panel_close', 'lv_aic_spi_session_enable_ge2d', 'lv_aic_spi_session_open_owned', 'lv_aic_spi_session_close'):
             Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
     includes += [os.path.join(AIC_ROOT, 'bsp', 'artinchip', 'include', 'hal')]
 
