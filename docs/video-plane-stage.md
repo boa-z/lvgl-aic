@@ -237,3 +237,18 @@ Host **49/49 PASS**, strict E907 **PASS**. Explicit expected rectangles cover a
 non-central pivot at all three angles and combined image/display cancellation.
 These are geometry/lifecycle tests; actual rotated alpha pixels and DMA remain
 **NOT_RUN**. No new combined firmware image has been built for this increment.
+
+## Image/pivot combined firmware evidence (2026-10-04)
+
+Boot/app/static/image/manifest **PASS**; host **49/49 PASS**.
+Clean source identities and SHA256 values:
+
+- sdk: a6261816161fd4c6eb39b1a62387f02649f52fa4
+- lvgl-aic: b35177cd70404281d0f9b3a581fbadc5500f16c6
+- lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
+- images/d13x.elf SHA256: e4059d1f7f98af5f482811e9c874e75fb449136ad893559c8eed49ccbbef4037
+- images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: 0a72f308e9646cb126b67b51320bcd957a490c5a764f752b9642ee08d0677864
+
+Board **NOT_RUN**. Rotated alpha-window pixels, scanout timing and physical
+multi-decoder behavior remain unverified. D13x reference image scale/arbitrary
+angle restrictions are documented in the current capabilities inventory.

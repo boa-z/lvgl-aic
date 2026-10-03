@@ -7,20 +7,23 @@ APNG worker and other suffixes to SDK media, retaining the same image object,
 transforms and slave bindings across drained source replacement. APNG rate,
 zero-time replay, finite repeat and metadata use checked common commands.
 The standalone APNG widget remains usable without SDK media/audio.
-Host **45/45 PASS** and strict combined-feature E907 compile **PASS**.
+Host **49/49 PASS** and strict combined-feature E907 compile **PASS**.
 The video-plane stage clean firmware passed boot/app/static/image/manifest;
 source identities and artifact evidence are recorded in [video-plane stage](video-plane-stage.md).
 Physical validation remains **NOT_RUN**.
 
 Unified player group lifecycle, checked broadcast and publication barriers are
 now available; see [group contract](player-group-stage.md). Remaining player
-parity: physical multi-decoder validation and rotated-plane composition.
+parity: physical multi-decoder and rotated-plane validation, clipping/geometry
+coverage and board test controls.
 Audio mixing is unimplemented; reliable concurrent mixing is not established as
 a guarantee of the SDK reference either.
 An opt-in [video-plane session](video-plane-stage.md) now provides exclusive
 native frame scanout and VSync-protected lifetime. Explicit player binding now
 tracks a rectangular alpha-zero window, leases/restores UI pixel alpha and drains
-scanout on lifecycle changes. Overlay roots are supported; physical validation remains open.
+scanout on lifecycle changes. Display/image right-angle rotation and bounded
+pivots share the fake-window geometry, with an independent CMA peak budget.
+Overlay roots are supported; physical validation remains open.
 APNG now supports four independent instances with shared SDK decode serialization.
 Application linking also protects SDK VE arbitration failure; the final image's
 PNG/JPEG call sites are verified by disassembly. Media now permits four independent
@@ -65,8 +68,8 @@ See [swipe_v1](swipe-stage.md). Both widgets have a shared manual test page;
 the combined GE2D/fonts/GIF/widgets cross-build and linked-symbol checks pass.
 Physical display/input acceptance remains pending;
 SDK media parity remains incomplete; video-window and camera image composition
-are implemented separately. Explicit video-plane ownership is available; automatic
-player-to-plane composition and physical acceptance remain gaps.
+are implemented separately. Explicit player-to-plane composition is available;
+physical acceptance and remaining geometry coverage are incomplete.
 
 A [component BMP decoder](bmp-stage.md) now covers FILE/RAW uncompressed
 24/32-bit images with full-buffer CMA/cache ownership and host pixel tests.
@@ -306,3 +309,15 @@ are now implemented using the same transformed rectangle as the fake window.
 Combined image/display orientation follows the SDK subtraction rule. Host
 49/49 and strict E907 pass; image scaling, arbitrary angles and partial clipping
 remain unsupported. Latest stage firmware/pixel/board validation is pending.
+
+
+## D13x player transform parity boundary (2026-10-04)
+
+SDK `aic_player/player_backend/aic_backend_ops.c:player_check_hw_capability`
+accepts D13x video-plane image transforms only when both scales are
+`LV_SCALE_NONE` and rotation is 0/900/1800/2700. The port now covers those image
+angles, display-angle composition and bounded pivots. Image scaling and
+arbitrary angles are not missing D13x reference behavior. D21x accepts image
+scale with right angles and needs a separate capability/board profile review.
+DE scaling by object rectangle is distinct from LVGL image transform scaling.
+This source-level comparison does not prove physical plane/window agreement.
