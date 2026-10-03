@@ -747,3 +747,20 @@ PASS, including the final ELF operations-table routing check. Generated backend
 and provenance are included in the evidence manifest.
 Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
 SHA256 `c2d01c894d3da24b539d613394e1ac34eba0f3e19f428c67fed7e0d298b69464`. Board **NOT_RUN**.
+
+### Native YUV CSC numeric probes (2026-10-04)
+
+The native fill runner now checks 240 solid fills: all 12 linear YUV layouts
+(YUV420P/422P/444P, NV12/21/16/61, YUYV/YVYU/UYVY/VYUY and YUV400),
+four SDK CSC2 color spaces (BT.601/709 limited/full), and black/white/R/G/B.
+Each probe uses a 16x16 descriptor with an 8x8 cropped output in a privately
+owned 4 KiB CMA allocation. Every allocated byte is checked: expected Y/U/V
+channels within tolerance 2, crop guards, row padding and unused plane capacity.
+Solid colors deliberately avoid claiming chroma resampling phase correctness.
+
+The reference uses the reviewed SDK fixed-point CSC2 coefficients. Host mocks
+use tabulated primary-color outputs and independently write each layout;
+injected no-op, luma/chroma corruption, guard writes and uncertain DMA verify
+checker failure and allocation retention. Host PASS is checker evidence only.
+This supersedes the missing solid YUV CSC probe entry above. YUV gradients,
+blending/round-trip CSC accuracy and real-board pixel acceptance remain open.

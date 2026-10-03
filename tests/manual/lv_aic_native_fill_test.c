@@ -73,6 +73,90 @@ static int gradient_probe(enum mpp_pixel_format fmt,int direction,int blend,int 
 done:
     lv_mpp_image_free(owner);return result;
 }
+/* RGB->YUV coefficients mirror the reviewed SDK CSC2 tables (8-bit fixed
+ * point). Solid colors avoid chroma resampling phase ambiguity. */
+static int yuv_probe(enum mpp_pixel_format fmt,unsigned space,unsigned color)
+{
+    static const int coefficients[4][12]={
+        {66,129,25,16,-38,-74,112,128,112,-94,-18,128},
+        {47,157,16,16,-26,-87,112,128,112,-102,-10,128},
+        {77,150,29,0,-42,-84,128,128,128,-106,-20,128},
+        {54,183,18,0,-28,-98,128,128,128,-115,-11,128}
+    };
+    const unsigned colors[]={0xff000000,0xffffffff,0xffff0000,0xff00ff00,0xff0000ff};
+    struct lv_mpp_buf *owner=lv_mpp_image_alloc(16,64,MPP_FMT_ARGB_8888);
+    if(!owner) return -1;
+    struct mpp_buf dst=owner->buf;
+    dst.size.height=16;dst.format=fmt;dst.flags=space;
+    dst.crop_en=1;dst.crop=(struct mpp_rect){4,4,8,8};
+    unsigned planes=1,sx=1,sy=1,packed=0,vu=0;
+    switch(fmt) {
+    case MPP_FMT_YUV420P: planes=3;sx=2;sy=2;break;
+    case MPP_FMT_YUV422P: planes=3;sx=2;break;
+    case MPP_FMT_YUV444P: planes=3;break;
+    case MPP_FMT_NV12: case MPP_FMT_NV21: planes=2;sx=2;sy=2;vu=fmt==MPP_FMT_NV21;break;
+    case MPP_FMT_NV16: case MPP_FMT_NV61: planes=2;sx=2;vu=fmt==MPP_FMT_NV61;break;
+    case MPP_FMT_YUYV: case MPP_FMT_YVYU: case MPP_FMT_UYVY: case MPP_FMT_VYUY: packed=1;break;
+    default: break; /* YUV400 */
+    }
+    for(unsigned i=1;i<planes;i++) {
+        dst.stride[i]=64;dst.phy_addr[i]=dst.phy_addr[0]+1024*i;
+    }
+    memset(owner->data,0xa5,owner->size);
+    int result=-1,worst=0,expected[3];
+    for(unsigned c=0;c<3;c++) {
+        const int *k=coefficients[space]+c*4;
+        int sum=k[0]*(int)((colors[color]>>16)&255)+k[1]*(int)((colors[color]>>8)&255)+k[2]*(int)(colors[color]&255);
+        expected[c]=(sum+128)/256+k[3];
+        if(expected[c]<0) expected[c]=0;
+        if(expected[c]>255) expected[c]=255;
+    }
+    if(lv_ge_fill(&dst,GE_NO_GRADIENT,colors[color],colors[color],0)!=LV_RESULT_OK) {
+        AIC_TEST_E("FAIL YUV submission fmt=%u space=%u fault=%u",(unsigned)fmt,space,
+                   (unsigned)lv_draw_aic_ge2d_faulted());goto done;
+    }
+    /* Every allocated byte is checked, including unused plane capacity. */
+    for(unsigned offset=0;offset<(unsigned)owner->size;offset++) {
+        unsigned plane=offset/1024,row=(offset%1024)/64,byte=offset%64;
+        unsigned x0=4,x1=12,y0=4,y1=12,channel=0;
+        if(plane && plane<planes) {
+            y0/=sy;y1/=sy;
+            if(planes==3) { x0/=sx;x1/=sx;channel=plane; }
+            else channel=1+((byte&1)^vu);
+        }
+        if(packed) {
+            x0*=2;x1*=2;
+            static const unsigned order[4][4]={{0,1,0,2},{0,2,0,1},{1,0,2,0},{2,0,1,0}};
+            unsigned index=fmt==MPP_FMT_YUYV?0:fmt==MPP_FMT_YVYU?1:fmt==MPP_FMT_UYVY?2:3;
+            channel=order[index][byte&3];
+        }
+        bool active=plane<planes && row>=y0 && row<y1 && byte>=x0 && byte<x1;
+        int error=(int)owner->data[offset]-(active?expected[channel]:0xa5);
+        if(error<0) error=-error;
+        if(!active && error) {
+            AIC_TEST_E("FAIL YUV guard fmt=%u offset=%u",(unsigned)fmt,offset);goto done;
+        }
+        if(error>worst) worst=error;
+    }
+    if(worst>2) {
+        AIC_TEST_E("FAIL YUV pixel fmt=%u space=%u color=%u error=%d",(unsigned)fmt,space,color,worst);goto done;
+    }
+    result=0;
+done:
+    lv_mpp_image_free(owner);return result;
+}
+static int yuv_probes(void)
+{
+    const enum mpp_pixel_format formats[]={MPP_FMT_YUV420P,MPP_FMT_YUV422P,MPP_FMT_YUV444P,
+        MPP_FMT_NV12,MPP_FMT_NV21,MPP_FMT_NV16,MPP_FMT_NV61,
+        MPP_FMT_YUYV,MPP_FMT_YVYU,MPP_FMT_UYVY,MPP_FMT_VYUY,MPP_FMT_YUV400};
+    for(unsigned f=0;f<12;f++) {
+        for(unsigned space=0;space<4;space++) for(unsigned color=0;color<5;color++)
+            if(yuv_probe(formats[f],space,color)) return -1;
+        AIC_TEST_I("PASS YUV fmt=%u 20 CSC probes guards=OK",(unsigned)formats[f]);
+    }
+    return 0;
+}
 int lv_aic_native_fill_test_run(void)
 {
     if(lv_draw_aic_ge2d_faulted()) return -1;
@@ -80,7 +164,8 @@ int lv_aic_native_fill_test_run(void)
     for(unsigned f=0;f<3;f++) for(int direction=1;direction<=2;direction++)
         for(int blend=0;blend<=1;blend++) for(int reverse=0;reverse<=1;reverse++)
             if(gradient_probe(formats[f],direction,blend,reverse)) return -1;
-    AIC_TEST_I("PASS 24 native gradient probes; YUV CSC acceptance remains separate");
+    if(yuv_probes()) return -1;
+    AIC_TEST_I("PASS 24 gradient and 240 YUV CSC probes; panel acceptance separate");
     return 0;
 }
 #endif

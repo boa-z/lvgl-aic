@@ -10,10 +10,10 @@ static bool fault;
 bool lv_draw_aic_ge2d_faulted(void) { return fault; }
 struct lv_mpp_buf *lv_mpp_image_alloc(int w,int h,enum mpp_pixel_format fmt)
 {
-    assert(!active && w==16 && h==16);
+    assert(!active && w==16 && (h==16 || h==64));
     active=calloc(1,sizeof(*active));assert(active);
-    active->size=1024;active->data=malloc(1024);assert(active->data);
-    active->buf=(struct mpp_buf){.buf_type=MPP_PHY_ADDR,.format=fmt,.size={w,h},.stride={64}};
+    active->size=64*h;active->data=malloc(active->size);assert(active->data);
+    active->buf=(struct mpp_buf){.buf_type=MPP_PHY_ADDR,.format=fmt,.size={w,h},.stride={64},.phy_addr={0x40000000}};
     allocs++;return active;
 }
 void lv_mpp_image_free(struct lv_mpp_buf *image)
@@ -22,11 +22,61 @@ void lv_mpp_image_free(struct lv_mpp_buf *image)
     if(fault) return;
     free(active->data);free(active);active=NULL;frees++;
 }
+static void mock_yuv(struct mpp_buf *buf,unsigned color)
+{
+    /* Independently tabulated black/white/primary outputs. */
+    static const unsigned values[4][5][3]={
+        {{16,128,128},{235,128,128},{82,90,240},{144,54,34},{41,240,110}},
+        {{16,128,128},{235,127,128},{63,102,240},{172,41,26},{32,240,118}},
+        {{0,128,128},{255,130,130},{77,86,255},{149,44,22},{29,255,108}},
+        {{0,128,128},{254,130,130},{54,100,255},{182,30,13},{18,255,117}}
+    };
+    unsigned index=color==0xff000000?0:color==0xffffffff?1:color==0xffff0000?2:color==0xff00ff00?3:4;
+    const unsigned *v=values[MPP_BUF_COLOR_SPACE_GET(buf->flags)][index];
+    enum mpp_pixel_format f=buf->format;
+    assert(buf->size.width==16 && buf->size.height==16 && buf->stride[0]==64);
+    assert(buf->crop_en && buf->crop.x==4 && buf->crop.y==4 && buf->crop.width==8 && buf->crop.height==8);
+    if(f==MPP_FMT_YUV420P || f==MPP_FMT_YUV422P || f==MPP_FMT_YUV444P ||
+       f==MPP_FMT_NV12 || f==MPP_FMT_NV21 || f==MPP_FMT_NV16 || f==MPP_FMT_NV61) {
+        assert(buf->phy_addr[1]==buf->phy_addr[0]+1024 && buf->stride[1]==64);
+        if(f==MPP_FMT_YUV420P || f==MPP_FMT_YUV422P || f==MPP_FMT_YUV444P)
+            assert(buf->phy_addr[2]==buf->phy_addr[0]+2048 && buf->stride[2]==64);
+    }
+    if(f==MPP_FMT_YUYV || f==MPP_FMT_YVYU || f==MPP_FMT_UYVY || f==MPP_FMT_VYUY) {
+        for(unsigned y=4;y<12;y++) for(unsigned x=4;x<12;x+=2) {
+            uint8_t *p=active->data+y*64+x*2;
+            if(f==MPP_FMT_YUYV) { p[0]=v[0];p[1]=v[1];p[2]=v[0];p[3]=v[2]; }
+            if(f==MPP_FMT_YVYU) { p[0]=v[0];p[1]=v[2];p[2]=v[0];p[3]=v[1]; }
+            if(f==MPP_FMT_UYVY) { p[0]=v[1];p[1]=v[0];p[2]=v[2];p[3]=v[0]; }
+            if(f==MPP_FMT_VYUY) { p[0]=v[2];p[1]=v[0];p[2]=v[1];p[3]=v[0]; }
+        }
+    }
+    else {
+        for(unsigned y=4;y<12;y++) memset(active->data+y*64+4,v[0],8);
+        unsigned sy=f==MPP_FMT_YUV420P || f==MPP_FMT_NV12 || f==MPP_FMT_NV21?2:1;
+        if(f==MPP_FMT_YUV420P || f==MPP_FMT_YUV422P || f==MPP_FMT_YUV444P) {
+            unsigned sx=f==MPP_FMT_YUV444P?1:2;
+            for(unsigned c=1;c<3;c++) for(unsigned y=4/sy;y<12/sy;y++)
+                memset(active->data+c*1024+y*64+4/sx,v[c],8/sx);
+        }
+        else if(f!=MPP_FMT_YUV400) {
+            unsigned vu=f==MPP_FMT_NV21 || f==MPP_FMT_NV61;
+            for(unsigned y=4/sy;y<12/sy;y++) for(unsigned x=4;x<12;x+=2) {
+                active->data[1024+y*64+x]=v[1+vu];
+                active->data[1024+y*64+x+1]=v[2-vu];
+            }
+        }
+    }
+    if(corruption==2) active->data[4*64+8]=0;
+    if(corruption==3) active->data[active->size-1]=0;
+    if(corruption==5) active->data[1024+2*64+4]=0; /* Chroma corruption. */
+}
 int lv_ge_fill(struct mpp_buf *buf,enum ge_fillrect_type type,unsigned start,unsigned end,int blend)
 {
     calls++;
     if(corruption==4) { fault=true;return LV_RESULT_INVALID; }
     if(corruption==1) return LV_RESULT_OK; /* Engine no-op must not pass. */
+    if(buf->format>=MPP_FMT_YUV420P) { mock_yuv(buf,start);return LV_RESULT_OK; }
     unsigned bpp=buf->format==MPP_FMT_ARGB_8888?4:buf->format==MPP_FMT_RGB_888?3:2;
     for(unsigned y=4;y<12;y++) for(unsigned x=4;x<12;x++) {
         unsigned step=type==GE_H_LINEAR_GRADIENT?x-4:y-4;
@@ -47,10 +97,17 @@ int lv_ge_fill(struct mpp_buf *buf,enum ge_fillrect_type type,unsigned start,uns
 }
 int main(void)
 {
-    assert(lv_aic_native_fill_test_run()==0 && calls==24 && allocs==frees);
+    assert(lv_aic_native_fill_test_run()==0 && calls==264 && allocs==frees);
     for(corruption=1;corruption<=3;corruption++) {
         assert(lv_aic_native_fill_test_run()<0 && allocs==frees && !active);
     }
+    for(corruption=1;corruption<=5;corruption++) {
+        if(corruption==4) continue;
+        assert(yuv_probe(MPP_FMT_NV12,0,2)<0 && allocs==frees && !active);
+    }
+    corruption=4;
+    assert(yuv_probe(MPP_FMT_NV12,0,2)<0 && fault && active);
+    fault=false;lv_mpp_image_free(active);
     corruption=4;
     assert(lv_aic_native_fill_test_run()<0 && fault && active && allocs==frees+1);
     unsigned before=calls;assert(lv_aic_native_fill_test_run()<0 && calls==before);
