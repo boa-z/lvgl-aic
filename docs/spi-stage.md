@@ -203,3 +203,31 @@ partial link **PASS**, including the new public API. Combined object SHA256:
 Logs: `output/spi-owned-tests.log`, `output/spi-owned-target.log`.
 OS/driver references remain for final application linkage; no SPI panel runtime
 or hardware acceptance is claimed (**NOT_RUN**).
+
+
+## Panel preparation within the transfer lifetime
+
+Session config now accepts optional synchronous `prepare(context, width, height)`
+and `prepare_context`. This is the application hook for panel-specific full-frame
+window commands, RAMWR and D/C sequencing: SDK single-lane `spi_flush` performs
+RAMWR and D/C changes for every frame, so a pixel-only submission is insufficient.
+The hook runs after the previous checked DMA completion and frame packing, before
+cache clean and pixel submission. It must complete its own command transfers and
+leave terminal bus status; the checked pixel bridge verifies that status again.
+The claimed device bus is rechecked after the callback. No panel/pin defaults are
+introduced and no unchecked SDK void completion result is treated as success.
+
+A failed preparation faults the transfer conservatively, since panel command DMA
+may already have started. No pixels are submitted, no retry is attempted, and
+session storage/claims remain retained. Callback context must survive until
+successful close, or reboot after a fault. Reentrant drain/close return BUSY.
+Existing zero-initialized configs retain pixel-only behavior with a null hook.
+
+Validation: **61/61 host PASS**, including two-frame prepare ordering, reentrant
+close/drain rejection, failed prepare without pixel/cache handoff, sticky fault
+and retained bus claim. Real-header D13x compile/component partial link **PASS**.
+Combined object SHA256:
+`77ec0b08db244ba16f06227761d27247b0524510c9672a61227667a1b5988cf5`.
+Logs: `output/spi-panel-tests.log`, `output/spi-panel-target.log`.
+Concrete panel command adapters, LVGL display/worker integration and physical
+transfers remain open; hardware **NOT_RUN**.

@@ -23,6 +23,10 @@ static bool start(void *context,const uint8_t *pixels,size_t bytes)
 {
     lv_aic_spi_session_t *s=context;
     if(s->config.device->parent.bus!=s->bus) return false;
+    if(s->config.prepare && !s->config.prepare(s->config.prepare_context,
+            s->config.width,s->config.height)) return false;
+    /* A panel callback must not replace the claimed device bus. */
+    if(s->config.device->parent.bus!=s->bus) return false;
     aicos_dcache_clean_range((unsigned long *)s->config.tx,(unsigned long)s->cache_bytes);
     return lv_aic_spi_sdk_submit_qspi(s->config.device,pixels,bytes,s->config.prefix,
         s->config.prefix_bytes,s->config.prefix_lines,s->config.data_lines);

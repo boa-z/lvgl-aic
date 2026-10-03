@@ -14,6 +14,14 @@ typedef struct {
     uint32_t width,height,prefix;
     unsigned prefix_bytes,prefix_lines,data_lines;
     bool swap_bytes;
+    /* Optional synchronous panel window/RAMWR/D-C preparation, after previous
+     * DMA completion and before pixel submission. Must finish all command DMA,
+     * restore terminal bus state and leave the device/bus configuration stable.
+     * Return false on any uncertainty: session faults and retains its storage.
+     * No session destruction or concurrent access from this callback. Context
+     * remains alive until successful close (until reboot after a fault). */
+    bool (*prepare)(void *context,uint32_t width,uint32_t height);
+    void *prepare_context;
 } lv_aic_spi_session_config_t;
 /* Bind an already initialized panel/device. Requires SPI_SDK. Claims its bus
  * among component sessions and the cache-rounded tx region. Unmanaged users
