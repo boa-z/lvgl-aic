@@ -55,6 +55,7 @@ if(AIC_BUILD_MANUAL_PREVIEW)
 endif()
 
 set(AIC_SOURCES
+    "${AIC_ROOT}/common/lv_aic_yuv.c"
     "${AIC_ROOT}/port/lv_aic.c"
     "${AIC_ROOT}/port/lv_aic_display.c"
     "${AIC_ROOT}/port/lv_aic_indev.c"
@@ -97,6 +98,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 enable_testing()
+add_executable(lvgl_aic_yuv_contract yuv_contract.c "${AIC_ROOT}/common/lv_aic_yuv.c")
+target_include_directories(lvgl_aic_yuv_contract PRIVATE "${AIC_ROOT}/include")
+target_link_libraries(lvgl_aic_yuv_contract PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_yuv_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_yuv_contract COMMAND lvgl_aic_yuv_contract)
 add_executable(lvgl_aic_fake_image_contract fake_image_contract.c
     "${AIC_ROOT}/common/lv_aic_fake_image.c")
 target_include_directories(lvgl_aic_fake_image_contract PRIVATE "${AIC_ROOT}/common")
