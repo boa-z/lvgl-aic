@@ -7,7 +7,7 @@ APNG worker and other suffixes to SDK media, retaining the same image object,
 transforms and slave bindings across drained source replacement. APNG rate,
 zero-time replay, finite repeat and metadata use checked common commands.
 The standalone APNG widget remains usable without SDK media/audio.
-Host **52/52 PASS** and strict combined-feature E907 compile **PASS**.
+Host **53/53 PASS** and strict combined-feature E907 compile **PASS**.
 The video-plane stage clean firmware passed boot/app/static/image/manifest;
 source identities and artifact evidence are recorded in [video-plane stage](video-plane-stage.md).
 Physical validation remains **NOT_RUN**.
@@ -703,3 +703,17 @@ The host probe contract injects a no-op engine, corrupt green channel and crop
 boundary write, and checks all are rejected. It also verifies DMA failure retains
 storage and blocks subsequent probes. A synthetic RGB generator drives the 24
 nominal cases solely to test the checker; it does not emulate hardware evidence.
+
+
+#### Native gradient probe firmware evidence
+
+Host **53/53 PASS**. Full GE/fonts/GIF/widgets/AICP/player/APNG
+boot/app/static/image/manifest gates PASS; final map includes
+`lv_aic_native_fill_test_run`. Clean component
+`aad97aead616430782334589b742502a4ff8741f`, SDK
+`2e7ecbab5c33985d2939266459f314350eb8f054`.
+SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `2ed4e33fad1522258e3d4c0a6addbac9fb0dcb79cbe90e40222579688fa34e63`. Board **NOT_RUN**.
+This diagnostic image still contains the known SDK CMDQ gradient defect;
+build success is not gradient acceptance. Correct it in application build glue
+before promoting a gradient-ready candidate.
