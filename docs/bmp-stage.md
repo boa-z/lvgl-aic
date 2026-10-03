@@ -23,5 +23,17 @@ sharing, active-reader invalidation and allocation failure cleanup.
 Additional BMP/MPP regression passes 4/4 with 16-bit RGB primary/white
 pixel conversion, explicit masks and invalid mask/short-header rejection.
 
-Remaining: target build and board rendered
-pixels/cache acceptance. This is partial SDK parity, not complete BMP support.
+Target build PASS at component dea5d23 / SDK 831af851 using
+`-Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp`.
+Boot/app, static checks, image integrity and manifest all pass.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp`.
+Image SHA256:
+`f4ab0cf1b43e08aeb08be22255e714c59c40c9690dcb14785540ffc61fc69325`.
+
+The asset staging script generates four first-party BMP probes with recorded
+hashes. Startup resource tests compare FILE/RAW pixels, invalidate active
+readers, verify CMA release and run 100 cache hits on each.
+Expected log: PASS BMP file-memory parity and cache lifecycle.
+
+Remaining: board rendered pixels/cache acceptance (NOT_RUN), indexed/RLE and
+other bitfield layouts. This is partial SDK parity, not complete BMP support.

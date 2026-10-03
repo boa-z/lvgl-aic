@@ -33,7 +33,8 @@ SDK media widgets remain missing.
 
 A [component BMP decoder](bmp-stage.md) now covers FILE/RAW uncompressed
 24/32-bit images with full-buffer CMA/cache ownership and host pixel tests.
-16-bit masks and target/board validation remain pending.
+RGB555 conversion and explicit RGB555/RGB565 masks are implemented.
+Combined target build passes; board validation remains pending.
 
 AICP now has an optional [SDK codec integration](aicp-stage.md), with
 source/header host contracts; actual AICP decoding and target acceptance
