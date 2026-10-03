@@ -9,7 +9,7 @@ phase documents are historical; source presence and switches are not board proof
 | Integration | App-owned pins; LV_OS_CUSTOM RT events | Board regression after app/OS refactor |
 | Display | One framebuffer, DIRECT, PAN/VSync; whole-screen 90/180/270 GE copy with software fallback before submission | GE target/board rotation acceptance, SPI/multi-display, extended cache/VSync tests; see [rotation stage](display-rotation-stage.md) |
 | Touch / input | Touch worker, mapping, diagnostics and optional recovery; application-owned encoder and mouse providers create native LVGL indevs | Board-specific encoder/USB mouse sampling and board acceptance remain application scope |
-| MPP | FILE and RAW/RAW_ALPHA memory JPEG/PNG; RGB888/ARGB8888; CMA tracking | Resource success inferred from test ordering; direct parity log pending; AICP/BMP/fake and YUV remain absent |
+| Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership | New AICP/BMP board probes NOT_RUN; fake pseudo-images and YUV integration remain absent |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
 | GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, arbitrary-angle plus scale, YUV, tiling/recolor/masks |
@@ -70,6 +70,27 @@ board confirmation remains required. See [font stage](font-stage.md).
    and lifecycle host coverage does not establish DMA/cache or panel behavior.
 6. Remaining priorities: whole-display GE rotation, board input providers and
    compressed vendor formats/media widgets as separate scopes.
+
+## SDK parity audit
+
+The following distinctions come from the checked-out SDK v9 driver sources,
+not from assumptions that every LVGL draw feature is hardware accelerated.
+
+| Capability | SDK source evidence | Port status / next work |
+|---|---|---|
+| Image tiling | lv_ge2d/lv_draw_ge2d_img.c calls the tiled image helper | Genuine GE gap; add clipped tile dispatch and numeric contracts |
+| YUV image input | lv_ge2d/lv_draw_ge2d.c accepts YUV with orthogonal rotations | Genuine gap; needs multi-plane ownership, format metadata and GE/SW behavior |
+| fake image | aic_ui.h encodes dimensions/blend/color in a .fake path; GE turns it into a fill | Compatibility gap, not an external video-buffer format |
+| Arbitrary rotation plus scale | ge2d_draw_img_supported explicitly rejects it | Future extension beyond this SDK baseline |
+| Recolor / bitmap mask | ge2d_draw_img_supported explicitly rejects both | Software fallback is consistent with SDK; GE support is an extension |
+| Screen rotation | SDK submits a synchronous rotated bitblt | Port implemented, 90-degree target build passes; board acceptance pending |
+| AICP / BMP | SDK codec / custom software BMP paths | Port implemented and target-built with resource probes; hardware results pending |
+
+Camera/player/video-window widgets remain genuine separate gaps. Their
+device and frame lifetime contracts must be ported explicitly; enabling
+native LVGL widgets or accepting .fake strings does not supply those devices.
+The broad goal still includes GE extensions, but they must not be reported
+as missing SDK functionality when the SDK itself declines them.
 
 This sequence supersedes the old instruction to stop after 3C5. It does not
 waive hardware verification or authorize flashing.
