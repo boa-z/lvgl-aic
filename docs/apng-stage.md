@@ -31,7 +31,7 @@ APNG data remains sufficient; no SDK-private LVGL structs are imported.
   PNG rectangle decoding with Pillow: **100/100 frames PASS**. SDK assets remain
   in the SDK checkout and are not copied into this component repository.
 - Strict E907 compilation through check-player-session.ps1: **PASS**.
-- Scheduling, widget/backend selection, real MPP PNG decode
+- Integrated worker scheduling, widget/backend selection, real MPP PNG decode
   and GE/board execution are still **NOT_RUN / not integrated**. The existing
   media firmware is not an APNG playback image.
 
@@ -68,6 +68,41 @@ python tests/host/apng_sdk_probe.py --sdk ../../../../.. --exe output/lvgl-host-
 Evidence is output/apng-sdk-probe/result.json and per-frame PNG/RGBA files.
 Assets are local SDK inputs and are not published in this repository. This is
 software reference evidence only: file/MPP decode worker, bounded asynchronous
-frame publication, APNG delay/loop/rate scheduling, source/backend selection,
+frame publication, APNG timeline integration, source/backend selection,
 seek/groups and hardware GE/board tests remain unfinished. The currently saved
 media image predates this APNG foundation and does not exercise it.
+
+## Worker timeline foundation (2026-10-03)
+
+`common/lv_aic_apng_timeline.[ch]` supplies serialized, allocation-free control
+for a future APNG worker. It returns FRAME/WAIT/PAUSED/ENDED and a conservative
+microsecond wait; it never sleeps. Every disposal-dependent frame is requested
+in sequence even after late decode. The caller may skip publishing intermediate
+results during catch-up, but must still decode/compose them. Each play begins
+with reset_canvas so PREVIOUS/BACKGROUND cannot leak across animation loops.
+Finite plays end only after the final frame's delay. Static PNG ends after its
+single commit while the consumer retains its pixels.
+
+Rate is an explicit rational numerator/denominator, each <=1,000,000 and ratio
+0.1..10. No floating-point clock drift is introduced. Media progression carries
+fractional rate time; frame deadlines use 32 fractional bits below a microsecond.
+Pause freezes media time, rate changes preserve the current position, and an
+explicit minimum delay (1..1,000,000 us) handles zero/too-short frame delays.
+Backward time, invalid rates and overflow fail without changing clock/output.
+A rate-denominator change may truncate less than one microsecond of fractional
+media time. Wait hints round conservatively; actual due decisions include the
+fractional deadline. The existing SDK-paced video worker does not use this clock.
+
+Host **35/35 PASS**: finite/infinite loops, final hold, zero-delay floor, static
+PNG, pause/idempotent pause/resume, 0.1x/2x/rational rates, late decode ordering,
+6000 frames at 60 Hz without whole-microsecond-per-frame drift, clock endpoints,
+invalid-rate/backward/overflow transactions. Strict E907 compilation **PASS**;
+output/lvgl-apng-timeline.o SHA256:
+`65b3dc0a153a2fa284f35675e64b88f04c2e239e117d11555804950474861495`.
+
+MPP integration review: SDK PNG supports ARGB/ABGR/RGBA/BGRA8888 output, but the
+existing LVGL MPP image decoder owns LVGL objects and must not be called directly
+from a background APNG worker. A separate bounded MPP PNG adapter, explicit
+RGBA/native byte-order handoff, asynchronous immutable publication and widget
+backend selection remain to be implemented. No new APNG firmware image or
+physical playback acceptance is claimed by this stage.
