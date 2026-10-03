@@ -24,6 +24,12 @@ typedef struct {
  * Each session is single-worker-owned; registry contention makes open fail
  * or close return BUSY (retry). Faulted sessions retain their claims forever. */
 lv_aic_spi_session_t *lv_aic_spi_session_open(const lv_aic_spi_session_config_t *config);
+/* Allocate dedicated 64-byte-aligned CMA tx storage. config.tx must be NULL
+ * and config.capacity zero; budget bounds the rounded pixel allocation only
+ * (metadata excluded). Failed open frees allocation; successful close drains
+ * before freeing. FAULT retains both allocation and bus claim until reboot. */
+lv_aic_spi_session_t *lv_aic_spi_session_open_owned(const lv_aic_spi_session_config_t *config,
+    size_t pixel_budget);
 lv_aic_spi_result_t lv_aic_spi_session_submit(lv_aic_spi_session_t *session,
     const lv_aic_spi_rgb565_frame_t *source,unsigned clockwise_degrees);
 lv_aic_spi_result_t lv_aic_spi_session_drain(lv_aic_spi_session_t *session);

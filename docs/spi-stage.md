@@ -177,7 +177,29 @@ all component SPI references resolve within the combined object, while OS/driver
 functions remain unresolved for the final application link. Combined object SHA256
 `bad0ad4bb934790a09569282fd139f1e52daaaf3d6de54a3cf0709ab17746ff4`.
 
-Still open: owned CMA allocation convenience, real panel initialization/D-C setup,
+Still open: real panel initialization/D-C setup,
 LVGL display/flush integration, SDK-shaped blit API, QSPI display mode and target
 runtime acceptance. A provided preconfigured panel can use this composed session,
 but no physical SPI transfer has been performed here. Hardware **NOT_RUN**.
+
+
+## Owned CMA session storage
+
+`lv_aic_spi_session_open_owned(config, pixel_budget)` provides application-owned
+CMA allocation for the composed session. Set `tx=NULL` and `capacity=0`;
+the budget covers RGB565 pixel bytes rounded up to 64 bytes, excluding metadata.
+The buffer is allocated with `aicos_malloc_align(MEM_CMA, ..., 64)` and passes
+through the same address, capacity, bus and overlap checks as borrowed storage.
+Failed admission frees the temporary allocation. Successful close waits for
+checked completion before freeing CMA; BUSY or FAULT retains owned storage.
+A faulted session continues reserving its bus and buffer until reboot.
+
+Validation: **61/61 host PASS**, including budget rejection, allocation failure,
+misalignment and invalid configuration cleanup, ten balanced allocate/submit/close
+cycles, and fault retention. A same-bus reopen uses a distinct temporary buffer
+and frees only that rejected buffer. D13x real-header compilation and component
+partial link **PASS**, including the new public API. Combined object SHA256:
+`e90eca4707a6c506cbf0c7954a403ec9dc2ed23c7e7f3fb31847699c4c012e59`.
+Logs: `output/spi-owned-tests.log`, `output/spi-owned-target.log`.
+OS/driver references remain for final application linkage; no SPI panel runtime
+or hardware acceptance is claimed (**NOT_RUN**).

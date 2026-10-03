@@ -3,6 +3,7 @@
 #include "lvgl.h"
 #include <rtdevice.h>
 #include <assert.h>
+#include <aic_osal.h>
 #include <string.h>
 #ifdef _WIN32
 #include <windows.h>
@@ -14,6 +15,17 @@ static unsigned status;
 static int wait_error;
 static uint8_t *tx;
 static uint8_t saved[12];
+static unsigned allocs,frees;
+static bool fail_alloc,bad_alignment;
+static uint8_t *owned_pixels;
+void *aicos_malloc_align(unsigned int type,size_t bytes,size_t alignment)
+{
+    assert(type==MEM_CMA && bytes==64 && alignment==64);
+    if(fail_alloc) return NULL;
+    allocs++;return owned_pixels+(bad_alignment?1:0);
+}
+void aicos_free_align(unsigned int type,void *pointer)
+{ assert(type==MEM_CMA && (pointer==owned_pixels || pointer==owned_pixels+1));frees++; }
 static void present(void) {}
 void aicos_dcache_clean_range(unsigned long *p,unsigned long bytes)
 { assert((uint8_t *)p==tx && bytes==64);cleans++; }
@@ -55,7 +67,33 @@ int main(void)
     assert(lv_aic_spi_session_submit(s,&f,180)==LV_AIC_SPI_OK && waits==1);
     assert(tx[0]==12 && tx[1]==11);
     assert(lv_aic_spi_session_close(s)==LV_AIC_SPI_OK && waits==2);
-    c.device=&device;c.tx=tx;s=lv_aic_spi_session_open(&c);assert(s);
+    uint8_t *borrowed=tx;owned_pixels=tx+4096;
+    c.device=&device;c.tx=NULL;c.capacity=0;
+    assert(!lv_aic_spi_session_open_owned(&c,63) && !allocs);
+    fail_alloc=true;assert(!lv_aic_spi_session_open_owned(&c,64));fail_alloc=false;
+    bad_alignment=true;assert(!lv_aic_spi_session_open_owned(&c,64));bad_alignment=false;
+    assert(allocs==frees);
+    c.data_lines=3;assert(!lv_aic_spi_session_open_owned(&c,64));c.data_lines=1;
+    assert(allocs==frees);
+    for(unsigned cycle=0;cycle<10;cycle++) {
+        s=lv_aic_spi_session_open_owned(&c,64);assert(s);tx=owned_pixels;
+        assert(lv_aic_spi_session_submit(s,&f,0)==LV_AIC_SPI_OK);
+        unsigned before_free=frees;
+        assert(lv_aic_spi_session_close(s)==LV_AIC_SPI_OK && frees==before_free+1);
+        assert(allocs==frees);
+    }
+    /* Owned fault retains CMA just as borrowed faults retain caller storage. */
+    s=lv_aic_spi_session_open_owned(&c,64);assert(s);tx=owned_pixels;
+    assert(lv_aic_spi_session_submit(s,&f,0)==LV_AIC_SPI_OK);
+    wait_error=-1;unsigned before_free=frees;
+    assert(lv_aic_spi_session_close(s)==LV_AIC_SPI_FAULT && frees==before_free);
+    assert(allocs==frees+1);
+    /* A real allocator must not recycle the still DMA-owned block. */
+    owned_pixels+=64;
+    assert(!lv_aic_spi_session_open_owned(&c,64) && allocs==frees+1);
+    /* A second bus can independently exercise borrowed fault retention. */
+    wait_error=0;tx=borrowed;c.device=&other;c.tx=tx;c.capacity=64;
+    s=lv_aic_spi_session_open(&c);assert(s);
     assert(lv_aic_spi_session_submit(s,&f,0)==LV_AIC_SPI_OK);
     wait_error=-1;assert(lv_aic_spi_session_close(s)==LV_AIC_SPI_FAULT);
     assert(!lv_aic_spi_session_open(&c));

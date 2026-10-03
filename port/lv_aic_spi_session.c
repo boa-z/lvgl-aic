@@ -11,6 +11,7 @@ struct lv_aic_spi_session {
     lv_aic_spi_session_config_t config;
     struct rt_spi_bus *bus;
     size_t cache_bytes;
+    bool owns_tx;
     lv_aic_spi_transfer_t *transfer;
     struct lv_aic_spi_session *next;
 };
@@ -65,6 +66,21 @@ lv_aic_spi_session_t *lv_aic_spi_session_open(const lv_aic_spi_session_config_t 
     }
     release_registry();return s;
 }
+lv_aic_spi_session_t *lv_aic_spi_session_open_owned(const lv_aic_spi_session_config_t *c,size_t budget)
+{
+    if(!c || c->tx || c->capacity || !c->width || !c->height || c->width>4096 || c->height>4096)
+        return NULL;
+    size_t bytes=((size_t)c->width*c->height*2+63)&~(size_t)63;
+    if(bytes>budget) return NULL;
+    lv_aic_spi_session_config_t owned=*c;
+    owned.tx=aicos_malloc_align(MEM_CMA,bytes,64);
+    if(!owned.tx) return NULL;
+    owned.capacity=bytes;
+    lv_aic_spi_session_t *s=lv_aic_spi_session_open(&owned);
+    if(!s) aicos_free_align(MEM_CMA,owned.tx);
+    else s->owns_tx=true;
+    return s;
+}
 lv_aic_spi_result_t lv_aic_spi_session_submit(lv_aic_spi_session_t *s,
     const lv_aic_spi_rgb565_frame_t *source,unsigned degrees)
 { return s ? lv_aic_spi_transfer_submit(s->transfer,source,degrees) : LV_AIC_SPI_INVALID; }
@@ -83,6 +99,8 @@ lv_aic_spi_result_t lv_aic_spi_session_close(lv_aic_spi_session_t *s)
     lv_aic_spi_session_t **slot=&sessions;
     while(*slot && *slot!=s) slot=&(*slot)->next;
     if(*slot) *slot=s->next;
-    release_registry();lv_free(s);return LV_AIC_SPI_OK;
+    release_registry();
+    if(s->owns_tx) aicos_free_align(MEM_CMA,s->config.tx);
+    lv_free(s);return LV_AIC_SPI_OK;
 }
 #endif
