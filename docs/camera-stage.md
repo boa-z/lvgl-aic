@@ -124,7 +124,7 @@ with those constants. The separate selection operation is implemented below.
 
 启用 AIC_LVGL_USE_CAMERA（依赖 VIN）后，include/lv_aic_camera.h 提供创建、格式、
 打开、开始、暂停、恢复、停止及关闭接口。它是 LVGL image 子类，借助现有 YUV
-发布器走 GE 或软件合成；传感器输入切换见下节，尚未实现 SDK 独立视频层或 barcode。
+发布器走 GE 或软件合成；传感器输入切换、独立视频层和 barcode 的后续实现见下节。
 
 应用必须先初始化 YUV decoder，并通过 configure 明确设备名、VIN 队列索引和
 传感器色彩空间。不会默认猜测 BT.601/BT.709。格式默认 NV16，支持 NV12/YUV400。
@@ -148,8 +148,8 @@ English contract: application-owned image widget; asynchronous request/status
 semantics, explicit colorimetry, complete device reopen on restart, and deferred
 orphan cleanup. The state event may delete the widget. Keep UI timers alive
 until deleted bindings drain. This is not binary/source compatibility for the
-SDK's public struct, synchronous return semantics, video-plane,
-or optional barcode APIs.
+SDK's public struct or synchronous return semantics. Later sections describe
+the opt-in video-plane and SDK-shaped barcode APIs.
 
 Evidence for this stage:
 - Host **24/24 PASS**. Real LVGL widget/decoder/software renderer checks 20
@@ -237,7 +237,8 @@ not sensor, DE, DMA or panel evidence. `check-vin-session.ps1 -WithVideoPlane`
 compiles the enabled camera and shared window against D13x target headers and
 checks actual camera references to window present/close. Full camera-enabled
 image linking still requires application-supplied sensor/board configuration;
-no bus or sensor selection is inferred. Barcode support remains absent.
+no bus or sensor selection is inferred. Barcode integration is recorded in the
+subsequent stages below.
 
 Stage evidence: **56/56 host PASS**; strict enabled-camera/window D13x compile
 **PASS**, including actual camera references to window presentation and close.
@@ -335,3 +336,13 @@ capture configuration/poll and capture reference to decoder. Logs:
 Camera-enabled firmware link, physical capture/decoding, throughput and decoder
 stack/internal allocation acceptance remain **NOT_RUN**. Earlier stage notes
 about missing barcode APIs are historical; this section supersedes them.
+
+
+Post-integration regression: full GE/fonts/GIF/widgets/AICP/player/APNG/barcode
+boot/app/static/image/manifest **PASS**, clean component
+`9f7cd6198325e2571b8f7d27d62d4bc8d2d1b3ce`, SDK
+`c375eb8f37273fd09dbd8b39ca8dc14545eb7686`. Image SHA256
+`9524bfe6d1b376f7f2a99862e1c91665f51e6d714f76fe7fd4071cf8da637913`.
+Camera is disabled in this regression profile, so the unchanged image is
+expected; it is not camera-enabled link/runtime evidence. The manifest and
+logs are under SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.

@@ -141,7 +141,11 @@ concurrent host evidence. The camera image widget adds prepare/start, pause/
 resume, stop/reopen and deferred deletion, tested against the real worker and
 mocked SDK. Worker-side sensor input selection now reports driver acknowledgment separately
 from request acceptance. Explicit camera video-plane ownership now shares the player window adapter;
-barcode, camera-enabled image linking and board execution remain unverified or missing.
+the SDK-shaped barcode enable/disable/only/callback APIs now use a bounded worker
+mailbox with callbacks on the LVGL owner. Host lifecycle tests and strict D13x
+combined-feature compilation pass. Camera-enabled final image linking, real
+barcode decoding, throughput/stack budget and board execution remain unverified.
+See [camera stage](camera-stage.md) for configuration and callback lifetime.
 
 This sequence supersedes the old instruction to stop after 3C5. It does not
 waive hardware verification or authorize flashing.
@@ -840,3 +844,20 @@ APNG boot/app/static/image/manifest **PASS**. Clean component
 `87cc9b57cfcc9a4405eceb2d4fba72c93b8a3be9`, SDK
 `06cc6063f1271e23ed37865a618a3ddd2bfc1bbd`. Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
 SHA256 `25d3342646ef58b4626e520c6e6e7324cf70135ed0092e62823bfd26464d3103`. Board **NOT_RUN**.
+
+
+### Camera barcode integration regression (2026-10-04)
+
+SDK-shaped widget APIs and worker decoding are implemented with explicit opt-in;
+this is no longer an absent API gap. Host **57/57 PASS**, including callback-driven
+close/deletion, binary data, mailbox backpressure and in-flight cancellation.
+Strict camera + video-plane + barcode D13x compile and symbol references **PASS**.
+Full GE/fonts/GIF/widgets/AICP/player/APNG/barcode boot/app/static/image/manifest
+regression **PASS** from clean component `9f7cd6198325e2571b8f7d27d62d4bc8d2d1b3ce`
+and SDK `c375eb8f37273fd09dbd8b39ca8dc14545eb7686`.
+Image SHA256 `9524bfe6d1b376f7f2a99862e1c91665f51e6d714f76fe7fd4071cf8da637913`.
+The image is unchanged because this regression profile disables camera capture.
+It links the barcode adapter/vendor archive but does not invoke decoding.
+Evidence lives in SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode/manifest.json`.
+Camera-enabled final linking and physical acceptance are **NOT_RUN**; do not
+substitute this image for a sensor-configured camera test.

@@ -211,4 +211,6 @@ config AIC_LVGL_USE_BARCODE
         Links the SDK decoder archive without enabling the SDK barcode demo.
         Synchronous worker API, CPU-coherent camera Y planes, exclusive decoder
         use. Vendor internal memory has no shutdown/budget API. D13x verified
-        at compile/link level only; no automatic capture or UI callback.
+        at compile/link level only. Optional camera widget integration decodes
+        on the VIN worker and delivers callbacks on the LVGL owner. Enabling
+        this alone does not configure/start a camera or register a callback.
