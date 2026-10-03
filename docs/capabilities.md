@@ -199,3 +199,10 @@ compile, live-link, package and provenance checks via `build.ps1 -WithApng`.
 APNG is linked but not auto-played; an interactive APNG test page and physical
 codec/timing/display acceptance remain open. Exact source/image hashes are in
 [APNG stage evidence](apng-stage.md).
+
+The APNG acceptance overlay is now part of the clean combined firmware profile,
+with original generated finite/infinite/static fixtures and the UI-thread
+`lv_aic_apng_test` shell mailbox. Host **39/39 PASS**, independent fixture
+composition **9/9 PASS**, full image/link checks **PASS**. Hardware execution is
+**NOT_RUN**; this closes the missing manual test entry, not physical acceptance
+or SDK unified backend/seek compatibility.

@@ -336,3 +336,35 @@ and deletion with outstanding draws. Capture raw logs, image identity, memory
 recovery and panel behavior separately. The existing smoke pages do not yet
 provide these APNG controls; an interactive test page remains a development item.
 SDK unified player backend selection/seek compatibility also remains open.
+
+## Interactive acceptance image (2026-10-03)
+
+The manual overlay and UI-thread command mailbox are now included in the opt-in
+APNG profile. `lv_aic_apng_test show` opens controls for pause/resume, 0.5x/1x/2x,
+replay, next source and close. Three deterministic original stdlib-generated
+fixtures are staged automatically: a two-play disposal animation, its infinite
+variant, and static PNG. The UI reports state, frame/composed/published counts
+and applied rate. Existing smoke pages remain behind the overlay. Shell only
+queues commands; it never calls LVGL from FinSH. See
+[manual acceptance instructions](../tests/manual/README.md#apng-acceptance-overlay).
+
+Host **39/39 PASS**, including overlay creation/reopening, source/pause/rate/close
+button events and orphan cleanup. Generated fixtures: **9/9 frames PASS** through
+C extraction/composition versus Pillow-decoded rectangles with explicit alpha
+composition (maximum channel error 0). Full APNG-seek decoding in Pillow 12.3.0
+was excluded as alpha oracle after it returned 191 instead of 255 for an OVER
+patch on opaque background; the independent rectangle reference remains correct.
+
+Combined firmware boot/app/static/image/manifest **PASS**. Live APNG show/poll
+symbols and `__fsym_lv_aic_apng_test` are present. Staged SHA256 inventory includes
+all three generated PNGs. Clean build source identities:
+- SDK `446a59ae39ad2a24f045e91d017f38833985b369`
+- lvgl-aic `0730132b63dd07068da7aeb06ad82cf28d96b958`
+- LVGL `80ca777e37a2b176770726a02e07a6fb79ef0b39`
+
+Latest image (same profile directory replaces prior artifact):
+`output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`
+SHA256: `94d8f9e2c2060ed9c77ebd0ddbac1707c0939e4de2bab7396c70b1f046f10773`.
+ELF SHA256: `636bcbc8ec39d78dbd83750729ea5f5ed4a93549409be7b3a62fd7dab808bd78`.
+Board execution/panel/timing/memory acceptance **NOT_RUN**; no flashing performed.
+SDK unified player backend/seek compatibility and other documented SDK gaps remain.
