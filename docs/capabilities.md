@@ -52,7 +52,7 @@ phase documents are historical; source presence and switches are not board proof
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
 | GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded transformed tiling, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, arbitrary-angle plus scale, recolor/masks; YUV uses the separate frame path below |
 | GE scale | Nominal 1/16..16; pivot/clip/per-axis handling | Small/unsafe geometry and D13x split interval fall back |
-| GE LAYER | Plain composition, bounded 1/16..16 scale with right-angle rotation, and unscaled arbitrary-angle rotation when the child buffer is accessible | Ordinary D13x heap source and ROTATE regions outside 4..4096 fall back; arbitrary-angle plus scale, YUV and general HW layers remain absent |
+| GE LAYER | Plain composition, bounded 1/16..16 scale with right-angle rotation, and unscaled arbitrary-angle rotation when the child buffer is accessible | Bounded default CMA draw buffers remove the ordinary-heap barrier; allocation fallback and ROTATE regions outside 4..4096 still use software; arbitrary-angle plus scale, YUV and general HW layers remain absent |
 | Scheduling | Synchronous, error/task counters, bounded refresh timing | Async work and paired GE ON/OFF board timing |
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
@@ -811,3 +811,10 @@ release, exercising all four formats, budget/allocation fallback, handler
 isolation, fault retention and repeated LVGL lifetime. Final target disassembly
 must show the LVGL layer allocation call routed through the wrapper. Physical
 layer composition/cache acceptance remains NOT_RUN.
+
+CMA draw-buffer evidence: **55/55 host PASS**; full GE/fonts/GIF/widgets/AICP/
+player/APNG boot/app/static/image/manifest **PASS**, including the actual LVGL
+layer allocator call site. Clean component `c1574ee837101a14c59cdb1000e9831358433f1d`,
+SDK `65edf972ea87542192b14a2b14c9f9d82e9a31a9`.
+Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `66ea09e3f6b5a7f9450c3e9855bdaedbf6519f78e1386841e3aaf91ab5145394`. Board **NOT_RUN**.
