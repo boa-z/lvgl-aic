@@ -240,6 +240,7 @@ def main():
     parser.add_argument("--with-widgets", action="store_true")
     parser.add_argument("--with-player", action="store_true")
     parser.add_argument("--with-apng", action="store_true")
+    parser.add_argument("--with-barcode", action="store_true")
     parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
@@ -289,6 +290,18 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("APNG live symbol absent: " + symbol)
         print("APNG widget/worker/codec/composition/timing live symbols: PASS")
+    enabled = re.search(r"^CONFIG_AIC_LVGL_USE_BARCODE=y$", config, re.MULTILINE) is not None
+    if enabled != args.with_barcode:
+        fail("barcode profile mismatch")
+    if args.with_barcode:
+        if "CONFIG_AIC_USING_BARCODE_DEMO=y" in config:
+            fail("SDK barcode demo conflicts with decoder ownership")
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_aic_barcode_decode", "Initial_Decoder", "Decoding_Image",
+                       "GetResultLength", "GetDecoderResult", "Set_Donfig_Decoder"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("barcode decoder live symbol absent: " + symbol)
+        print("SDK barcode archive and worker adapter live symbols: PASS (not decoder execution)")
     turns = args.rotation // 90
     if args.with_aicp:
         if "CONFIG_AIC_MPP_AICP_DEC_ENABLE=y" not in config or not re.search(

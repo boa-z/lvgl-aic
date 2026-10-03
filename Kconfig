@@ -202,3 +202,13 @@ config AIC_LVGL_USE_CANVAS
     bool "Enable application-owned AIC canvas"
     default n
     depends on AIC_LVGL_PORT
+
+config AIC_LVGL_USE_BARCODE
+    bool "Enable application-owned SDK barcode worker adapter"
+    depends on AIC_LVGL_PORT && !AIC_USING_BARCODE_DEMO
+    default n
+    help
+        Links the SDK decoder archive without enabling the SDK barcode demo.
+        Synchronous worker API, CPU-coherent camera Y planes, exclusive decoder
+        use. Vendor internal memory has no shutdown/budget API. D13x verified
+        at compile/link level only; no automatic capture or UI callback.

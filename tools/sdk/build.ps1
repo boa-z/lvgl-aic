@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
@@ -24,6 +24,7 @@ if ($WithWidgets) { $variant += '-widgets' }
 if ($WithAicp) { $variant += '-aicp' }
 if ($WithPlayer) { $variant += '-player' }
 if ($WithApng) { $variant += '-apng' }
+if ($WithBarcode) { $variant += '-barcode' }
 if ($Rotation) { $variant += "-rotate$Rotation" }
 $evidence=Join-Path $root "output/lvgl-evidence/$variant"
 New-Item -ItemType Directory -Force $evidence | Out-Null
@@ -76,7 +77,7 @@ if ($Phase -eq 'ge2d') {
 $defPath=Join-Path $root "target/configs/$def"
 $originalDef=[IO.File]::ReadAllBytes($defPath)
 try {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng) {
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode) {
         [IO.File]::WriteAllBytes("$evidence/defconfig-original", $originalDef)
         $settings=@("CONFIG_AIC_LVGL_DISPLAY_ROTATION=$([int]($Rotation / 90))")
         if ($WithFonts) { $settings += @('CONFIG_AIC_LVGL_USE_FREETYPE=y', 'CONFIG_LPKG_USING_FREETYPE=y', 'CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64') }
@@ -84,6 +85,7 @@ try {
         if ($WithWidgets) { $settings += @('CONFIG_AIC_LVGL_USE_CANVAS=y', 'CONFIG_AIC_LVGL_USE_IMG_ROLLER=y', 'CONFIG_AIC_LVGL_USE_SWIPE_V1=y'); if ($Phase -eq 'ge2d') { $settings += 'CONFIG_AIC_LVGL_USE_VIDEO_WINDOW=y' } }
         if ($WithAicp) { $settings += 'CONFIG_AIC_MPP_AICP_DEC_ENABLE=y' }
         if ($WithPlayer) { $settings += @('CONFIG_AIC_LVGL_USE_VIDEO_PLANE=y', 'CONFIG_AIC_LVGL_USE_PLAYER=y', 'CONFIG_AIC_LVGL_USE_PLAYER_SESSION=y', 'CONFIG_AIC_MPP_PLAYER_INTERFACE=y', 'CONFIG_AIC_MPP_PLAYER_VIDEO_EXT_RENDER=y', 'CONFIG_AIC_MPP_H264_DEC_ENABLE=y') }
+        if ($WithBarcode) { $settings += 'CONFIG_AIC_LVGL_USE_BARCODE=y' }
         if ($WithApng) { $settings += @('CONFIG_AIC_LVGL_USE_APNG=y', 'CONFIG_AIC_LVGL_USE_APNG_WIDGET=y') }
         $content=[IO.File]::ReadAllText($defPath)
         foreach ($setting in $settings) {
@@ -97,7 +99,7 @@ try {
     Run-Step 'app-config' @($scons,"--apply-def=$def")
     Run-Step 'app-build' @($scons,"-j$Jobs")
 } finally {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
 }
 $app='output/'+($def -replace '_defconfig$','')+'/images'
 $checkArgs=@("$PSScriptRoot/check_integration.py",'--root','.', '--map',"$app/d13x.map",'--phase',$Phase)
@@ -108,6 +110,7 @@ if ($WithWidgets) { $checkArgs += '--with-widgets' }
 if ($WithAicp) { $checkArgs += '--with-aicp' }
 if ($WithPlayer) { $checkArgs += '--with-player' }
 if ($WithApng) { $checkArgs += '--with-apng' }
+if ($WithBarcode) { $checkArgs += '--with-barcode' }
 $checkArgs += @('--rotation', "$Rotation")
 Run-Step 'static-check' $checkArgs
 Run-Step 'image-check' @("$PSScriptRoot/verify_image.py",$app,'output/d13x_d50t-2-lite_baremetal_bootloader/images',$Phase)

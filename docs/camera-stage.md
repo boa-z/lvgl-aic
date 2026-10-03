@@ -248,3 +248,25 @@ manifest gates **PASS**, with camera disabled. Clean component
 `527b5f006f9abd98437cc8a0f087ad539fb449e7`. Regression image SHA256
 `27fc9175b47abb0ff9d01406fa7c0274c8d424beea195faaeaa8947dce5d7a11`.
 Camera-enabled final linking and all physical capture/scanout remain **NOT_RUN**.
+
+## Bounded barcode worker adapter (2026-10-04)
+
+`AIC_LVGL_USE_BARCODE` links the existing SDK `libdecoder.a` from the application
+build without enabling the SDK barcode demo or redistributing that archive.
+`lv_aic_barcode_decode` accepts CPU-coherent I400/NV12/NV16 camera frames,
+validates capacities and overlap, and packs padded Y rows into a private
+<=2 MiB staging buffer. The SDK may modify this buffer without modifying the
+producer frame. A nonblocking atomic guard serializes initialization, decode
+and result copy; competing calls return BUSY. Other unmanaged SDK decoder
+users must not run concurrently. The vendor decoder has no shutdown API;
+its internal memory remains opaque and outside the staging budget.
+
+Results are binary bytes, limited to 4096 and caller capacity. Oversized
+lengths are rejected before the unbounded vendor copy API is called; a private
+result buffer also reserves one byte for a possible vendor terminator. Failure
+leaves caller output unchanged and clears result length. Host contracts use
+mocked vendor entrypoints and cover padded rows, source immutability, result
+guards, initialization failure/retry, empty/oversized results and reentrancy.
+`build.ps1 -WithBarcode` adds a separate opt-in link-evidence profile; it never
+starts decoding or capture. Camera worker scheduling and SDK-shaped barcode
+callbacks/only mode remain to be integrated. Real barcode decoding is NOT_RUN.

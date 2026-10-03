@@ -51,6 +51,14 @@ Env.AppendUnique(CCFLAGS=['-include', 'lvgl_aic_build_config.h'])
 if GetDepend('AIC_LVGL_USE_PLAYER_SESSION') or GetDepend('AIC_LVGL_USE_APNG'):
     Env.AppendUnique(LINKFLAGS=['-Wl,--wrap=ve_get_client'])
 
+if GetDepend('AIC_LVGL_USE_BARCODE'):
+    if GetDepend('AIC_USING_BARCODE_DEMO'):
+        raise RuntimeError('Application barcode requires exclusive decoder ownership')
+    barcode = os.path.join(AIC_ROOT, 'packages', 'artinchip', 'barcode')
+    includes += [os.path.join(barcode, 'include')]
+    Env.AppendUnique(LIBPATH=[os.path.join(barcode, 'lib')], LIBS=['decoder.a'])
+    Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_barcode_decode'])
+
 src = Glob('port/*.c') + Glob('image/mpp/*.c') + Glob('common/*.c') + Glob('draw/ge2d/*.c')
 if GetDepend('AIC_LVGL_USE_CANVAS'):
     src += Glob('widgets/lv_aic_canvas.c')

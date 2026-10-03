@@ -974,3 +974,16 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME lvgl_aic_camera_plane_widget_contract COMMAND lvgl_aic_camera_plane_widget_contract)
 set_tests_properties(lvgl_aic_camera_plane_widget_contract PROPERTIES TIMEOUT 15)
+
+if(EXISTS "${AIC_SDK_ROOT}/packages/artinchip/barcode/include/yydecoder.h")
+    add_executable(lvgl_aic_barcode_contract barcode_contract.c
+        "${AIC_ROOT}/common/lv_aic_barcode.c" "${AIC_ROOT}/common/lv_aic_yuv.c")
+    target_include_directories(lvgl_aic_barcode_contract PRIVATE "${AIC_ROOT}/include"
+        "${AIC_SDK_ROOT}/packages/artinchip/barcode/include")
+    target_compile_definitions(lvgl_aic_barcode_contract PRIVATE AIC_LVGL_USE_BARCODE=1)
+    target_link_libraries(lvgl_aic_barcode_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_barcode_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_barcode_contract COMMAND lvgl_aic_barcode_contract)
+endif()
