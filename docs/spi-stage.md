@@ -352,3 +352,32 @@ This is the frame lifetime primitive. OS thread creation/wakeup/join, actual LVG
 display binding/flush-ready, direct-blit mode and enabled-device final linkage
 remain to integrate. Host concurrency is not target scheduler or panel evidence;
 hardware **NOT_RUN**.
+
+
+## RTOS session worker
+
+`lv_aic_spi_worker_create` starts an RT-Thread OSAL worker around the bounded
+handoff. Stack size and priority are explicit (minimum stack 1024, priority must
+fit RT-Thread's configured range). The worker alone calls session submit/drain.
+Producer submit/take/stop/close APIs remain on one UI thread; they never call
+LVGL display functions. A semaphore wakes the worker, with a 10 ms bounded wait
+so notification failure does not orphan accepted work.
+
+Stop closes admission first, then publishes the exit request. The worker checks
+for a final queued frame after observing stop, finishes it and publishes resource
+quiescence as its final context access before returning. Close is nonblocking:
+it refuses until quiescence and consumption of outstanding completion. This is
+an application-resource lifetime handshake, not an OS thread-reclamation join;
+RT-Thread reclaims the returned dynamic thread. No forced deletion is used.
+Session/tx/command contexts are borrowed and are not freed by worker close.
+On transport fault they retain their separate reboot-only lifetime.
+
+Validation: **64/64 host PASS**. Pthread-backed OSAL contract covers semaphore
+and thread allocation failures, priority/stack rejection, lost wake recovery,
+stop while DMA completion is blocked, refusal to close active/unconsumed work,
+fault delivery and balanced semaphore cleanup. D13x real OSAL headers compile
+and component partial link PASS. Combined object SHA256:
+`145af3afa3b084934722abb90c207370935a5cea7e5e017176236a8a11a700c2`.
+Logs: `output/spi-worker-tests.log`, `output/spi-worker-target.log`.
+Actual target scheduling, final enabled-device linkage, LVGL display binding,
+blit mode and board output remain unverified; hardware **NOT_RUN**.
