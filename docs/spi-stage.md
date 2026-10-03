@@ -522,3 +522,29 @@ compile/partial link PASS; combined SHA256:
 Logs: `output/spi-stats-tests.log`, `output/spi-stats-target.log`.
 Final firmware symbol gate includes the new API; the prior final image predates
 this increment. Hardware **NOT_RUN**.
+
+
+## Composed display-to-driver host regression
+
+The new `spi_pipeline_contract` links the actual LVGL renderer, display binding,
+OSAL worker, atomic handoff, panel sequence, session, transfer core, packer and
+checked SDK bridge in one executable. Only OSAL thread/semaphore/memory/cache
+and bottom-level SPI driver calls are modeled. Threads execute via pthreads;
+CMA pixels use real mapped low-address storage. It does not replace any component
+SPI layer with a success stub.
+
+Six alternating black/white frames run through two LVGL draw buffers, then the
+same display is claimed for direct red RGB565 blit. All seven frames execute
+explicit RAMWR/D-C setup, 90-degree rotation/resize, wire byte swap, bounded cache
+handoff and checked completion. The driver checks pixel bytes and verifies that
+in-flight storage stays unchanged across its simulated wait. Normal shutdown
+balances CMA and semaphore allocation, with guards outside pixel extent intact.
+A second complete run injects pixel-DMA timeout: claim reports FAULT, statistics
+record failure, display/worker cleanup finishes, but the session, DMA allocation,
+bus claim and panel context remain alive without replay or early free.
+
+**66/66 host PASS**. Logs `output/spi-pipeline-build.log` and
+`output/spi-pipeline-tests.log`. This strengthens composed source/thread lifetime
+evidence; it does not prove target cache behavior, pin sequencing, QSPI IRQ timing
+or panel output. Hardware **NOT_RUN**. Production source is unchanged in this
+regression increment; the blit/statistics enabled-firmware refresh remains pending.

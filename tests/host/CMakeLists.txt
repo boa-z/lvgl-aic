@@ -1069,3 +1069,18 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME lvgl_aic_spi_display_contract COMMAND lvgl_aic_spi_display_contract)
 set_tests_properties(lvgl_aic_spi_display_contract PROPERTIES TIMEOUT 30)
+
+add_executable(lvgl_aic_spi_pipeline_contract spi_pipeline_contract.c
+    "${AIC_ROOT}/port/lv_aic_spi_display.c" "${AIC_ROOT}/port/lv_aic_spi_worker.c"
+    "${AIC_ROOT}/port/lv_aic_spi_handoff.c" "${AIC_ROOT}/port/lv_aic_spi_session.c"
+    "${AIC_ROOT}/port/lv_aic_spi_panel.c" "${AIC_ROOT}/port/lv_aic_spi_sdk.c"
+    "${AIC_ROOT}/common/lv_aic_spi_transfer.c" "${AIC_ROOT}/common/lv_aic_spi_frame.c")
+target_include_directories(lvgl_aic_spi_pipeline_contract PRIVATE "${AIC_ROOT}/include"
+    "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/spi_stubs")
+target_compile_definitions(lvgl_aic_spi_pipeline_contract PRIVATE AIC_LVGL_USE_SPI_SDK=1)
+target_link_libraries(lvgl_aic_spi_pipeline_contract PRIVATE lvgl Threads::Threads)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_spi_pipeline_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_spi_pipeline_contract COMMAND lvgl_aic_spi_pipeline_contract)
+set_tests_properties(lvgl_aic_spi_pipeline_contract PROPERTIES TIMEOUT 30)
