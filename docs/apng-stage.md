@@ -377,3 +377,30 @@ confirmed that nonzero APNG seek is unsupported in the original PNG backend;
 it is not a missing parity capability. Automatic unified source/backend
 selection, media-info ABI, groups and APNG slave sharing remain separate work.
 See [command capability table and validation](player-command-compat.md).
+
+## APNG shared-frame slave widgets (2026-10-03)
+
+`lv_aic_apng_slave_create/set_master/get_master` add display-only image widgets.
+One immutable RGB image descriptor is shared by master/slave widget owners; no
+additional decoder or full-canvas copy is created. Master publication updates
+all attached slaves on the same idle draw pass. Attach/detach/source changes
+retain old owners until queued tasks are safe; master deletion clears links
+immediately, then timers release images after pending work. Native/GE leases
+still outlive the final widget owner and may prevent cleanup indefinitely if
+DMA completion is uncertain. This does not promise synchronized panel scanout
+across multiple displays. The APNG cleanup counter includes deleted slaves.
+
+The checked `ATTACH_SLAVE` command accepts APNG slaves for APNG masters; native
+media slaves remain specific to native media masters. Automatic cross-backend
+source/slave unification remains separate work. The acceptance overlay now
+shows the APNG master and one shared-frame slave side by side.
+
+Host **39/39 PASS**: three widget owners share one producer retain and exactly
+the same source descriptor; tests cover detach/reattach, reassignment to another
+master, immediate unlink on master deletion, pending draw retention, deleted
+slave cleanup, and a native reader holding pixels after every widget owner
+retires. Strict E907 compile **PASS**; widget object SHA256:
+`a54cf63aa337ec6c3a4f06d1588a7a226e2b2961e21a18a971ecb44fddb996f5`.
+Command adapter SHA256:
+`d5c78bf0e3c68aba5190ef8834ae8774a56714ddeab7ac6acdbbf777fa1961e5`.
+Physical shared-frame display acceptance remains **NOT_RUN**.

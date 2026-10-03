@@ -23,6 +23,8 @@ lv_result_t lv_aic_player_control(lv_obj_t *obj,lv_aic_player_cmd_t cmd,void *da
             *(bool *)data=lv_aic_apng_get_status(obj).state==LV_AIC_APNG_TERMINAL;return LV_RESULT_OK;
         case LV_AIC_PLAYER_CMD_SET_PLAY_TIME:
             return data && !*(uint64_t *)data?lv_aic_apng_restart(obj):LV_RESULT_INVALID;
+        case LV_AIC_PLAYER_CMD_ATTACH_SLAVE:
+            return data?lv_aic_apng_slave_set_master(data,obj):LV_RESULT_INVALID;
         case LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE: {
             if(!data) return LV_RESULT_INVALID;
             float rate=*(float *)data;

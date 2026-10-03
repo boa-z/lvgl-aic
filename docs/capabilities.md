@@ -214,3 +214,9 @@ rejects rate changes; arbitrary APNG seek/video rate are not parity gaps.
 Host **39/39 PASS**, strict E907 compile **PASS**. Automatic source/backend
 selection, media-info ABI, groups and APNG slave sharing remain; see
 [command compatibility](player-command-compat.md).
+
+APNG now supports display-only slave widgets sharing the master's immutable RGB
+image without a second decoder or full-frame copy. The checked ATTACH_SLAVE
+command dispatches to APNG or media slaves by master type. Host **39/39 PASS**,
+strict E907 compile **PASS**; cross-backend unification and physical multi-view
+acceptance remain open. The APNG acceptance overlay displays a master/slave pair.

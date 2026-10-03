@@ -22,7 +22,7 @@ typedef enum {
  * return observed status and leave output untouched if unsupported/not ready.
  * Media rate is fixed 1x; SET rate is unsupported. APNG SET time accepts only
  * zero (replay), matching the SDK's animated PNG restriction. APNG has no
- * audio/position/slave commands here. Float rate is rounded to 1e-5 then sent
+ * audio/position commands here. Float rate is rounded to 1e-5 then sent
  * as a reduced rational; NaN/Inf/out-of-range rates are rejected. */
 lv_result_t lv_aic_player_control(lv_obj_t *obj,lv_aic_player_cmd_t command,void *data);
 #ifdef __cplusplus

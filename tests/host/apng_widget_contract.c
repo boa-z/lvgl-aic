@@ -111,6 +111,28 @@ int main(void)
     assert(lv_aic_apng_get_status(obj).state==LV_AIC_APNG_FAULT);
     assert(lv_aic_apng_close(obj)==LV_RESULT_OK);tick();lv_obj_delete(obj);tick();
     assert(!active && !lv_aic_apng_pending_cleanup() && created==freed && retained==released);
+    obj=make(screen);lv_obj_t *other=make(screen);
+    lv_obj_t *s1=lv_aic_apng_slave_create(screen),*s2=lv_aic_apng_slave_create(screen);assert(s1 && s2);
+    unsigned shared_retained=retained;
+    assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_ATTACH_SLAVE,s1)==LV_RESULT_OK);
+    assert(lv_aic_apng_slave_set_master(s2,obj)==LV_RESULT_OK);
+    assert(lv_aic_apng_slave_get_master(s1)==obj);
+    assert(lv_aic_apng_set_src(obj,"shared.png")==LV_RESULT_OK);tick();frames=1;tick();
+    assert(lv_image_get_src(obj) && lv_image_get_src(s1)==lv_image_get_src(obj) && lv_image_get_src(s2)==lv_image_get_src(obj));
+    assert(retained==shared_retained+1); /* One producer retain for three widget owners. */
+    reader=lv_aic_rgb_image_acquire(lv_image_get_src(s1),&f);assert(reader);
+    assert(lv_aic_apng_slave_set_master(s1,other)==LV_RESULT_OK);tick();assert(!lv_image_get_src(s1));
+    assert(lv_aic_apng_slave_set_master(s1,obj)==LV_RESULT_OK);tick();assert(lv_image_get_src(s1)==lv_image_get_src(obj));
+    assert(lv_aic_apng_slave_set_master(s2,NULL)==LV_RESULT_OK);tick();assert(!lv_image_get_src(s2));
+    assert(lv_aic_apng_slave_set_master(s2,obj)==LV_RESULT_OK);tick();
+    d->layer_head->draw_task_head=&pending;
+    lv_obj_delete(obj);assert(!lv_aic_apng_slave_get_master(s1) && !lv_aic_apng_slave_get_master(s2));
+    lv_obj_delete(s1);lv_timer_pause(lv_display_get_refr_timer(d));tick();
+    assert(active && lv_aic_apng_pending_cleanup()==2);
+    d->layer_head->draw_task_head=NULL;tick();assert(!lv_image_get_src(s2) && active);
+    assert(((const uint32_t *)f->data)[0]==0xff123456);
+    lv_aic_rgb_image_release_lease(reader);tick();assert(!active);
+    lv_obj_delete(s2);lv_obj_delete(other);tick();assert(!lv_aic_apng_pending_cleanup());
     assert(lv_aic_rgb_image_decoder_deinit());
     lv_display_set_resolution(d,800,480);
     static uint8_t panel_pixels[800*480*4];

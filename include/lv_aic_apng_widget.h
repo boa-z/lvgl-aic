@@ -6,6 +6,16 @@
 extern "C" {
 #endif
 extern const lv_obj_class_t lv_aic_apng_class;
+extern const lv_obj_class_t lv_aic_apng_slave_class;
+/* Display-only image sharing, LVGL owner only. No decoder or pixel copy.
+ * Attach/detach apply on an idle draw pass. NULL detaches; master deletion
+ * clears links immediately, retaining old pixels until safe timer cleanup.
+ * Normal image transforms are supported; never set the slave source directly.
+ * pending_cleanup includes deleted masters and slaves. No cross-display
+ * scanout synchronization is promised. */
+lv_obj_t *lv_aic_apng_slave_create(lv_obj_t *parent);
+lv_result_t lv_aic_apng_slave_set_master(lv_obj_t *slave,lv_obj_t *master);
+lv_obj_t *lv_aic_apng_slave_get_master(lv_obj_t *slave);
 /* LVGL owner only, outside draw callbacks. Native image subclass; use normal
  * transforms/alignment, never set its image source directly. Initialize the
  * RGB decoder and configure explicit budgets before set_src. No auto-start.

@@ -85,7 +85,8 @@ if GetDepend('AIC_LVGL_SMOKE_APP') and (GetDepend('AIC_LVGL_USE_PLAYER') or GetD
 # Keep all APNG widget roots live in the opt-in smoke profile. No autoplay.
 if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_APNG_WIDGET'):
     for api in ('create', 'configure', 'set_src', 'start', 'pause', 'set_rate',
-                'restart', 'close', 'get_status', 'pending_cleanup'):
+                'restart', 'close', 'get_status', 'pending_cleanup',
+                'slave_create', 'slave_set_master', 'slave_get_master'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_apng_' + api])
 
 # 打包素材变更必须使最终镜像失效，避免复用旧素材。

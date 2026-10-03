@@ -99,7 +99,7 @@ can be combined). This stages three original generated fixtures under
 On the board, queue `lv_aic_apng_test show` through FinSH. All LVGL operations
 are executed by the existing UI timer, never the shell thread.
 
-The overlay has Pause, Resume, 0.5x, 1x, 2x, Replay, Next source and Close.
+The overlay shows the master and one shared-frame slave side by side, with Pause, Resume, 0.5x, 1x, 2x, Replay, Next source and Close. Both views should follow the same frame without a second decoder.
 Equivalent commands: `lv_aic_apng_test pause|resume|slow|normal|fast|replay|next|status|close`.
 It cycles finite disposal animation (two plays), infinite loop and static PNG.
 Each animated frame holds 500 ms at 1x:

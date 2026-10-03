@@ -2,7 +2,7 @@
 #include "lv_aic_apng_test.h"
 #if defined(AIC_LVGL_USE_APNG_WIDGET) && AIC_LVGL_USE_APNG_WIDGET
 #include "lv_aic_apng_widget.h"
-static lv_obj_t *panel,*animation,*status_label;
+static lv_obj_t *panel,*animation,*mirror,*status_label;
 static unsigned source_index;
 static const char *const paths[]={"/data/mpp_test/apng-disposal.png","/data/mpp_test/apng-loop.png",
                                  "/data/mpp_test/apng-static.png"};
@@ -11,7 +11,7 @@ enum command { NONE,SHOW,PAUSE,RESUME,SLOW,NORMAL,FAST,REPLAY,NEXT,STATUS,CLOSE 
 void lv_aic_apng_test_delete(void)
 {
     if(panel) lv_obj_delete(panel);
-    panel=animation=status_label=NULL;
+    panel=animation=mirror=status_label=NULL;
 }
 static void refresh(void)
 {
@@ -21,7 +21,8 @@ static void refresh(void)
     lv_label_set_text_fmt(status_label,"%s | %s | rate %u/%u\nframe %u | composed %u | published %u",
         names[source_index],states[s.state],(unsigned)s.rate_num,(unsigned)s.rate_den,
         (unsigned)s.frame_index,(unsigned)s.composed,(unsigned)s.published);
-    lv_obj_center(animation);
+    lv_obj_align(animation,LV_ALIGN_CENTER,-96,0);
+    if(mirror) lv_obj_align(mirror,LV_ALIGN_CENTER,96,0);
 }
 static void changed(lv_event_t *event) { (void)event;refresh(); }
 static lv_result_t act(enum command cmd)
@@ -66,6 +67,8 @@ int lv_aic_apng_test_show(void)
         .stream_budget=1024*1024,.snapshot_budget=512*1024,.cma_budget=256*1024,
         .packet_limit=256*1024,.snapshots=3,.minimum_delay_us=1000};
     if(lv_aic_apng_configure(animation,&options)!=LV_RESULT_OK) goto fail;
+    mirror=lv_aic_apng_slave_create(viewport);if(!mirror) goto fail;
+    if(lv_aic_apng_slave_set_master(mirror,animation)!=LV_RESULT_OK) goto fail;
     lv_obj_add_event_cb(animation,changed,LV_EVENT_VALUE_CHANGED,NULL);
     static const char *const labels[]={"Pause","Resume","0.5x","1x","2x","Replay","Next source","Close"};
     static const enum command commands[]={PAUSE,RESUME,SLOW,NORMAL,FAST,REPLAY,NEXT,CLOSE};

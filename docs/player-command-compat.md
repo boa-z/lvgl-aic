@@ -16,7 +16,7 @@ types or call from a decoder/FinSH worker.
 | SET / GET_VOLUME | Supported; GET needs applied value | Unsupported | int32_t pointer |
 | SET_PLAY_TIME | Asynchronous seek | Zero only: replay | uint64_t microseconds pointer |
 | GET_PLAY_TIME | Valid nonnegative observed timestamp | Unsupported | uint64_t output |
-| ATTACH_SLAVE | Attach native slave to this master | Unsupported | slave object directly |
+| ATTACH_SLAVE | Attach native media slave | Attach APNG slave | slave object directly |
 | SET_PLAYBACK_RATE | Unsupported by SDK media backend | 0.1..10x, finite float | float pointer |
 | GET_PLAYBACK_RATE | Fixed 1x | Observed applied rate, if available | float output |
 | GET_MEDIA_INFO / ATTACH_GROUP | Reserved, unsupported | Reserved, unsupported | no access |
@@ -29,7 +29,7 @@ and media terminal does not prove clean EOF (SDK PLAY_END also covers failures).
 For APNG, pause/rate intent survives zero-time replay, and static PNG may replay
 as an extension. Media source selection and APNG source selection still use
 their distinct widgets; automatic suffix-based backend switching is not supplied
-by this command adapter. Media info ABI, groups and APNG slave sharing remain
+by this command adapter. Media info ABI, groups and cross-backend slave binding remain
 explicit gaps rather than partially populated outputs.
 
 ## Corrected SDK seek comparison
