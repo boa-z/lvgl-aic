@@ -492,3 +492,24 @@ possible because mocks start no DMA; production recovery still requires reboot.
 External caller-owned variable pixels and child layers must stay alive while their
 task is in progress. Full LVGL teardown during a fault is still unsupported.
 Board validation NOT_RUN; this supersedes the generic decoder pending item above.
+
+
+#### Generic-decoder firmware evidence
+
+Host **50/50 PASS**. Full GE/fonts/GIF/widgets/AICP/player/APNG
+boot/app/static/image/manifest gates PASS with clean sources: component
+`39972d809a7fc33c33c7e99387e3752e9804e691`, SDK
+`96b7b0f3f28d41a3f5722564168f3da271a44189`.
+SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
+SHA256 `b8771c2f431542055cb4345c4322d109e29c20577deac903dcb579886d2a523a`. Board **NOT_RUN**.
+
+
+### Next SDK widget gap: AIC canvas
+
+The SDK `packages/artinchip/lvgl-ui/aic_widgets/aic_canvas/v9/lv_aic_canvas.h`
+exports create, owned-buffer allocation, text drawing and centered text helpers;
+implementation is delivered in architecture-specific archives. Its adjacent
+`canvas_image.c` supplies CMA image allocation and GE fill utilities. Current
+native canvas contracts do not establish parity with those ownership/convenience
+APIs. Add an application-owned adapter with explicit allocation bounds and
+lifecycle tests; do not link the SDK's LVGL 9.1 private-ABI archive into 9.6.
