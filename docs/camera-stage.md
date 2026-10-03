@@ -270,3 +270,12 @@ guards, initialization failure/retry, empty/oversized results and reentrancy.
 `build.ps1 -WithBarcode` adds a separate opt-in link-evidence profile; it never
 starts decoding or capture. Camera worker scheduling and SDK-shaped barcode
 callbacks/only mode remain to be integrated. Real barcode decoding is NOT_RUN.
+
+Barcode foundation evidence: **57/57 host PASS**; full GE/fonts/GIF/widgets/
+AICP/player/APNG/barcode boot/app/static/image/manifest gates **PASS**.
+All six adapter/vendor API symbols are live in the final E907 ELF. Clean
+component `18af8cd3969cf9315efe08b6809d40159fda0ccf`, SDK
+`78d43d1b26f8c6f777c7380a2d6e1c4829921f6f`. Image SHA256
+`9524bfe6d1b376f7f2a99862e1c91665f51e6d714f76fe7fd4071cf8da637913`.
+This image does not enable capture or invoke decoding. Barcode runtime and
+physical board acceptance remain **NOT_RUN**.
