@@ -127,6 +127,22 @@ int main(int argc, char **argv)
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
         lv_aic_manual_page_request(count-1);lv_aic_manual_page_poll();
         lv_obj_t *legacy=lv_obj_get_child(screen,initial+count-1);
+        lv_obj_t *list=lv_obj_get_child(legacy,0);
+        lv_obj_update_layout(list);assert(lv_obj_get_scroll_y(list)==0);
+        lv_area_t list_area;lv_obj_get_coords(list,&list_area);
+        pointer.x=(list_area.x1+list_area.x2)/2;
+        pointer.y=list_area.y2-40;pressed=true;
+        lv_tick_inc(20);lv_indev_read(indev);
+        for(unsigned step=0;step<8;step++) {
+            pointer.y-=20;lv_tick_inc(20);lv_indev_read(indev);lv_timer_handler();
+        }
+        pressed=false;lv_tick_inc(20);lv_indev_read(indev);
+        for(unsigned step=0;step<40;step++) { lv_tick_inc(20);lv_timer_handler(); }
+        int32_t scrolled=lv_obj_get_scroll_y(list);assert(scrolled>0);
+        click(indev,prev);check_page(screen,nav,initial,count-2);
+        click(indev,next);check_page(screen,nav,initial,count-1);
+        assert(lv_obj_get_scroll_y(list)==scrolled);
+        assert(lv_obj_get_scroll_y(legacy)==0);
         lv_obj_t *menu=lv_obj_get_child(legacy,1);
         lv_obj_t *home=lv_menu_get_cur_main_page(menu);assert(home);
         click(indev,lv_obj_get_child(home,0));

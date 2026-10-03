@@ -387,3 +387,9 @@ Board scrolling/touch/display NOT_RUN. Clean build source identities:
 - lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
 - images/d13x.elf SHA256: d22a01573346f54222737c729818000ebee5ae32696cb157d758fa579be97597
 - images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: cf2c9f4043106035a5cf38b88cf24afc307654e1a5125c2c206d3c1b995c31c8
+
+Navigation host input coverage now includes a real pointer press/move/release
+sequence on the twelve-item list, settling scroll animations, leaving/returning
+through header hit targets and verifying retained list position with an unmoved
+outer page. Three create/delete cycles pass. Runtime sources and the latest
+firmware image are unchanged; physical touch driver acceptance remains NOT_RUN.
