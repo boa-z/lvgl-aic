@@ -163,3 +163,17 @@ and reuse while old pixels remain held. Mock codec calls deliberately overlap
 without the shared gate and assert mutual exclusion. A dedicated runtime contract
 covers failed VE open, shared acquire/release, final close and subsequent reopen.
 This establishes adapter ownership and scheduling, not physical PNG decoding.
+
+Multi-instance APNG stage strict E907 compile **PASS**; clean combined firmware
+boot/app/static/image/manifest **PASS**. Recorded sources:
+
+- sdk: `0b6c6eee96ef8af3312c21a2692399cec3f45df3`.
+- lvgl-aic: `6926fb2ea0ad22589860c1d53952f8941b9a26c1`.
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+
+Latest image at the same profile path: SHA256 `23ae371ca2705f1982ec069712a6ab57b6d882b3c892196bc7d27857988b9fb3`.
+ELF SHA256: `927759b619378dddcd5d2e0ce66164c22874418e70337d249f58dff064586622`.
+
+The linker map retains shared runtime acquisition/release. Physical APNG
+multi-instance decoding and mixed media arbitration remain **NOT_RUN**.
+No flashing or SDK source edits were performed.
