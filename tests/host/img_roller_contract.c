@@ -85,6 +85,29 @@ int main(void)
         advance();
         assert(deleted);
     }
+    /* Removing just the pending target must not leave scroll-end with a stale
+     * pointer. Reparented images must also stop acting on their old owner. */
+    for(unsigned move=0;move<2;move++) {
+        lv_obj_t *roller=lv_img_roller_create(lv_screen_active());
+        lv_obj_set_size(roller,160,120);
+        lv_img_roller_set_loop_mode(roller,LV_ROLL_LOOP_OFF);
+        for(unsigned i=0;i<5;i++) assert(lv_img_roller_add_child(roller,&img));
+        lv_obj_update_layout(roller);
+        lv_img_roller_set_active(roller,1,LV_ANIM_OFF);advance();
+        lv_img_roller_set_active(roller,4,LV_ANIM_ON);
+        lv_obj_t *pending=lv_img_roller_get_child_by_id(roller,4);
+        if(move) {
+            lv_obj_set_parent(pending,lv_screen_active());
+            lv_obj_send_event(pending,LV_EVENT_CLICKED,NULL);
+        } else lv_obj_delete(pending);
+        assert(!lv_img_roller_get_child_by_id(roller,4));
+        lv_obj_send_event(roller,LV_EVENT_SCROLL_END,NULL);advance();
+        lv_img_roller_set_active(roller,2,LV_ANIM_OFF);advance();
+        assert(lv_img_get_active_id(roller)==2);
+        lv_obj_t *new_child=lv_img_roller_add_child(roller,&img);assert(new_child);
+        assert(lv_img_roller_get_child_by_id(roller,5)==new_child);
+        lv_obj_delete(roller);if(move) lv_obj_delete(pending);advance();
+    }
     lv_display_delete(display);
     lv_deinit();
     return 0;

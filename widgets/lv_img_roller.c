@@ -64,6 +64,9 @@ static void image_clicked_event_cb(lv_event_t *e)
 {
     lv_obj_t *image = lv_event_get_current_target(e);
     lv_obj_t *parent = lv_obj_get_parent(image);
+    /* An application may move an image out of the carousel. The registered
+     * callback belongs to its original owner, not an arbitrary new parent. */
+    if (parent != lv_event_get_user_data(e)) return;
     lv_img_roller_t *img_roller = (lv_img_roller_t *)parent;
 
     img_roller->obj_switch = image;
@@ -86,7 +89,7 @@ lv_obj_t *lv_img_roller_add_child(lv_obj_t *obj, const void *src)
 
     lv_obj_set_clickable(image, true);
     lv_obj_set_user_data(image, (void *)(LV_ULONG)img_roller->img_cnt);
-    lv_obj_add_event_cb(image, image_clicked_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(image, image_clicked_event_cb, LV_EVENT_CLICKED, obj);
 
     img_roller->img_cnt++;
     return image;
@@ -439,6 +442,15 @@ static void lv_img_find_cur_img(lv_obj_t *target)
     }
 }
 
+static bool contains_child(lv_obj_t *parent, const lv_obj_t *child)
+{
+    /* Compare membership without dereferencing a possibly deleted target. */
+    uint32_t count = lv_obj_get_child_count(parent);
+    for (uint32_t i = 0; i < count; i++)
+        if (lv_obj_get_child(parent, i) == child) return true;
+    return false;
+}
+
 static void lv_img_roller_event(const lv_obj_class_t *class_p, lv_event_t *e)
 {
     LV_UNUSED(class_p);
@@ -454,6 +466,11 @@ static void lv_img_roller_event(const lv_obj_class_t *class_p, lv_event_t *e)
     if(res != LV_RESULT_OK)
         return;
 
+    if ((code == LV_EVENT_CHILD_CHANGED || code == LV_EVENT_SCROLL_END) &&
+        img_roller->obj_switch && !contains_child(target, img_roller->obj_switch)) {
+        img_roller->obj_switch = NULL;
+        img_roller->is_switching = false;
+    }
     if (img_roller->is_adjusting) return;
     if (code == LV_EVENT_SCROLL) {
         lv_img_loop_event(target);

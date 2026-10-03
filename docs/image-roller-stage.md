@@ -29,4 +29,29 @@ and GE interaction remain pending consolidated board validation.
 
 This is the SDK image carousel; native LVGL's text roller is a separate widget.
 SDK swipe_v1 now has a separate [adaptation](swipe-stage.md).
-Camera/player/video-window remain pending ports.
+Camera/player/video-window have separate application-owned adapters; see
+[capabilities.md](capabilities.md) for their current validation boundaries.
+
+## Pending-child deletion and reparenting (2026-10-04)
+
+The inherited SDK scroll-end path held `obj_switch` without checking whether the
+selected image was still a child. Deleting only that image during an animated
+selection could later dereference freed storage. Moving it outside the roller
+also left a stale selection and its click callback cast the new parent to the
+roller's private type.
+
+The port now clears a removed pending target on child changes and rechecks
+membership at scroll-end using pointer comparison without dereferencing the
+candidate. Click callbacks act only when the image still belongs to the original
+roller. Remaining child IDs stay stable; adding another image does not reuse the
+removed ID. Sources/user data and uniform-size layout requirements are unchanged.
+Moving an image to another parent does not register it as that parent's roller item.
+
+Regression evidence: new removal/reparent tests failed before the fix with Windows
+heap corruption `0xc0000374`. After the fix, **70/70 host PASS**, including continued
+selection and addition after removal, click on a reparented image and teardown.
+Strict D13x compilation PASS; SDK `output/roller-child-lv_img_roller.o` SHA256:
+`71250b24d08d17022e44107b320195ab91e8315a9a9001489e636a1780e806f1`.
+Logs: component `output/roller-child-before.log`, `output/roller-child-build.log`,
+`output/roller-child-tests.log`, `output/roller-child-target.log`.
+Full-firmware refresh and physical drag/rendering acceptance remain pending.
