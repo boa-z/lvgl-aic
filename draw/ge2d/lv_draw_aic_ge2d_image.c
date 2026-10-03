@@ -18,10 +18,9 @@
  * descriptor and the identical blit runs - there is no second code path to keep
  * in step, and no separate "blend a layer" implementation to drift.
  *
- * The decode and the clip bookkeeping are left to LVGL: this file only supplies
- * the core callback, so the source coordinates, the palette handling and the
- * decoder lifetime stay in the upstream code that already gets them right. In
- * particular there is no local copy of the 9.1 image helpers.
+ * Normal images use LVGL's helper. Native-size tiles hold one LVGL decoder
+ * across validation and submission passes so unsupported later tiles cannot
+ * cause software replay over pixels already blended by GE.
  *
  * Three things here are easy to get wrong and are deliberately explicit:
  *   1. Both strides come from the buffer headers. Neither side is necessarily
@@ -505,27 +504,30 @@ static int lv_draw_aic_ge2d_tiles(lv_draw_task_t *task, const lv_draw_image_dsc_
                                  const lv_image_decoder_dsc_t *decoder)
 {
     int32_t w = dsc->header.w, h = dsc->header.h;
+    lv_area_t visible;
     if (w <= 0 || h <= 0 || !task->target_layer || !task->target_layer->draw_buf ||
         !decoder->decoded || !lv_draw_aic_ge2d_device()) return 0;
+    /* 2 means a successful no-op, distinct from an engine submission. */
+    if (!lv_area_intersect(&visible, &task->area, &task->clip_area) ||
+        !lv_area_intersect(&visible, &visible, &task->target_layer->buf_area)) return 2;
     lv_area_t anchor = lv_area_get_width(&dsc->image_area) >= 0 ? dsc->image_area : task->area;
     /* Match LVGL's initial anchor and positive stepping; jump over invisible
      * rows/columns without iterating an unbounded off-screen prefix. */
     int64_t x0 = anchor.x1, y0 = anchor.y1;
-    if (x0 + w - 1 < task->area.x1) x0 += ((task->area.x1 - x0) / w) * w;
-    if (y0 + h - 1 < task->area.y1) y0 += ((task->area.y1 - y0) / h) * h;
+    if (x0 + w - 1 < visible.x1) x0 += ((visible.x1 - x0) / w) * w;
+    if (y0 + h - 1 < visible.y1) y0 += ((visible.y1 - y0) / h) * h;
+    if (x0 > visible.x2 || y0 > visible.y2) return 2;
     for (int pass = 0; pass < 2; pass++) {
         s_blit_validate_only = pass == 0;
-        for (int64_t y = y0; y <= task->area.y2; y += h) {
-            for (int64_t x = x0; x <= task->area.x2; x += w) {
+        for (int64_t y = y0; y <= visible.y2; y += h) {
+            for (int64_t x = x0; x <= visible.x2; x += w) {
                 if (x + w - 1 > INT32_MAX || y + h - 1 > INT32_MAX) {
                     s_blit_validate_only = false;
                     return pass ? -1 : 0;
                 }
                 lv_area_t tile = {(int32_t)x, (int32_t)y, (int32_t)(x+w-1), (int32_t)(y+h-1)};
                 lv_area_t clip;
-                if (!lv_area_intersect(&clip, &tile, &task->area) ||
-                    !lv_area_intersect(&clip, &clip, &task->clip_area) ||
-                    !lv_area_intersect(&clip, &clip, &task->target_layer->buf_area)) continue;
+                if (!lv_area_intersect(&clip, &tile, &visible)) continue;
                 if (!lv_draw_aic_ge2d_blit(task, dsc, decoder, &tile, &clip)) {
                     s_blit_validate_only = false;
                     return pass ? -1 : 0;
@@ -602,6 +604,7 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
         if (lv_image_decoder_open(&decoder, blit_dsc->src, &decoder_args) == LV_RESULT_OK) {
             int tiled = lv_draw_aic_ge2d_tiles(task, blit_dsc, &decoder);
             lv_image_decoder_close(&decoder);
+            if (tiled == 2) return LV_RESULT_OK;
             s_blit_called = true;
             s_blit_ok = tiled > 0;
             s_blit_failed = tiled < 0;

@@ -9,10 +9,12 @@ layer buffer before using the existing RGB/ARGB blit.
 提交阶段发生错误则停止，禁止整图软件重绘造成 alpha 重复叠加。
 逐行解码器、旋转/缩放平铺和 tiled LAYER 仍走软件。
 
-Host GE contracts pass 3/3. New coverage checks four clipped ARGB tiles,
+Full host contracts pass 16/16. Coverage checks four clipped ARGB tiles,
 edge crop dimensions and global alpha, zero submissions for inaccessible
-sources, and stopping after the first failed hardware submission.
+sources, real LVGL bin-decoder public execution and failures at every tile.
+Empty intersections report NOTHING rather than ENGINE. Traversal is bounded
+by the visible intersection, including a two-billion-pixel task with a tiny clip.
 These mock GE submission; actual tiled pixels and DMA/cache remain NOT_RUN.
 
-Remaining: public dispatch/decoder lifecycle coverage, transformed tiling,
+Remaining: explicit decoder close-count instrumentation, transformed tiling,
 board numeric probes and target build validation.

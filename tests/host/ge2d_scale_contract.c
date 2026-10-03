@@ -12,11 +12,12 @@
 static struct ge_bitblt captured;
 static struct ge_rotation captured_rotation;
 static int submits, rotate_submits, fail_at, rotate_fail;
+static int fail_submission;
 static const void *allowed_src, *allowed_dst;
 struct mpp_ge *mpp_ge_open(void) { return (struct mpp_ge *)(uintptr_t)1; }
 void mpp_ge_close(struct mpp_ge *ge) { (void)ge; }
 int mpp_ge_bitblt(struct mpp_ge *ge, struct ge_bitblt *b)
-{ (void)ge; captured = *b; submits++; return fail_at == 1 ? -1 : 0; }
+{ (void)ge; captured = *b; submits++; return fail_at == 1 || submits == fail_submission ? -1 : 0; }
 int mpp_ge_rotate(struct mpp_ge *ge, struct ge_rotation *r)
 { (void)ge; captured_rotation = *r; rotate_submits++; return rotate_fail ? -1 : 0; }
 int mpp_ge_emit(struct mpp_ge *ge) { (void)ge; return fail_at == 2 ? -1 : 0; }
@@ -343,6 +344,31 @@ int main(void)
         fail_at = 0; before = submits; allowed_src = NULL;
         assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder) == 0);
         assert(submits == before && !s_blit_validate_only);
+        /* Public executor with the real LVGL bin decoder, including failures
+         * after earlier alpha tiles have already reached the engine. */
+        allowed_src = pixels;
+        lv_draw_aic_ge2d_outcome_t outcome;
+        before = submits;
+        assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+        assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_ENGINE && submits == before + 4);
+        for (int tile = 1; tile <= 4; tile++) {
+            before = submits;
+            fail_submission = before + tile;
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
+            assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING);
+            assert(submits == before + tile && !s_blit_validate_only);
+        }
+        fail_submission = 0;
+        before = submits;
+        task.clip_area = (lv_area_t){200, 300, 210, 310};
+        assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+        assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING && submits == before);
+        /* A huge task with a tiny visible clip must skip invisible tiles. */
+        task.area = (lv_area_t){-1000000000, -1000000000, 1000000000, 1000000000};
+        task.clip_area = (lv_area_t){95, 195, 100, 200};
+        assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+        assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_ENGINE && submits == before + 1);
+        lv_image_cache_drop(&src);
     }
     lv_deinit();
     return 0;

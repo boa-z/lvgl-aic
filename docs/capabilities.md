@@ -12,7 +12,7 @@ phase documents are historical; source presence and switches are not board proof
 | Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership | New AICP/BMP board probes NOT_RUN; fake pseudo-images and YUV integration remain absent |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
-| GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, arbitrary-angle plus scale, YUV, tiling/recolor/masks |
+| GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, native-size tiling, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, arbitrary-angle plus scale, YUV, transformed tiling/recolor/masks |
 | GE scale | Nominal 1/16..16; pivot/clip/per-axis handling | Small/unsafe geometry and D13x split interval fall back |
 | GE LAYER | Plain composition, bounded 1/16..16 scale with right-angle rotation, and unscaled arbitrary-angle rotation when the child buffer is accessible | Ordinary D13x heap source and ROTATE regions outside 4..4096 fall back; arbitrary-angle plus scale, YUV and general HW layers remain absent |
 | Scheduling | Synchronous, error/task counters, bounded refresh timing | Async work and paired GE ON/OFF board timing |
@@ -78,7 +78,7 @@ not from assumptions that every LVGL draw feature is hardware accelerated.
 
 | Capability | SDK source evidence | Port status / next work |
 |---|---|---|
-| Image tiling | lv_ge2d/lv_draw_ge2d_img.c calls the tiled image helper | Genuine GE gap; add clipped tile dispatch and numeric contracts |
+| Image tiling | lv_ge2d/lv_draw_ge2d_img.c calls the tiled image helper | Native-size clipped IMAGE tiles implemented with whole-task preflight; transformed tiles, target/board validation remain; see [tiling stage](ge-tiling-stage.md) |
 | YUV image input | lv_ge2d/lv_draw_ge2d.c accepts YUV with orthogonal rotations | Genuine gap; needs multi-plane ownership, format metadata and GE/SW behavior |
 | fake image | aic_ui.h encodes dimensions/blend/color in a .fake path; GE turns it into a fill | Compatibility gap, not an external video-buffer format |
 | Arbitrary rotation plus scale | ge2d_draw_img_supported explicitly rejects it | Future extension beyond this SDK baseline |
