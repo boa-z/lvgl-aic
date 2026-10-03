@@ -694,7 +694,7 @@ if(AIC_BUILD_WIDGET_TESTS)
     add_test(NAME lvgl_aic_widget_contract COMMAND lvgl_aic_widget_contract)
 endif()
 
-if(AIC_BUILD_CONTROL_WIDGET_TESTS)
+if(AIC_BUILD_CONTROL_WIDGET_TESTS OR AIC_BUILD_WIDGET_TESTS)
     target_compile_definitions(lvgl PUBLIC
         LV_USE_ARC=1
         LV_USE_BUTTON=1
@@ -702,6 +702,7 @@ if(AIC_BUILD_CONTROL_WIDGET_TESTS)
         LV_USE_CALENDAR=1
         LV_USE_CHECKBOX=1
         LV_USE_KEYBOARD=1
+        LV_USE_TEXTAREA=1
         LV_USE_LED=1
         LV_USE_LINE=1
         LV_USE_MSGBOX=1
@@ -710,7 +711,7 @@ if(AIC_BUILD_CONTROL_WIDGET_TESTS)
     add_executable(lvgl_aic_control_widget_contract control_widget_contract.c)
     target_compile_definitions(lvgl_aic_control_widget_contract PRIVATE
         LV_USE_ARC=1 LV_USE_BUTTON=1 LV_USE_BUTTONMATRIX=1 LV_USE_CALENDAR=1
-        LV_USE_CHECKBOX=1 LV_USE_KEYBOARD=1 LV_USE_LED=1 LV_USE_LINE=1
+        LV_USE_CHECKBOX=1 LV_USE_KEYBOARD=1 LV_USE_TEXTAREA=1 LV_USE_LED=1 LV_USE_LINE=1
         LV_USE_MSGBOX=1 LV_USE_SPINBOX=1 LV_USE_SWITCH=1)
     target_link_libraries(lvgl_aic_control_widget_contract PRIVATE lvgl)
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")

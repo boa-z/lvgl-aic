@@ -7,7 +7,7 @@ APNG worker and other suffixes to SDK media, retaining the same image object,
 transforms and slave bindings across drained source replacement. APNG rate,
 zero-time replay, finite repeat and metadata use checked common commands.
 The standalone APNG widget remains usable without SDK media/audio.
-Host **49/49 PASS** and strict combined-feature E907 compile **PASS**.
+Host **50/50 PASS** and strict combined-feature E907 compile **PASS**.
 The video-plane stage clean firmware passed boot/app/static/image/manifest;
 source identities and artifact evidence are recorded in [video-plane stage](video-plane-stage.md).
 Physical validation remains **NOT_RUN**.
@@ -393,3 +393,15 @@ sequence on the twelve-item list, settling scroll animations, leaving/returning
 through header hit targets and verifying retained list position with an unmoved
 outer page. Three create/delete cycles pass. Runtime sources and the latest
 firmware image are unchanged; physical touch driver acceptance remains NOT_RUN.
+
+
+## Complete widget host selection (2026-10-04)
+
+The combined host cache previously enabled AIC_BUILD_WIDGET_TESTS but left
+AIC_BUILD_CONTROL_WIDGET_TESTS off, so the reported 49-test runs did not include
+the common-control contract. AIC_BUILD_WIDGET_TESTS now includes both contracts;
+the control-only option remains available and explicitly enables its textarea
+dependency. Rebuilt suite **50/50 PASS**, including arc, calendar, checkbox,
+keyboard, LED, line, message box, spinbox, switch and button controls. Earlier
+49/49 results remain valid for their narrower executed set. Runtime/firmware
+sources are unchanged; this expands verification, not hardware acceptance.
