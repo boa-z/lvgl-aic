@@ -136,6 +136,22 @@ int main(void)
     for(unsigned i=0;i<sizeof(output);i++) assert(output[i]==0xa5);
     assert(lv_aic_spi_ge2d_close(active)==LV_AIC_SPI_OK);active=NULL;
     assert(allocs==frees && opened==closed);
+    uint8_t large[1024]={0},small[1024];
+    lv_aic_spi_rgb565_frame_t geometry={.data=large,.capacity=sizeof(large),.stride=130,.width=65,.height=4};
+    active=lv_aic_spi_ge2d_create(65,4,4,4,4096);assert(active);before=calls;
+    assert(lv_aic_spi_ge2d_convert(active,&geometry,small,sizeof(small),0,false)==LV_AIC_SPI_INVALID);
+    assert(calls==before);geometry.width=64;stage=0;
+    assert(lv_aic_spi_ge2d_convert(active,&geometry,small,sizeof(small),0,false)==LV_AIC_SPI_OK);
+    assert(lv_aic_spi_ge2d_close(active)==LV_AIC_SPI_OK);
+    for(unsigned rotated=0;rotated<2;rotated++) {
+        active=lv_aic_spi_ge2d_create(64,4,rotated?4:64,rotated?64:4,8192);assert(active);
+        geometry.width=63;before=calls;
+        assert(lv_aic_spi_ge2d_convert(active,&geometry,small,sizeof(small),rotated?90:0,false)==LV_AIC_SPI_INVALID);
+        assert(calls==before);geometry.width=64;stage=0;
+        assert(lv_aic_spi_ge2d_convert(active,&geometry,small,sizeof(small),rotated?90:0,false)==LV_AIC_SPI_OK);
+        assert(lv_aic_spi_ge2d_close(active)==LV_AIC_SPI_OK);
+    }
+    active=NULL;assert(allocs==frees && opened==closed);
     /* Real session -> transfer -> GE converter -> SDK SPI bridge. */
     tx=arena+500000;tx=(uint8_t *)(((uintptr_t)tx+63)&~(uintptr_t)63);
     struct rt_spi_ops ops={present,present,present,present,present};

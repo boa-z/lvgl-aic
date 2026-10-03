@@ -1112,10 +1112,11 @@ set_tests_properties(lvgl_aic_spi_multidisplay_contract PROPERTIES TIMEOUT 30)
 
 if(EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/include/mpp_ge.h")
 add_executable(lvgl_aic_spi_ge2d_contract spi_ge2d_contract.c
+    "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_scale.c"
     "${AIC_ROOT}/port/lv_aic_spi_ge2d.c" "${AIC_ROOT}/common/lv_aic_spi_frame.c"
     "${AIC_ROOT}/common/lv_aic_spi_transfer.c" "${AIC_ROOT}/port/lv_aic_spi_session.c"
     "${AIC_ROOT}/port/lv_aic_spi_sdk.c")
-target_include_directories(lvgl_aic_spi_ge2d_contract PRIVATE "${AIC_ROOT}/include"
+target_include_directories(lvgl_aic_spi_ge2d_contract PRIVATE "${AIC_ROOT}/include" "${AIC_ROOT}/draw/ge2d"
     "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/spi_stubs"
     "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs" "${AIC_SDK_ROOT}/bsp/artinchip/include/drv"
     "${AIC_SDK_ROOT}/packages/artinchip/mpp/include" "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")

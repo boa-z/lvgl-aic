@@ -2,6 +2,7 @@
 #include "lvgl_aic_feature_config.h"
 #if AIC_LVGL_USE_SPI_SDK && AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 #include "lv_aic_spi_ge2d.h"
+#include "lv_draw_aic_ge2d_scale.h"
 #include "lvgl.h"
 #include <aic_osal.h>
 #include <mpp_ge.h>
@@ -66,6 +67,12 @@ lv_aic_spi_result_t lv_aic_spi_ge2d_convert(lv_aic_spi_ge2d_t *s,
      * commands: SDK may already have queued registers when it discovers this. */
     if((rw!=s->width || rh!=s->height) &&
        (f.width<4 || f.height<4 || s->width<4 || s->height<4)) return LV_AIC_SPI_INVALID;
+    /* Match the draw backend's bounded scale and vendor split-risk policy.
+     * The scaler runs before rotation: its horizontal destination is swapped. */
+    uint32_t ow=rotated?s->height:s->width,oh=rotated?s->width:s->height;
+    if(ow>f.width*16 || oh>f.height*16 || f.width>ow*16 || f.height>oh*16 ||
+       lv_aic_ge2d_scale_split_risk((int32_t)((f.width*65536U)/ow),(int32_t)ow))
+        return LV_AIC_SPI_INVALID;
     size_t row=(size_t)f.width*2,bytes=(size_t)s->width*s->height*2;
     if(f.height>1 && f.stride>(SIZE_MAX-row)/(f.height-1)) return LV_AIC_SPI_INVALID;
     size_t span=f.stride*(f.height-1)+row;

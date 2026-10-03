@@ -22,6 +22,7 @@ $arguments=@('-std=gnu99','-Wall','-Wextra','-Werror','-DKERNEL_RTTHREAD','-DAIC
 if($WithGe) { $arguments+=@('-DAIC_LVGL_USE_GE2D=1','-DAIC_LVGL_BSP_MPP=1') }
 foreach ($path in $includes) { $arguments+=@('-isystem',(Join-Path $sdk $path)) }
 $arguments+=('-I'+(Join-Path $component 'compat'))
+$arguments+=('-I'+(Join-Path $component 'draw/ge2d'))
 foreach ($path in @($component,(Join-Path $component 'include'),$lvgl,(Join-Path $lvgl 'include'),(Join-Path $lvgl 'include/lvgl'))) {
     $arguments+=('-I'+$path)
 }
@@ -43,7 +44,7 @@ Get-FileHash $output -Algorithm SHA256
 Write-Output 'PASS checked SPI submit/completion compile; no SDK transport link or hardware execution'
 
 $objects=@($output)
-foreach($source in @('port/lv_aic_spi_ge2d.c','port/lv_aic_spi_display.c','port/lv_aic_spi_worker.c','port/lv_aic_spi_handoff.c','port/lv_aic_spi_panel.c','port/lv_aic_spi_session.c','common/lv_aic_spi_transfer.c','common/lv_aic_spi_frame.c')) {
+foreach($source in @('draw/ge2d/lv_draw_aic_ge2d_scale.c','port/lv_aic_spi_ge2d.c','port/lv_aic_spi_display.c','port/lv_aic_spi_worker.c','port/lv_aic_spi_handoff.c','port/lv_aic_spi_panel.c','port/lv_aic_spi_session.c','common/lv_aic_spi_transfer.c','common/lv_aic_spi_frame.c')) {
     $object=Join-Path $sdk ('output/'+[IO.Path]::GetFileNameWithoutExtension($source)+'.o')
     $compileArgs=$arguments+@('-c',(Join-Path $component $source),'-o',$object)
     & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs

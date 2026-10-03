@@ -1,5 +1,23 @@
 # Validation record
 
+## SPI GE session firmware (2026-10-04)
+
+Combined GE/font/GIF/widget/AICP/player/APNG/barcode/SPI with rotation 90:
+boot/app build, static/live-symbol gates, image checks and manifest **PASS**.
+Includes the shared GE-fault display teardown fix and opt-in SPI GE session.
+All converter entry points are live in the final ELF. No SPI panel is created.
+
+- Component: `7ba23542a1fe8c3f2a9c87249cb8f25a4562f1c8` (clean).
+- SDK: `d9db7d5349d1d45442b3034b65c5467a44f9948f` (clean).
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `299e055accd141198412183b81c274e8c9bd438755f90f9f0560cf0d7f06d822`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-rotate90/manifest.json`.
+
+Host **69/69 PASS**. Physical execution **NOT_RUN**, no flashing.
+Subsequent SPI scale-ratio/split-risk guard is host/partial-link tested but not
+included in this image; see [SPI stage](spi-stage.md). The evidence directory is
+reused for the same profile; older manifests/hashes below are historical records.
+
 ## Rotated combined firmware evidence (2026-10-04)
 
 The combined GE/widget/media/SPI profile now also has a clean 90-degree firmware build:

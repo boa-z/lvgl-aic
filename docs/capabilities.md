@@ -1,6 +1,6 @@
 # Current capabilities and SDK gaps
 
-Latest combined evidence: **67/67 host PASS** and GE/widget/SPI full firmware
+Latest combined evidence: **69/69 host PASS** and GE/widget/SPI full firmware
 build/link/image/provenance **PASS**; see [current validation](validation.md).
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
@@ -988,6 +988,6 @@ hardware execution of this increment remain pending; hardware **NOT_RUN**.
 
 A dedicated CMDQ RGB565 rotate/resize backend with two budgeted CMA staging
 buffers is available (`lv_aic_spi_ge2d.h`). Host combined session contract and D13x compile/partial link PASS;
-selected explicitly by `lv_aic_spi_session_enable_ge2d` before worker startup. Physical filtering/performance and
-full firmware linkage remain NOT_RUN. See [spi-stage.md](spi-stage.md) for source
+selected explicitly by `lv_aic_spi_session_enable_ge2d` before worker startup. Combined firmware linkage PASS at `7ba2354`; later scaler guards have host/partial-link
+evidence. Physical filtering/performance remain NOT_RUN. See [spi-stage.md](spi-stage.md) for source
 ownership, fault retention and SDK arbitration boundaries.

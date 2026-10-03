@@ -713,3 +713,26 @@ Smoke final-link roots and integration gates now require session enable and,
 for GE profiles, all converter APIs. A fresh full-firmware run is pending.
 This is synchronous GE conversion followed by asynchronous SPI, not overlapping
 GE/SPI DMA. Panel binding, TE/power callbacks and board throughput remain pending.
+
+## Firmware linkage and SPI scaler boundaries
+
+The session integration now has a clean combined 90-degree firmware build at
+`7ba2354` / SDK `d9db7d53`: all build, static/link, image and provenance gates
+PASS. See [validation.md](validation.md) for the exact image identity. Hardware
+is still NOT_RUN, with no physical SPI panel instantiated.
+
+Follow-up preflight now matches the draw backend's bounded 1/16..16 per-axis
+scale policy and reuses `lv_aic_ge2d_scale_split_risk` for SDK split geometry.
+Horizontal scaler output is selected before rotation (destination height for
+90/270). Out-of-bound ratios or split-risk cases return INVALID before cache or
+GE commands; the session then uses CPU packing. This prevents the new SPI path
+from bypassing existing draw-backend hardware limits.
+
+Validation: **69/69 host PASS**, including 65-to-4 rejection, 64-to-4 acceptance,
+63-to-64 split rejection and unscaled 64-to-64 acceptance, both without and with
+90-degree rotation. Strict D13x compile/partial link with `-WithGe` PASS;
+SDK `output/lvgl-spi-session-linked.o` SHA256:
+`ef78f0d91ffd758a85fdc7c011d351c0d1eec38660af3a04f3cc355b41ecb478`.
+Logs: `output/spi-ge-bounds-build.log`, `output/spi-ge-bounds-tests.log`,
+`output/spi-ge-bounds-target.log`. Full firmware refresh for this guard remains
+pending. These checks do not establish hardware filter output or throughput.
