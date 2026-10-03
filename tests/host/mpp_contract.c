@@ -402,6 +402,40 @@ static void bmp_pixel_contract(void)
     lv_aic_mpp_decoder_deinit(decoder);
 }
 
+#include "lv_aic_video_window.h"
+static void video_window_contract(void)
+{
+    lv_display_t *display=lv_display_create(320,240);
+    assert(display);
+    for(unsigned cycle=0;cycle<20;cycle++) {
+        lv_obj_t *window=lv_aic_video_window_create(lv_screen_active());
+        assert(window);
+        lv_aic_video_window_set_color(window,lv_color_hex(0x123456));
+        assert(lv_image_get_src(window)==NULL);
+        lv_aic_video_window_set_size(window,32,24);
+        assert(!strcmp(lv_image_get_src(window),"L:/32x24_0_00123456.fake"));
+        lv_obj_update_layout(window);
+        assert(lv_obj_get_width(window)==32 && lv_obj_get_height(window)==24);
+        const void *source=lv_image_get_src(window);
+        lv_aic_video_window_set_size(window,32,24);
+        lv_aic_video_window_set_color(window,lv_color_hex(0x123456));
+        assert(lv_image_get_src(window)==source);
+        lv_aic_video_window_set_size(window,0,24);
+        lv_aic_video_window_set_size(window,4097,24);
+        lv_aic_video_window_set_size(window,4096,4096);
+        assert(lv_image_get_src(window)==source);
+        lv_aic_video_window_set_color(window,lv_color_hex(0xabcdef));
+        lv_aic_video_window_set_size(window,48,16);
+        lv_obj_update_layout(window);
+        assert(lv_obj_get_width(window)==48 && lv_obj_get_height(window)==16);
+        assert(!strcmp(lv_image_get_src(window),"L:/48x16_0_00abcdef.fake"));
+        lv_obj_set_style_pad_all(window,0,0);
+        assert(!strcmp(lv_image_get_src(window),"L:/48x16_0_00abcdef.fake"));
+        lv_obj_delete(window);
+    }
+    lv_display_delete(display);
+    assert(live_cma==0 && decodes==0);
+}
 int main(int argc, char **argv) {
     jpeg_header_boundaries();
     assert(argc == 2 || argc == 3);
@@ -421,6 +455,7 @@ int main(int argc, char **argv) {
         assert(drive);
         lv_fs_drv_t saved_drive = *drive;
         assert(lv_aic_mpp_decoder_init(&registered) == LV_AIC_OK);
+        video_window_contract();
         assert(lv_image_decoder_get_info(dsc.src, &header) == LV_RESULT_OK);
         assert(header.w == 320 && header.h == 240 && header.cf == LV_COLOR_FORMAT_RAW);
         lv_fs_file_t first, second, real;

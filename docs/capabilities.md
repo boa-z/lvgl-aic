@@ -86,7 +86,7 @@ not from assumptions that every LVGL draw feature is hardware accelerated.
 | Screen rotation | SDK submits a synchronous rotated bitblt | Port implemented, 90-degree target build passes; board acceptance pending |
 | AICP / BMP | SDK codec / custom software BMP paths | Port implemented and target-built with resource probes; hardware results pending |
 
-Camera/player/video-window widgets remain genuine separate gaps. Their
+The SDK [video-window widget](video-window-stage.md) API is implemented over the existing alpha-zero replacement path; board acceptance remains pending. Camera/player widgets remain genuine separate gaps. Their
 device and frame lifetime contracts must be ported explicitly; enabling
 native LVGL widgets or accepting .fake strings does not supply those devices.
 The broad goal still includes GE extensions, but they must not be reported

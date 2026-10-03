@@ -112,6 +112,7 @@ done:
     return result;
 }
 
+#include "lv_aic_video_window.h"
 static int fake_probe(uint8_t alpha)
 {
     if (fill_probe_poisoned) return -1;
@@ -124,12 +125,26 @@ static int fake_probe(uint8_t alpha)
     lv_layer_t layer = {0};
     lv_draw_task_t task = {0};
     lv_draw_aic_ge2d_outcome_t outcome;
+#if AIC_LVGL_USE_VIDEO_WINDOW
+    lv_obj_t *window=NULL;
+#endif
     lv_snprintf(path, sizeof(path), "L:/16x16_0_%08x.fake", ((unsigned)alpha << 24) | 0x123456);
     memset(output, 0xa5, FILL_BYTES);
     if (lv_draw_buf_init(&dst,FILL_W,FILL_H,LV_COLOR_FORMAT_ARGB8888,
                          FILL_STRIDE,output,FILL_BYTES) != LV_RESULT_OK) goto done;
     lv_draw_image_dsc_init(&image);
     image.src = path;
+#if AIC_LVGL_USE_VIDEO_WINDOW
+    if(alpha==0) {
+        window=lv_aic_video_window_create(lv_screen_active());
+        if(!window) goto done;
+        lv_obj_set_hidden(window,true);
+        lv_aic_video_window_set_color(window,lv_color_hex(0x123456));
+        lv_aic_video_window_set_size(window,16,16);
+        image.src=lv_image_get_src(window);
+        if(!image.src || strcmp(image.src,path)) goto done;
+    }
+#endif
     if (lv_image_decoder_get_info(path, &image.header) != LV_RESULT_OK) goto done;
     layer.draw_buf = &dst; layer.color_format = LV_COLOR_FORMAT_ARGB8888;
     layer.buf_area = (lv_area_t){100,200,115,215};
@@ -140,6 +155,9 @@ static int fake_probe(uint8_t alpha)
     if (lv_draw_aic_ge2d_image(&task, &outcome) != LV_RESULT_OK) {
         fill_probe_poisoned = true;
         AIC_TEST_E("FAIL fake DMA; retaining %u CMA bytes until reboot", (unsigned)FILL_BYTES);
+#if AIC_LVGL_USE_VIDEO_WINDOW
+        if(window) lv_obj_delete(window);
+#endif
         return -1;
     }
     if (outcome != LV_DRAW_AIC_GE2D_OUTCOME_ENGINE) goto done;
@@ -157,6 +175,12 @@ static int fake_probe(uint8_t alpha)
     AIC_TEST_I("PASS fake replace alpha=%u pixels=90 guards=OK", alpha);
     result = 0;
 done:
+#if AIC_LVGL_USE_VIDEO_WINDOW
+    if(window) {
+        lv_obj_delete(window);
+        if(!result) AIC_TEST_I("PASS video-window source and ARGB alpha-zero pixels");
+    }
+#endif
     lv_image_header_cache_drop(path);
     aicos_free_align(MEM_CMA, output);
     if (result) AIC_TEST_E("FAIL fake replacement alpha=%u", alpha);

@@ -331,6 +331,7 @@ if(AIC_SDK_ROOT)
     endif()
     add_test(NAME lvgl_aic_ge2d_scale_contract COMMAND lvgl_aic_ge2d_scale_contract)
     add_executable(lvgl_aic_mpp_contract mpp_contract.c
+        "${AIC_ROOT}/widgets/lv_aic_video_window.c"
         "${AIC_ROOT}/image/mpp/lv_aic_fake_fs.c"
         "${AIC_ROOT}/common/lv_aic_fake_image.c"
         "${AIC_ROOT}/image/mpp/lv_aic_bmp_header.c"
@@ -343,6 +344,7 @@ if(AIC_SDK_ROOT)
         "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
         "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
     target_compile_definitions(lvgl_aic_mpp_contract PRIVATE
+        AIC_LVGL_USE_VIDEO_WINDOW=1
         AIC_LVGL_USE_GE2D=1 AIC_LVGL_USE_MPP_DEC=1 AIC_LVGL_BSP_MPP=1 AIC_LVGL_BSP_RTTHREAD=0)
     target_link_libraries(lvgl_aic_mpp_contract PRIVATE lvgl)
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")

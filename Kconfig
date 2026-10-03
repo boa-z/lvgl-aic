@@ -120,4 +120,12 @@ config AIC_LVGL_USE_SWIPE_V1
     default n
     depends on AIC_LVGL_PORT
 
+config AIC_LVGL_USE_VIDEO_WINDOW
+    bool "Enable ArtInChip transparent video window for LVGL 9.6"
+    default n
+    depends on AIC_LVGL_PORT && AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+    help
+        Alpha-zero replacement rectangle for a lower video layer. This widget
+        does not open a camera, start a player or configure a display layer.
+
 endmenu

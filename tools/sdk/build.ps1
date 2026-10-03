@@ -76,7 +76,7 @@ try {
         $settings=@("CONFIG_AIC_LVGL_DISPLAY_ROTATION=$([int]($Rotation / 90))")
         if ($WithFonts) { $settings += @('CONFIG_AIC_LVGL_USE_FREETYPE=y', 'CONFIG_LPKG_USING_FREETYPE=y', 'CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64') }
         if ($WithGif) { $settings += 'CONFIG_AIC_LVGL_USE_GIF=y' }
-        if ($WithWidgets) { $settings += @('CONFIG_AIC_LVGL_USE_IMG_ROLLER=y', 'CONFIG_AIC_LVGL_USE_SWIPE_V1=y') }
+        if ($WithWidgets) { $settings += @('CONFIG_AIC_LVGL_USE_IMG_ROLLER=y', 'CONFIG_AIC_LVGL_USE_SWIPE_V1=y'); if ($Phase -eq 'ge2d') { $settings += 'CONFIG_AIC_LVGL_USE_VIDEO_WINDOW=y' } }
         if ($WithAicp) { $settings += 'CONFIG_AIC_MPP_AICP_DEC_ENABLE=y' }
         $content=[IO.File]::ReadAllText($defPath)
         foreach ($setting in $settings) {
