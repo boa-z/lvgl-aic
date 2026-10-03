@@ -115,3 +115,16 @@ frames, pause/volume/rate while waiting, full snapshot pools, replay discard,
 late policy changes during cache handoff, EOS arriving during preservation
 activation, and missing-decoder poll retry. These use real adapter/mailbox code
 with mocked SDK/stream boundaries, not physical decode evidence.
+
+Backpressure stage strict E907 compile **PASS**; clean combined firmware
+boot/app/static/image/manifest **PASS**. Recorded sources:
+
+- sdk: `ddf53daeb92898bcab7ac542c79f85205b09e7dc`.
+- lvgl-aic: `1845ef770b6aaa6445573a7a2136546e22eb966f`.
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+
+Latest image at the same profile path: SHA256 `74f5a74cea2319c8f7f623331491616e7d059cfff136ca90027c7cf616f2f4cb`.
+ELF SHA256: `d9bb3477c88d9d72ed0844bb1d9b04e158f30f44130d6a12783719ce21dab7e8`.
+
+The map checks the media/APNG preserve APIs and checked media submit path.
+Physical playback/group timing remains **NOT_RUN**; no flashing performed.
