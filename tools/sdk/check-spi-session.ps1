@@ -42,7 +42,7 @@ Get-FileHash $output -Algorithm SHA256
 Write-Output 'PASS checked SPI submit/completion compile; no SDK transport link or hardware execution'
 
 $objects=@($output)
-foreach($source in @('port/lv_aic_spi_panel.c','port/lv_aic_spi_session.c','common/lv_aic_spi_transfer.c','common/lv_aic_spi_frame.c')) {
+foreach($source in @('port/lv_aic_spi_handoff.c','port/lv_aic_spi_panel.c','port/lv_aic_spi_session.c','common/lv_aic_spi_transfer.c','common/lv_aic_spi_frame.c')) {
     $object=Join-Path $sdk ('output/'+[IO.Path]::GetFileNameWithoutExtension($source)+'.o')
     $compileArgs=$arguments+@('-c',(Join-Path $component $source),'-o',$object)
     & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs

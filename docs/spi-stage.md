@@ -321,3 +321,34 @@ must implement the following, rather than treating callback registration as pari
 
 Host concurrency/lifetime tests, enabled target compilation/final linkage and
 multi-display board testing remain required. Hardware **NOT_RUN**.
+
+
+## Producer/worker frame handoff
+
+`lv_aic_spi_handoff` provides one bounded slot between one LVGL producer and one
+exclusive session worker. `put` snapshots the frame descriptor and borrows its
+immutable CPU source. `run` performs session submit and checked drain, publishing
+completion with release/acquire atomics. `take` runs on the producer, consumes the
+cookie/result exactly once and releases source ownership. No LVGL display calls
+occur on the worker. Source may be reused after consuming even a failed result;
+the session's distinct DMA transmit/command storage remains retained on fault.
+
+`stop` permanently rejects new frames while preserving queued/completed work.
+After that work has run and been consumed, join the worker before `close` frees
+handoff metadata. Closing a faulted handoff does not free its borrowed session,
+DMA buffers or panel context. Unexpected session BUSY also disables admission;
+external session access violates the exclusive-worker contract. No pixel queue
+allocation, implicit frame dropping or unbounded buffering is introduced.
+
+Validation: **63/63 host PASS**, including a real pthread producer/worker test
+with 1000 successive source handoffs, backpressure while completion is pending,
+exactly-once results, queued stop/drain, fault reporting and invalid submit without
+a completion wait. Strict D13x compile/partial link PASS, with no unresolved
+atomic runtime helper. Combined object SHA256:
+`07268990bc528a081777c19aff5cccf835cadb4727e3bd147c98e4c17052793c`.
+Logs: `output/spi-handoff-tests.log`, `output/spi-handoff-target.log`.
+
+This is the frame lifetime primitive. OS thread creation/wakeup/join, actual LVGL
+display binding/flush-ready, direct-blit mode and enabled-device final linkage
+remain to integrate. Host concurrency is not target scheduler or panel evidence;
+hardware **NOT_RUN**.
