@@ -24,11 +24,13 @@ Failed STREAM_OFF retains the complete session and allocations for retry.
 Do not free its storage on a false close result. After a transport fault,
 release held frames and close/reopen; start/resume will not silently recover.
 
-Acquisition can block in the SDK. A future camera worker must handle transport
+Acquisition can block for 60000 ms in the SDK's vin_vb_dq_buf path. A future camera worker must handle transport
 outside the LVGL UI thread, marshal publication back to the LVGL owner and
 perform source-cache invalidation before CPU access. This adapter does not
 provide that worker, convert colorspace, attach a video plane, return held GE
 frames early, or reset uncertain hardware.
+Widget deletion must request asynchronous shutdown and retain the independent
+capture context until the worker returns and all published frame readers finish.
 
 ## Evidence
 
@@ -53,6 +55,14 @@ CPU conversion, image publication and native GE rendering now accept this tag.
 Host checks include rejected stale/unheld indices and unchanged output on error.
 The target check script also compiles the frame adapter; object SHA256:
 1940a78808ad2542a8df33825ae0264f93713ac4b250a30b6525a7d08cd4ed27.
+
+The GE/fonts/GIF/widgets/AICP regression image also builds successfully with
+NV16/NV61 conversion/rendering enabled (VIN hardware remains disabled): clean
+SDK 62981ee9, component f6923c5, LVGL 80ca777e. Boot/app builds, static/image
+checks and manifest PASS. Evidence is in SDK
+output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp; image SHA256:
+b80a887afc58eb866823976379a9211ee74170900a6e7456d1faa304c7d2ec12.
+This regression image is not evidence of a linked or running VIN device.
 
 Remaining work includes capture-to-publication ownership callbacks, camera widget/worker integration,
 video-plane ownership and SDK player backends. The camera gap remains open.
