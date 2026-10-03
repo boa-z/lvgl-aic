@@ -23,6 +23,9 @@
 #include <aic_core.h>
 #include <aic_osal.h>
 #include <mpp_fb.h>
+#if AIC_LVGL_USE_GE2D
+#include "lv_draw_aic_ge2d_display.h"
+#endif
 
 #ifndef CACHE_LINE_SIZE
 #define CACHE_LINE_SIZE 32U
@@ -174,16 +177,37 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
         const int32_t source_stride = (int32_t)ctx->lv_buffer_stride;
         const int32_t destination_stride = (int32_t)ctx->info.stride;
 
-        /* Phase 1 deliberately uses the LVGL software rotate path. GE2D is
-         * introduced only after this baseline is validated. */
-        lv_aic_cache_clean(active->data, ctx->rotation_buffer_size);
-        lv_draw_rotate(active->data, destination,
-                       lv_display_get_horizontal_resolution(display),
-                       lv_display_get_vertical_resolution(display),
-                       source_stride, destination_stride,
-                       lv_display_get_rotation(display),
-                       ctx->lv_color_format);
-        lv_aic_cache_clean(destination, ctx->framebuffer_size);
+        int rotated = 0;
+#if AIC_LVGL_USE_GE2D
+        lv_draw_buf_t source = *active;
+        lv_draw_buf_t target = {0};
+        source.header.w = lv_display_get_horizontal_resolution(display);
+        source.header.h = lv_display_get_vertical_resolution(display);
+        source.header.stride = source_stride;
+        target.data = destination;
+        target.data_size = ctx->framebuffer_size;
+        target.header.w = ctx->info.width;
+        target.header.h = ctx->info.height;
+        target.header.stride = destination_stride;
+        target.header.cf = ctx->lv_color_format;
+        rotated = lv_draw_aic_ge2d_display_rotate(&source, &target, lv_display_get_rotation(display));
+        if (rotated < 0) {
+            LV_LOG_ERROR("GE display rotation failed; frame not presented");
+            ctx->last_presented_valid = false;
+            lv_display_flush_ready(display);
+            return;
+        }
+#endif
+        if (!rotated) {
+            lv_aic_cache_clean(active->data, ctx->rotation_buffer_size);
+            lv_draw_rotate(active->data, destination,
+                           lv_display_get_horizontal_resolution(display),
+                           lv_display_get_vertical_resolution(display),
+                           source_stride, destination_stride,
+                           lv_display_get_rotation(display),
+                           ctx->lv_color_format);
+            lv_aic_cache_clean(destination, ctx->framebuffer_size);
+        }
         buffer_index = ctx->present_index;
     } else {
         void *framebuffer = lv_aic_framebuffer_at(ctx, 0U);

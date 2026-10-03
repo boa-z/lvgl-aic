@@ -7,7 +7,7 @@ phase documents are historical; source presence and switches are not board proof
 | Area | Implementation | Remaining scope |
 |---|---|---|
 | Integration | App-owned pins; LV_OS_CUSTOM RT events | Board regression after app/OS refactor |
-| Display | One framebuffer, DIRECT, PAN/VSync, software screen rotation | GE screen rotation, SPI/multi-display, extended cache/VSync tests |
+| Display | One framebuffer, DIRECT, PAN/VSync; whole-screen 90/180/270 GE copy with software fallback before submission | GE target/board rotation acceptance, SPI/multi-display, extended cache/VSync tests; see [rotation stage](display-rotation-stage.md) |
 | Touch / input | Touch worker, mapping, diagnostics and optional recovery; application-owned encoder and mouse providers create native LVGL indevs | Board-specific encoder/USB mouse sampling and board acceptance remain application scope |
 | MPP | FILE and RAW/RAW_ALPHA memory JPEG/PNG; RGB888/ARGB8888; CMA tracking | Resource success inferred from test ordering; direct parity log pending; AICP/BMP/fake and YUV remain absent |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
