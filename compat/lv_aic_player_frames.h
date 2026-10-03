@@ -20,6 +20,19 @@ lv_aic_player_frames_t *lv_aic_player_frames_create(lv_aic_player_session_t *ses
  * New due frames replace unpublished ones; published readers remain immutable.
  * Bounded YUV and native RGB frames are supported; FRAME_FLAG_ERROR fails. */
 bool lv_aic_player_frames_submit(lv_aic_player_frames_t *frames,uint64_t lease);
+typedef enum {
+    LV_AIC_PLAYER_SUBMIT_FAILED,LV_AIC_PLAYER_SUBMIT_WAIT,LV_AIC_PLAYER_SUBMIT_OK
+} lv_aic_player_submit_result_t;
+/* WAIT retains the caller's lease. Unlike a later pending() snapshot, this
+ * result cannot race a UI poll into being mistaken for a decode failure. */
+lv_aic_player_submit_result_t lv_aic_player_frames_submit_checked(lv_aic_player_frames_t *frames,uint64_t lease);
+/* Owner-thread policy. Default false: latest frame wins. When true, an
+ * unconsumed/being-published frame is never replaced. Producer must retain
+ * failed submissions and retry. Close/replay may intentionally discard them. */
+void lv_aic_player_frames_preserve(lv_aic_player_frames_t *p,bool enabled);
+/* Snapshot under the mailbox lock; true also covers an in-progress poll. */
+bool lv_aic_player_frames_pending(lv_aic_player_frames_t *p);
+bool lv_aic_player_frames_blocked(lv_aic_player_frames_t *p);
 /* LVGL owner thread only; YUV decoder must be initialized. Output PTS changes
  * only on success. Detach image and finish queued draws before owner destroy. */
 /* Legacy YUV-only poll leaves a ready RGB frame pending. */

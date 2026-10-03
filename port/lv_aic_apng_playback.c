@@ -16,7 +16,7 @@ struct lv_aic_apng_playback {
     lv_aic_apng_playback_status_t status;
     lv_aic_apng_frames_t *frames;
     char path[128];
-    bool closing,start,paused;
+    bool closing,start,paused,preserve;
     uint32_t num,den;
 };
 static lv_aic_apng_playback_t *active;
@@ -55,14 +55,14 @@ static void worker(void *argument)
     else {
         lv_aic_apng_frames_t *frames=lv_aic_apng_frames_create(view.width,view.height,
             p->options.snapshots,p->options.snapshot_budget);
-        lock(p);p->frames=frames;p->status.width=view.width;p->status.height=view.height;
+        lock(p);p->frames=frames;lv_aic_apng_frames_preserve(frames,p->preserve);p->status.width=view.width;p->status.height=view.height;
         if(!p->closing) p->status.state=LV_AIC_APNG_READY;
         unlock(p);if(!frames) fault(p);
     }
     uint32_t applied_num=1,applied_den=1;bool applied_pause=true;
     for(;;) {
         lock(p);bool closing=p->closing,start=p->start,paused=p->paused,restart=p->status.restart_pending;
-        uint32_t num=p->num,den=p->den;unlock(p);
+        uint32_t num=p->num,den=p->den;bool preserve=p->preserve;unlock(p);
         if(closing) {
             lv_aic_apng_frames_close(p->frames);
             if(lv_aic_apng_stream_close(stream)) {
@@ -83,8 +83,14 @@ static void worker(void *argument)
         applied_num=num;applied_den=den;
         if(stop_clock!=applied_pause && !lv_aic_apng_stream_pause(stream,stop_clock)) { fault(p);continue; }
         applied_pause=stop_clock;
-        if(!lv_aic_apng_stream_tick(stream,&view)) { fault(p);continue; }
-        if(view.step.action==LV_AIC_APNG_FRAME) pending=true;
+        /* Keep the composed canvas intact until it can enter the mailbox.
+         * A blocked mailbox must not advance the stream's disposal/timeline.
+         * Rate/pause/replay/close above still run on every bounded iteration. */
+        bool advance=!(preserve && (pending || lv_aic_apng_frames_blocked(p->frames)));
+        if(advance) {
+            if(!lv_aic_apng_stream_tick(stream,&view)) { fault(p);continue; }
+            if(view.step.action==LV_AIC_APNG_FRAME) pending=true;
+        }
         lock(p);bool publish=!p->closing && !p->status.restart_pending;unlock(p);
         bool published=pending && publish && lv_aic_apng_frames_publish(p->frames,view.rgba,view.stride,view.bytes,view.sequence);
         if(published) pending=false;
@@ -118,6 +124,13 @@ lv_aic_apng_playback_t *lv_aic_apng_playback_prepare(const char *path,const lv_a
         active=NULL;aicos_mutex_delete(p->mutex);free(p);return NULL;
     }
     return p;
+}
+bool lv_aic_apng_playback_preserve(lv_aic_apng_playback_t *p,bool enabled)
+{
+    if(!p) return false;
+    lock(p);bool ok=!p->closing && !p->status.finished;
+    if(ok) { p->preserve=enabled;lv_aic_apng_frames_preserve(p->frames,enabled); }
+    unlock(p);return ok;
 }
 bool lv_aic_apng_playback_start(lv_aic_apng_playback_t *p)
 {

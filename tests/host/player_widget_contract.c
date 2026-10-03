@@ -8,7 +8,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-struct lv_aic_player_playback { lv_aic_playback_status_t status; unsigned readers; bool closing; };
+struct lv_aic_player_playback { lv_aic_playback_status_t status; unsigned readers; bool closing,preserve; };
 static lv_aic_player_playback_t *active;
 static unsigned created,freed,retained,released,frames;
 static bool allow_exit=true,fail_prepare,rgb;
@@ -22,6 +22,8 @@ lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const l
     strcpy(last_uri,uri); active=calloc(1,sizeof(*active)); assert(active); created++;
     active->status=(lv_aic_playback_status_t){.media_info_valid=true,.media_info={.file_size=6000000000LL,.duration=1000000,.has_video=1,.has_audio=1,.seek_able=1,.video_stream={4,4},.audio_stream={2,16,48000}},.state=LV_AIC_PLAYBACK_OPENING,.volume=-1,.has_video=true,.seekable=true,.duration_us=1000000}; return active;
 }
+bool lv_aic_player_playback_preserve(lv_aic_player_playback_t *p,bool enabled)
+{ if(!p || p->closing) return false;p->preserve=enabled;return true; }
 bool lv_aic_player_playback_start(lv_aic_player_playback_t *p)
 { if(!p || p->closing) return false; p->status.state=LV_AIC_PLAYBACK_PLAYING; return true; }
 bool lv_aic_player_playback_pause(lv_aic_player_playback_t *p,bool paused)
@@ -63,7 +65,7 @@ bool lv_aic_player_playback_seek(lv_aic_player_playback_t *p,uint64_t target)
     p->status.seek_pending=true; p->status.seek_target_us=target; p->status.state=LV_AIC_PLAYBACK_SEEKING; return true;
 }
 #if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
-struct lv_aic_apng_playback { lv_aic_apng_playback_status_t status; unsigned readers; bool closing; };
+struct lv_aic_apng_playback { lv_aic_apng_playback_status_t status; unsigned readers; bool closing,preserve; };
 static lv_aic_apng_playback_t *png;
 static unsigned png_created,png_freed,png_frames;
 typedef struct { lv_aic_apng_playback_t *p; uint32_t pixels[16]; } png_frame_t;
@@ -74,6 +76,8 @@ lv_aic_apng_playback_t *lv_aic_apng_playback_prepare(const char *path,const lv_a
     png->status=(lv_aic_apng_playback_status_t){.state=LV_AIC_APNG_OPENING,.width=4,.height=4,
         .file_bytes=1234,.rate_num=1,.rate_den=1}; return png;
 }
+bool lv_aic_apng_playback_preserve(lv_aic_apng_playback_t *p,bool enabled)
+{ if(!p || p->closing) return false;p->preserve=enabled;return true; }
 bool lv_aic_apng_playback_start(lv_aic_apng_playback_t *p)
 { if(!p || p->closing) return false; p->status.state=LV_AIC_APNG_PLAYING; return true; }
 bool lv_aic_apng_playback_pause(lv_aic_apng_playback_t *p,bool paused)
@@ -392,6 +396,7 @@ int main(void)
     assert(lv_aic_player_set_src(o,"group.mp4")==LV_RESULT_OK);
     assert(lv_aic_player_set_src(other,"group.png")==LV_RESULT_OK);
     assert(lv_aic_player_group_control(g,LV_AIC_PLAYER_CMD_START,NULL,&accepted)==LV_RESULT_OK && accepted==2);
+    assert(active->preserve && png->preserve);
     frames=20;png_frames=0;rgb=false;
     tick();tick();tick();
     assert(active->status.frames_queued==1 && !png->status.published);
@@ -433,6 +438,7 @@ int main(void)
     /* Deleting a group only detaches, preserving its independent producers. */
     lv_obj_delete(g);
     assert(!lv_aic_player_get_group(o) && !lv_aic_player_get_group(other) && active && png);
+    assert(!active->preserve && !png->preserve);
     assert(lv_aic_player_group_add(g2,o)==LV_RESULT_OK);
     assert(lv_aic_player_group_add(g2,other)==LV_RESULT_OK);
     lv_obj_delete(other);assert(lv_aic_player_group_get_count(g2)==1);tick();

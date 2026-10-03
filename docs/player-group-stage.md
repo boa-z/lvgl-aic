@@ -42,9 +42,11 @@ sources/workers; slaves mirror one master without an extra decoder.
 ## Remaining parity and evidence boundary
 
 This is a successful-publication barrier, not exact decoded-frame matching,
-PTS synchronization or simultaneous display scanout. Current asynchronous
-mailboxes retain the latest frame and may drop intermediate publications while
-a group waits. Worker-side frame-preserving backpressure remains to be added.
+PTS synchronization or simultaneous display scanout. Group membership now
+enables worker-side preservation of frames not yet consumed by the UI.
+SDK media get_frame may itself drop late frames for A/V synchronization;
+the application does not override that SDK clock or guarantee decoded-index
+matching. See the backpressure stage below.
 Each backend still permits only one live instance, including closing instances
 with retained readers: currently one media plus one APNG master can coexist.
 Multiple media or multiple APNG masters still require resource/lifecycle work.
@@ -78,3 +80,38 @@ Hardware execution **NOT_RUN**; this build does not establish multi-decoder or
 multi-view device behavior. The existing APNG overlay remains a standalone
 master/slave test; group behavior was exercised by host contracts. Evidence-only
 follow-up commits do not alter these firmware source identities.
+
+
+## Worker backpressure (2026-10-03)
+
+Joining a unified player group enables preservation before start or on the live
+backend. Detaching or deleting the group restores latest-wins behavior; moving
+between groups never temporarily disables preservation. Worker cleanup/replay
+still intentionally discards pending old publications. Multiple-instance limits
+are unchanged.
+
+Media waits before the next SDK get while a mailbox publication is unconsumed.
+If get/cache handoff was already in flight when preservation was enabled, its
+lease is retained pending (or pinned DEFERRED) until the older image is polled.
+The checked submit result distinguishes WAIT from failure without racing a UI
+poll. Final EOS leases are retried before terminal handling, not stranded.
+Drain still returns old leases on the worker; uncertain DMA is never reclaimed.
+
+APNG stops advancing composition/disposal while its prior image is unconsumed
+or a composed canvas awaits a free snapshot. Pause/rate/replay/close still run
+on bounded iterations. Snapshot exhaustion therefore retries the same canvas
+instead of overwriting it. Timeline deadlines can become late, but every frame
+is composed and published in order while preservation remains enabled.
+Native readers still own their immutable snapshots until released.
+
+Failed image creation leaves preserved READY data retryable; the widget also
+allocates its shared owner before consuming a frame. Neither path should drop
+an already-preserved frame merely because the LVGL owner allocation failed.
+Enabling on a live producer cannot recover earlier drops, and one in-flight
+frame can exist beyond the queued publication.
+
+Host **40/40 PASS**, with focused worker/mailbox tests covering three ordered
+frames, pause/volume/rate while waiting, full snapshot pools, replay discard,
+late policy changes during cache handoff, EOS arriving during preservation
+activation, and missing-decoder poll retry. These use real adapter/mailbox code
+with mocked SDK/stream boundaries, not physical decode evidence.

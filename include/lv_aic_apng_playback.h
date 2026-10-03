@@ -32,6 +32,11 @@ typedef struct {
  * Initialize the RGB image decoder before poll. No auto-start or audio. */
 lv_aic_apng_playback_t *lv_aic_apng_playback_prepare(const char *path,const lv_aic_apng_playback_options_t *options);
 /* Start does not rewind TERMINAL; use restart for replay. */
+/* Preserve unconsumed frames instead of replacing them. Default false.
+ * Controls and cleanup remain responsive while worker production waits.
+ * Enabling on a live worker may retain one already in-flight extra frame;
+ * frames dropped before enabling cannot be recovered. No exact PTS promise. */
+bool lv_aic_apng_playback_preserve(lv_aic_apng_playback_t *p,bool enabled);
 bool lv_aic_apng_playback_start(lv_aic_apng_playback_t *p);
 bool lv_aic_apng_playback_pause(lv_aic_apng_playback_t *p,bool paused);
 bool lv_aic_apng_playback_rate(lv_aic_apng_playback_t *p,uint32_t numerator,uint32_t denominator);

@@ -129,33 +129,38 @@ static void worker(void *argument)
         if(!p->session.started && !lv_aic_player_session_start(&p->session)) { fault(p); continue; }
         /* PLAY_END may arrive synchronously inside get_frame on its last frame.
          * That frame was already submitted below before this next iteration. */
-        if(events.terminal || (video_eos && !p->session.info.has_audio)) {
+        if(!pending && (events.terminal || (video_eos && !p->session.info.has_audio))) {
             lock(p); if(!p->closing && !p->status.seek_pending) p->status.state=LV_AIC_PLAYBACK_TERMINAL; unlock(p);
             aicos_msleep(5); continue;
         }
         if(paused!=p->session.paused && !lv_aic_player_session_pause(&p->session,paused)) { fault(p); continue; }
         lock(p); if(!p->closing && !p->status.seek_pending) p->status.state=paused?LV_AIC_PLAYBACK_PAUSED:LV_AIC_PLAYBACK_PLAYING; unlock(p);
-        if(paused || video_eos || !p->session.info.has_video) { aicos_msleep(5); continue; }
-        unsigned held=0;
-        for(unsigned i=0;i<LV_AIC_PLAYER_LEASES;i++) held+=(p->session.held>>i)&1U;
-        if(held>=p->options.extra_frames) { aicos_msleep(5); continue; }
-        const struct mpp_frame *frame;
-        if(!lv_aic_player_session_acquire(&p->session,&pending,&frame)) {
-            if(p->session.faulted) fault(p);
-            aicos_msleep(5); continue;
+        if(paused || (!pending && video_eos) || !p->session.info.has_video) { aicos_msleep(5); continue; }
+        if(lv_aic_player_frames_blocked(p->frames)) { aicos_msleep(5);continue; }
+        if(!pending) {
+            unsigned held=0;
+            for(unsigned i=0;i<LV_AIC_PLAYER_LEASES;i++) held+=(p->session.held>>i)&1U;
+            if(held>=p->options.extra_frames) { aicos_msleep(5); continue; }
+            const struct mpp_frame *frame;
+            if(!lv_aic_player_session_acquire(&p->session,&pending,&frame)) {
+                if(p->session.faulted) fault(p);
+                aicos_msleep(5); continue;
+            }
+            /* SDK external-render get_buffer owns PTS delay/drop and audio clock
+             * synchronization. Publish the returned frame without a second clock. */
+            lock(p);
+            bool discard=p->closing || p->status.seek_pending;
+            p->status.frames_received++;
+            if(!discard && !p->status.has_audio) { p->status.position_us=frame->pts; p->status.position_valid=true; }
+            video_eos=(frame->flags&FRAME_FLAG_EOS)!=0; p->status.video_eos=video_eos;
+            unlock(p);
+            if(discard) continue; /* closing branch returns pending safely */
         }
-        /* SDK external-render get_buffer owns PTS delay/drop and audio clock
-         * synchronization. Publish the returned frame without a second clock. */
-        lock(p);
-        bool discard=p->closing || p->status.seek_pending;
-        p->status.frames_received++;
-        if(!discard && !p->status.has_audio) { p->status.position_us=frame->pts; p->status.position_valid=true; }
-        video_eos=(frame->flags&FRAME_FLAG_EOS)!=0; p->status.video_eos=video_eos;
-        unlock(p);
-        if(discard) continue; /* closing branch returns pending safely */
-        if(!lv_aic_player_frames_submit(p->frames,pending)) {
+        lv_aic_player_submit_result_t submitted=lv_aic_player_frames_submit_checked(p->frames,pending);
+        if(submitted!=LV_AIC_PLAYER_SUBMIT_OK) {
             lock(p); bool cancelled=p->closing || p->status.seek_pending; unlock(p);
-            if(!cancelled) fault(p);
+            if(!cancelled && submitted==LV_AIC_PLAYER_SUBMIT_FAILED) fault(p);
+            else aicos_msleep(5);
             continue;
         }
         pending=0;
@@ -183,6 +188,13 @@ lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const l
         (void)lv_aic_player_allocator_destroy(p->allocator); aicos_mutex_delete(p->mutex); lv_free(p); return NULL;
     }
     return p;
+}
+bool lv_aic_player_playback_preserve(lv_aic_player_playback_t *p,bool enabled)
+{
+    if(!p) return false;
+    lock(p);bool ok=!p->closing && !p->status.finished;
+    if(ok) lv_aic_player_frames_preserve(p->frames,enabled);
+    unlock(p);return ok;
 }
 bool lv_aic_player_playback_start(lv_aic_player_playback_t *p)
 {

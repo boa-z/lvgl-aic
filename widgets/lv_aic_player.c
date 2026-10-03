@@ -53,6 +53,7 @@ struct player_group {
     lv_obj_t obj;
     player_binding_t *members;
 };
+static bool backend_preserve(player_binding_t *b,bool enabled);
 static void group_reset(player_group_t *group)
 {
     if(group) for(player_binding_t *b=group->members;b;b=b->group_next) b->group_presented=false;
@@ -84,7 +85,10 @@ static void group_destructor(const lv_obj_class_t *class_p,lv_obj_t *obj)
 {
     (void)class_p;
     player_group_t *g=(player_group_t *)obj;
-    while(g->members) group_unlink(g->members);
+    while(g->members) {
+        player_binding_t *b=g->members;group_unlink(b);
+        (void)backend_preserve(b,false);
+    }
 }
 const lv_obj_class_t lv_aic_player_group_class={
     .base_class=&lv_obj_class,.instance_size=sizeof(player_group_t),.destructor_cb=group_destructor,
@@ -108,6 +112,8 @@ lv_result_t lv_aic_player_set_group(lv_obj_t *obj,lv_obj_t *group)
         b->group_next=b->group->members; b->group->members=b;
         group_reset(b->group);
     }
+    /* Reassignment must not briefly disable preservation between groups. */
+    (void)backend_preserve(b,group!=NULL);
     return LV_RESULT_OK;
 }
 lv_obj_t *lv_aic_player_get_group(lv_obj_t *obj)
@@ -322,6 +328,13 @@ static lv_aic_playback_status_t backend_status(player_binding_t *b)
 #endif
     return lv_aic_player_playback_status(b->playback);
 }
+static bool backend_preserve(player_binding_t *b,bool enabled)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) return lv_aic_apng_playback_preserve(b->apng,enabled);
+#endif
+    return lv_aic_player_playback_preserve(b->playback,enabled);
+}
 static bool backend_start(player_binding_t *b)
 {
 #if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
@@ -369,12 +382,12 @@ static bool prepare(player_binding_t *b)
     b->status=lv_aic_player_playback_status(NULL);
     if(!backend_active(b)) { b->state=LV_AIC_PLAYER_FAULT; return false; }
     b->state=LV_AIC_PLAYER_OPENING; b->stopped=false; b->repeat_frames=0;
-    bool setup=true;
+    bool setup=backend_preserve(b,b->group!=NULL);
 #if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
-    if(b->apng) setup=lv_aic_apng_playback_rate(b->apng,b->rate_num,b->rate_den);
+    if(b->apng) setup=setup && lv_aic_apng_playback_rate(b->apng,b->rate_num,b->rate_den);
     else
 #endif
-        if(b->volume>=0) setup=lv_aic_player_playback_volume(b->playback,b->volume);
+        if(b->volume>=0) setup=setup && lv_aic_player_playback_volume(b->playback,b->volume);
     if(!setup || (b->start_requested && !backend_start(b))) {
         backend_close(b); b->state=LV_AIC_PLAYER_FAULT; return false;
     }
@@ -408,17 +421,18 @@ static void tick(lv_timer_t *timer)
         }
         if(b->state==LV_AIC_PLAYER_FAULT) retire(b);
         else if(b->state==LV_AIC_PLAYER_PLAYING || b->state==LV_AIC_PLAYER_TERMINAL) {
-            lv_aic_player_image_t next={0};
-            if(!group_wait(b) && backend_poll(b,&next)) {
-                player_frame_t *frame=lv_malloc(sizeof(*frame));
-                if(frame) {
-                    *frame=(player_frame_t){.image=next,.owners=1};
+            if(!group_wait(b)) {
+                /* Reserve the widget owner before consuming the mailbox so an
+                 * allocation failure cannot drop a preserved frame. */
+                player_frame_t *frame=lv_malloc_zeroed(sizeof(*frame));
+                if(frame && backend_poll(b,&frame->image)) {
+                    frame->owners=1;
                     player_frame_t *old=b->frame; b->frame=frame;
                     lv_image_set_src(b->obj,lv_aic_player_image_source(&frame->image));
                     publish_slaves(b,frame);
                     b->group_presented=true;
                     release_frame(old);
-                } else lv_aic_player_image_destroy(&next);
+                } else lv_free(frame);
             }
         }
     }

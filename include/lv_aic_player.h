@@ -17,6 +17,7 @@ extern const lv_obj_class_t lv_aic_player_group_class;
  * One group per master. Add is idempotent and reassigns from the old group.
  * Membership/source/seek/start/stop changes reset publication rounds.
  * Destroying a group detaches surviving masters; deleting a master removes it.
+ * Grouping enables worker backpressure; detaching restores latest-wins.
  * Grouping adds no decoder instances: backend instance limits still apply.
  * General nonzero seek is rejected while grouped. */
 lv_obj_t *lv_aic_player_group_create(lv_obj_t *parent);

@@ -17,7 +17,7 @@ struct lv_aic_apng_frames {
     size_t bytes;
     unsigned count;
     uint64_t last_sequence;
-    bool closed;
+    bool closed,preserve;
     struct slot slots[8];
 };
 static void lock(lv_aic_apng_frames_t *p) { aicos_mutex_take(p->mutex,AICOS_WAIT_FOREVER); }
@@ -46,6 +46,10 @@ bool lv_aic_apng_frames_publish(lv_aic_apng_frames_t *p,const void *rgba,size_t 
     if(p->closed || seq<=p->last_sequence) { unlock(p);return false; }
     struct slot *slot=NULL;
     for(unsigned i=0;i<p->count;i++) if(p->slots[i].state==READY) { slot=&p->slots[i];break; }
+    if(p->preserve) {
+        for(unsigned i=0;i<p->count;i++)
+            if(p->slots[i].state==READY || p->slots[i].state==CLAIMED) { unlock(p);return false; }
+    }
     if(!slot) for(unsigned i=0;i<p->count;i++) if(p->slots[i].state==FREE) { slot=&p->slots[i];break; }
     if(!slot) { unlock(p);return false; }
     /* Disallow publishing any pool-backed input, including a leased snapshot. */
@@ -83,9 +87,21 @@ bool lv_aic_apng_frames_poll(lv_aic_apng_frames_t *p,lv_aic_rgb_image_t **out,ui
     lv_aic_rgb_frame_t frame={.format=LV_COLOR_FORMAT_ARGB8888,.width=p->width,.height=p->height,
         .stride=p->width*4,.data=s->pixels,.capacity=p->bytes};
     lv_aic_rgb_image_t *image=lv_aic_rgb_image_create(&frame,retain,release,s);
-    if(!image) { lock(p);s->state=FREE;unlock(p);return false; }
+    if(!image) { lock(p);s->state=p->preserve && !p->closed?READY:FREE;unlock(p);return false; }
     *out=image;*sequence=seq;return true;
 }
+void lv_aic_apng_frames_preserve(lv_aic_apng_frames_t *p,bool enabled)
+{ if(p) { lock(p);p->preserve=enabled;unlock(p); } }
+static bool pending_locked(lv_aic_apng_frames_t *p)
+{
+    for(unsigned i=0;i<p->count;i++)
+        if(p->slots[i].state==READY || p->slots[i].state==CLAIMED) return true;
+    return false;
+}
+bool lv_aic_apng_frames_pending(lv_aic_apng_frames_t *p)
+{ if(!p) return false;lock(p);bool busy=pending_locked(p);unlock(p);return busy; }
+bool lv_aic_apng_frames_blocked(lv_aic_apng_frames_t *p)
+{ if(!p) return false;lock(p);bool busy=p->preserve && pending_locked(p);unlock(p);return busy; }
 void lv_aic_apng_frames_close(lv_aic_apng_frames_t *p)
 {
     if(!p) return;

@@ -14,6 +14,13 @@ lv_aic_apng_frames_t *lv_aic_apng_frames_create(uint32_t width,uint32_t height,
  * even when publication is dropped. Sequence must increase after success. */
 bool lv_aic_apng_frames_publish(lv_aic_apng_frames_t *p,const void *rgba,
     size_t stride,size_t capacity,uint64_t sequence);
+/* Owner-thread policy. Default false: latest frame wins. When true, an
+ * unconsumed/being-published frame is never replaced. Producer must retain
+ * failed submissions and retry. Close/replay may intentionally discard them. */
+void lv_aic_apng_frames_preserve(lv_aic_apng_frames_t *p,bool enabled);
+/* Snapshot under the mailbox lock; true also covers an in-progress poll. */
+bool lv_aic_apng_frames_pending(lv_aic_apng_frames_t *p);
+bool lv_aic_apng_frames_blocked(lv_aic_apng_frames_t *p);
 /* LVGL owner only; initialize RGB decoder first. Caller owns returned image.
  * Retire it only after detaching widgets/queued draws; GE/native readers can
  * keep the snapshot alive beyond retirement. Outputs unchanged on false. */

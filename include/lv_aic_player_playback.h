@@ -34,6 +34,11 @@ typedef struct {
  * SDK get_frame already performs decode and A/V timing; do not layer another
  * sleep/drop scheduler on top. Counters describe mailbox work, not display. */
 lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const lv_aic_playback_options_t *options);
+/* Preserve unconsumed frames instead of replacing them. Default false.
+ * Controls and cleanup remain responsive while worker production waits.
+ * Enabling on a live worker may retain one already in-flight extra frame;
+ * frames dropped before enabling cannot be recovered. No exact PTS promise. */
+bool lv_aic_player_playback_preserve(lv_aic_player_playback_t *p,bool enabled);
 bool lv_aic_player_playback_start(lv_aic_player_playback_t *playback);
 bool lv_aic_player_playback_pause(lv_aic_player_playback_t *playback,bool paused);
 bool lv_aic_player_playback_volume(lv_aic_player_playback_t *playback,int volume);

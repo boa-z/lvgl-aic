@@ -112,6 +112,38 @@ int main(void)
     assert(!lv_aic_apng_playback_destroy(p));lv_aic_rgb_image_release_lease(reader);
     assert(lv_aic_apng_playback_destroy(p));assert(atomic_load(&opened)==atomic_load(&closed));
     p=lv_aic_apng_playback_prepare(path,&o);assert(p);state(p,LV_AIC_APNG_READY);
+    assert(lv_aic_apng_playback_preserve(p,true));
+    assert(lv_aic_apng_playback_start(p));atomic_store(&tokens,3);
+    for(unsigned i=0;i<2000 && lv_aic_apng_playback_status(p).published<1;i++) aicos_msleep(1);
+    aicos_msleep(20);
+    assert(lv_aic_apng_playback_status(p).composed==1 && lv_aic_apng_playback_status(p).published==1);
+    a=take(p,1);
+    for(unsigned i=0;i<2000 && lv_aic_apng_playback_status(p).published<2;i++) aicos_msleep(1);
+    aicos_msleep(20);assert(lv_aic_apng_playback_status(p).composed==2);
+    b=take(p,2); /* Both immutable snapshots remain held. */
+    for(unsigned i=0;i<2000 && lv_aic_apng_playback_status(p).composed<3;i++) aicos_msleep(1);
+    int before_ticks=atomic_load(&ticks);aicos_msleep(20);
+    assert(atomic_load(&ticks)==before_ticks && lv_aic_apng_playback_status(p).published==2);
+    assert(lv_aic_apng_playback_pause(p,true));state(p,LV_AIC_APNG_PLAYBACK_PAUSED);
+    assert(lv_aic_apng_playback_rate(p,1,2));
+    lv_aic_rgb_image_destroy(a);a=take(p,3); /* Retry intact final canvas. */
+    assert(lv_aic_apng_playback_restart(p));
+    for(unsigned i=0;i<2000 && lv_aic_apng_playback_status(p).restart_pending;i++) aicos_msleep(1);
+    assert(lv_aic_apng_playback_status(p).restarts==1);
+    assert(lv_aic_apng_playback_status(p).rate_den==2);
+    lv_aic_rgb_image_destroy(a);lv_aic_rgb_image_destroy(b);finish(p);
+    assert(lv_aic_apng_playback_destroy(p));
+    /* Replay also discards an unconsumed READY frame without waiting for poll. */
+    p=lv_aic_apng_playback_prepare(path,&o);assert(p);state(p,LV_AIC_APNG_READY);
+    assert(lv_aic_apng_playback_preserve(p,true));assert(lv_aic_apng_playback_start(p));
+    atomic_store(&tokens,1);
+    for(unsigned i=0;i<2000 && !lv_aic_apng_playback_status(p).published;i++) aicos_msleep(1);
+    assert(lv_aic_apng_playback_pause(p,true));state(p,LV_AIC_APNG_PLAYBACK_PAUSED);
+    assert(lv_aic_apng_playback_restart(p));
+    for(unsigned i=0;i<2000 && lv_aic_apng_playback_status(p).restart_pending;i++) aicos_msleep(1);
+    a=NULL;uint64_t none=99;assert(!lv_aic_apng_playback_poll(p,&a,&none) && !a && none==99);
+    finish(p);assert(lv_aic_apng_playback_destroy(p));
+    p=lv_aic_apng_playback_prepare(path,&o);assert(p);state(p,LV_AIC_APNG_READY);
     atomic_store(&decode_fail,1);state(p,LV_AIC_APNG_FAULT);finish(p);
     assert(lv_aic_apng_playback_status(p).state==LV_AIC_APNG_FAULT && lv_aic_apng_playback_destroy(p));
     atomic_store(&decode_fail,0);o.limits.file_bytes=3;

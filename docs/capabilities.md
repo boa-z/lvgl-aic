@@ -13,9 +13,10 @@ Physical validation remains **NOT_RUN**.
 
 Unified player group lifecycle, checked broadcast and publication barriers are
 now available; see [group contract](player-group-stage.md). Remaining player
-parity: multi-instance decoder/resource handling, frame-preserving group
-backpressure, explicit lower video-plane ownership,
-physical codec/timing/audio/multi-view acceptance. Arbitrary APNG time seek and
+parity: multi-instance decoder/resource handling and explicit lower video-plane ownership,
+with physical synchronization evidence still pending. Group backpressure now
+preserves unconsumed media/APNG frames; it does not replace SDK A/V timing.
+Physical codec/timing/audio/multi-view acceptance remains pending. Arbitrary APNG time seek and
 video playback-rate changes are not supported by the SDK reference either.
 See [current command contract](player-command-compat.md). The milestone notes
 below record historical checkpoints; older “remaining” items for APNG worker,

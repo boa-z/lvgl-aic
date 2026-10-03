@@ -301,14 +301,17 @@ def main():
                        "lv_aic_player_group_create", "lv_aic_player_group_add",
                        "lv_aic_player_group_remove", "lv_aic_player_group_get_count",
                        "lv_aic_player_group_control", "lv_aic_player_set_group", "lv_aic_player_get_group",
+                       "lv_aic_player_playback_preserve", "lv_aic_player_frames_submit_checked",
                        "lv_aic_player_set_auto_restart", "lv_aic_player_get_auto_restart_count",
                        "lv_aic_slave_player_create", "lv_aic_slave_player_set_master",
                        "lv_aic_player_playback_prepare", "lv_aic_player_frames_poll_image",
                        "lv_aic_player_allocator_create", "aic_player_create", "aic_player_get_frame"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("player live symbol absent: " + symbol)
-        if args.with_apng and not re.search(r"^\s+0x[0-9a-f]+\s+lv_aic_player_configure_apng\s*$", text, re.MULTILINE):
-            fail("unified player APNG configuration symbol absent")
+        if args.with_apng:
+            for symbol in ("lv_aic_player_configure_apng", "lv_aic_apng_playback_preserve"):
+                if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                    fail("unified player APNG symbol absent: " + symbol)
         print("player link closure: PASS (no media playback execution)")
     print(args.phase + " static checks: PASS (not board validation)")
 

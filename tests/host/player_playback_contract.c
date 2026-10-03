@@ -252,5 +252,48 @@ int main(void)
     assert(lv_aic_player_playback_status(p).position_us==700000);
     assert(!notify(notify_context,AIC_PLAYER_EVENT_PLAY_END,0,0)); wait_state(p,LV_AIC_PLAYBACK_TERMINAL);
     lv_aic_player_playback_close(p); finish(p);
+    /* Backpressure prevents latest-frame replacement and another blocking
+     * get_frame while READY is unconsumed; controls still reach the worker. */
+    audio_only=false;p=prepare();wait_state(p,LV_AIC_PLAYBACK_READY);
+    assert(lv_aic_player_playback_preserve(p,true));
+    assert(lv_aic_player_playback_start(p));wake_worker(3,false);
+    for(unsigned i=0;i<3000 && lv_aic_player_playback_status(p).frames_queued<1;i++) aicos_msleep(1);
+    aicos_msleep(20);assert(lv_aic_player_playback_status(p).frames_received==1);
+    assert(lv_aic_player_playback_pause(p,true));wait_state(p,LV_AIC_PLAYBACK_PAUSED);
+    assert(lv_aic_player_playback_volume(p,42));
+    assert(lv_aic_player_playback_pause(p,false));wait_state(p,LV_AIC_PLAYBACK_PLAYING);
+    for(unsigned n=1;n<=3;n++) {
+        lv_aic_player_image_t kept={0};
+        for(unsigned i=0;i<3000 && !kept.rgb;i++) {
+            (void)lv_aic_player_playback_poll(p,&kept);if(!kept.rgb) aicos_msleep(1);
+        }
+        assert(kept.rgb && kept.pts==(int64_t)n*40000);
+        lv_aic_player_image_destroy(&kept);
+        if(n<3) {
+            for(unsigned i=0;i<3000 && lv_aic_player_playback_status(p).frames_queued<n+1;i++) aicos_msleep(1);
+            aicos_msleep(20);assert(lv_aic_player_playback_status(p).frames_received==n+1);
+        }
+    }
+    lv_aic_player_playback_close(p);wake_worker(0,true);finish(p);
+    /* Enabling preservation while the next SDK get is already blocked must
+     * retain both the older READY image and the arriving EOS lease. */
+    pthread_mutex_lock(&gate);tokens=0;timeout_requested=false;pthread_mutex_unlock(&gate);
+    p=prepare();assert(lv_aic_player_playback_start(p));wake_worker(1,false);
+    for(unsigned i=0;i<3000 && lv_aic_player_playback_status(p).frames_queued<1;i++) aicos_msleep(1);
+    wait_count(&blocked,1);
+    assert(lv_aic_player_playback_preserve(p,true));atomic_store(&next_flags,FRAME_FLAG_EOS);
+    wake_worker(1,false);
+    for(unsigned i=0;i<3000 && lv_aic_player_playback_status(p).frames_received<2;i++) aicos_msleep(1);
+    aicos_msleep(20);
+    assert(lv_aic_player_playback_status(p).frames_queued==1);
+    assert(lv_aic_player_playback_status(p).state!=LV_AIC_PLAYBACK_FAULT);
+    for(unsigned n=1;n<=2;n++) {
+        lv_aic_player_image_t kept={0};
+        for(unsigned i=0;i<3000 && !kept.rgb;i++) {
+            (void)lv_aic_player_playback_poll(p,&kept);if(!kept.rgb) aicos_msleep(1);
+        }
+        assert(kept.rgb && kept.pts==(int64_t)n*40000);lv_aic_player_image_destroy(&kept);
+    }
+    wait_state(p,LV_AIC_PLAYBACK_TERMINAL);lv_aic_player_playback_close(p);finish(p);
     assert(lv_aic_rgb_image_decoder_deinit() && lv_aic_yuv_image_decoder_deinit()); lv_deinit(); return 0;
 }

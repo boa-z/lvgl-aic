@@ -178,6 +178,22 @@ int main(void)
     while(!finished) pthread_cond_wait(&wake,&gate);
     assert(result); pthread_mutex_unlock(&gate);
     assert(!lv_aic_player_frames_poll(bridge,&pts)); shutdown();
+    startup();assert(execute(SUBMIT));
+    pthread_mutex_lock(&gate);cache_hold=true;finished=false;command=SUBMIT;
+    pthread_cond_broadcast(&wake);
+    while(!cache_wait) pthread_cond_wait(&wake,&gate);
+    pthread_mutex_unlock(&gate);
+    lv_aic_player_frames_preserve(bridge,true);
+    pthread_mutex_lock(&gate);cache_hold=false;pthread_cond_broadcast(&wake);
+    while(!finished) pthread_cond_wait(&wake,&gate);
+    assert(result);pthread_mutex_unlock(&gate);
+    assert(lv_aic_player_frames_blocked(bridge));
+    before=puts;assert(execute(DRAIN) && puts==before);
+    image=lv_aic_player_frames_poll(bridge,&pts);assert(image);
+    int64_t first_pts=pts;lv_aic_yuv_image_destroy(image);
+    assert(execute(DRAIN));
+    image=lv_aic_player_frames_poll(bridge,&pts);assert(image && pts>first_pts);
+    lv_aic_yuv_image_destroy(image);lv_aic_player_frames_close(bridge);shutdown();
     assert(lv_aic_rgb_image_decoder_init()); media_format=MPP_FMT_ARGB_8888;
     startup(); assert(execute(SUBMIT));
     assert(!lv_aic_player_frames_poll(bridge,&pts)); /* Legacy poll must not discard RGB. */
