@@ -427,3 +427,16 @@ replacement-fill retries, pseudo-image propagation and scheduler task retention.
 Mock-only fault resets are not a production recovery mechanism. Board NOT_RUN.
 Broader raw-probe client poisoning and teardown during active DMA remain under
 review; this increment does not establish safe deinit or runtime fault recovery.
+
+
+#### Fill lifetime firmware evidence
+
+Full `ge2d-fonts-gif-widgets-aicp-player-apng` build, static checks, image checks
+and provenance manifest PASS with clean sources: component
+`aef9e001911101c7c4616ed552efc57f6e755121`, SDK
+`865af19e10788d69bfef62375b3279f1b901c1e3`, LVGL
+`80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+Image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`
+(SDK-relative), SHA256
+`aa8b5aa8d725fd1821fcbd4a0fd4c5571f89ec7705e12ce0e111c2832d1d9122`.
+Physical board validation remains NOT_RUN; this is build evidence only.
