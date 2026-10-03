@@ -96,6 +96,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 enable_testing()
+add_executable(lvgl_aic_bmp_header_contract bmp_header_contract.c
+    "${AIC_ROOT}/image/mpp/lv_aic_bmp_header.c")
+target_include_directories(lvgl_aic_bmp_header_contract PRIVATE "${AIC_ROOT}/image/mpp")
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_bmp_header_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_bmp_header_contract COMMAND lvgl_aic_bmp_header_contract)
 add_executable(lvgl_aic_os_contract os_contract.c "${AIC_ROOT}/compat/lv_aic_rtthread_os.c")
 target_include_directories(lvgl_aic_os_contract PRIVATE "${CMAKE_CURRENT_LIST_DIR}/os_stubs" "${AIC_ROOT}/compat")
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
