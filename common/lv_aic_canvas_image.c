@@ -72,4 +72,53 @@ void lv_mpp_image_free(struct lv_mpp_buf *image)
     aicos_free_align(MEM_CMA,a->pixels);
     lv_free(a);
 }
+
+int lv_ge_fill(struct mpp_buf *buf,enum ge_fillrect_type type,
+               unsigned int start_color,unsigned int end_color,int blend)
+{
+#if AIC_LVGL_USE_GE2D
+    if(!buf || dma_faulted() || buf->buf_type!=MPP_PHY_ADDR ||
+       type<GE_NO_GRADIENT || type>GE_V_LINEAR_GRADIENT ||
+       buf->format<MPP_FMT_ARGB_8888 || buf->format>MPP_FMT_BGRA_4444 ||
+       buf->size.width<1 || buf->size.width>4096 ||
+       buf->size.height<1 || buf->size.height>4096 || buf->crop_en>1) return LV_RESULT_INVALID;
+    unsigned bpp=buf->format<=MPP_FMT_BGRX_8888?4:buf->format<=MPP_FMT_BGR_888?3:2;
+    uint32_t address=buf->phy_addr[0];
+    uint64_t bytes=(uint64_t)buf->stride[0]*buf->size.height;
+    if(!address || (bpp!=3 && (address%bpp || buf->stride[0]%bpp)) || buf->stride[0]<(uint32_t)buf->size.width*bpp ||
+       bytes>(uint64_t)UINT32_MAX-address+1) return LV_RESULT_INVALID;
+#if defined(AIC_CHIP_D13X) || defined(AIC_CHIP_G73X)
+    if(address<0x40000000U) return LV_RESULT_INVALID;
+#endif
+    if(buf->crop_en && (buf->crop.x<0 || buf->crop.y<0 ||
+       buf->crop.width<1 || buf->crop.height<1 ||
+       (int64_t)buf->crop.x+buf->crop.width>buf->size.width ||
+       (int64_t)buf->crop.y+buf->crop.height>buf->size.height)) return LV_RESULT_INVALID;
+    allocation_t *owner=NULL;
+    for(allocation_t *a=allocations;a;a=a->next) {
+        uint64_t begin=(uintptr_t)a->pixels,end=begin+a->bytes;
+        if((uint64_t)address<end && (uint64_t)address+bytes>begin) {
+            if(address<begin || (uint64_t)address+bytes>end) return LV_RESULT_INVALID;
+            owner=a;break;
+        }
+    }
+    struct mpp_ge *ge=lv_draw_aic_ge2d_device();
+    if(!ge) return LV_RESULT_INVALID;
+    struct ge_fillrect fill={0};
+    fill.type=type;fill.start_color=start_color;fill.end_color=end_color;
+    fill.dst_buf=*buf;
+    fill.ctrl.alpha_en=blend!=0;fill.ctrl.alpha_rules=GE_PD_NONE;
+    /* Preserve SDK per-pixel alpha and straight-alpha defaults. The hardware
+     * helper exposes native GE behavior, not LVGL gradient pixel equivalence. */
+    if(owner) aicos_dcache_clean_invalid_range((unsigned long *)owner->pixels,owner->bytes);
+    if(mpp_ge_fillrect(ge,&fill)<0 || mpp_ge_emit(ge)<0 || mpp_ge_sync(ge)<0) {
+        lv_draw_aic_ge2d_quarantine();return LV_RESULT_INVALID;
+    }
+    if(owner) aicos_dcache_invalid_range((unsigned long *)owner->pixels,owner->bytes);
+    return LV_RESULT_OK;
+#else
+    LV_UNUSED(buf);LV_UNUSED(type);LV_UNUSED(start_color);LV_UNUSED(end_color);LV_UNUSED(blend);
+    return LV_RESULT_INVALID;
+#endif
+}
 #endif

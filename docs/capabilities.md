@@ -612,3 +612,26 @@ Clean component `3180cc38ea6d58b62e4f71ccc20381e28814dc0d`, SDK
 `443b32995c4e87c310e35abfcdea888996ae5fcd`.
 SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
 SHA256 `c85f345fab0e0fd8d097b176ec8f318d46a59efbfff5643168054dc479d693d3`. Board **NOT_RUN**.
+
+
+### Standalone GE fill helper (2026-10-04)
+
+`lv_ge_fill` now submits SDK native solid, horizontal and vertical linear fills
+through the initialized shared GE client. It preserves start/end ARGB values,
+per-pixel alpha and GE_PD_NONE defaults, with blend off/on. All twenty SDK packed
+RGB destination formats are accepted; multi-plane/packed YUV remains a separate
+gap. Ordinary LVGL gradient-task acceleration is unchanged by this explicit API.
+
+Preflight checks physical range, dimensions, stride and crop, and rejects any
+span overlapping but exceeding an owned image allocation. Submission copies the
+public descriptor because SDK validation may mutate crop fields. Owned image
+buffers are cleaned before GE and invalidated only after successful sync. For
+external buffers callers remain responsible for actual capacity, cache ownership
+and lifetime; the helper does not guess adjacent cache-line ownership.
+
+fillrect/emit/sync failures latch the shared quarantine, retain managed buffers
+and refuse retries. A missing client or malformed descriptor is rejected before
+submission without poisoning GE. Host contracts verify descriptor fields, all
+packed formats, crop/range rejection, cache sequencing and each failure stage.
+They do not establish gradient/blend pixel correctness. Native YUV fill, board
+numeric probes and physical acceptance remain open; board NOT_RUN.

@@ -54,7 +54,7 @@ if GetDepend('AIC_LVGL_USE_PLAYER_SESSION') or GetDepend('AIC_LVGL_USE_APNG'):
 src = Glob('port/*.c') + Glob('image/mpp/*.c') + Glob('common/*.c') + Glob('draw/ge2d/*.c')
 if GetDepend('AIC_LVGL_USE_CANVAS'):
     src += Glob('widgets/lv_aic_canvas.c')
-    for api in ('lv_mpp_image_alloc', 'lv_mpp_image_flush_cache', 'lv_mpp_image_free', 'lv_aic_mpp_image_alloc_bounded'):
+    for api in ('lv_ge_fill', 'lv_mpp_image_alloc', 'lv_mpp_image_flush_cache', 'lv_mpp_image_free', 'lv_aic_mpp_image_alloc_bounded'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
     for api in ('create', 'set_budget', 'alloc_buffer', 'draw_text', 'draw_text_to_center'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_canvas_' + api])

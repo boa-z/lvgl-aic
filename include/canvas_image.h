@@ -28,6 +28,14 @@ void lv_mpp_image_flush_cache(struct lv_mpp_buf *image);
 /* Remove all image/cache users and complete DMA before freeing. Shared GE
  * faults retain storage until reboot. Unknown/NULL handles are ignored. */
 void lv_mpp_image_free(struct lv_mpp_buf *image);
+/* SDK-shaped synchronous solid / horizontal / vertical gradient fill.
+ * Packed RGB formats; physical destination dimensions/crop must be valid.
+ * Requires initialized shared GE. External buffers remain caller-owned:
+ * synchronize caches before/after the call and retain storage on DMA failure.
+ * Owned lv_mpp_image buffers get automatic cache synchronization and bounds
+ * checking. Returns LV_RESULT_OK / LV_RESULT_INVALID; never retries in SW. */
+int lv_ge_fill(struct mpp_buf *buf,enum ge_fillrect_type type,
+               unsigned int start_color,unsigned int end_color,int blend);
 #endif
 #ifdef __cplusplus
 }
