@@ -67,21 +67,20 @@
 #include <mpp_ge.h>
 #include <limits.h>
 
-/**
- * Outcome of one blit attempt.
- *
- * The core callback LVGL hands us returns void, so the result travels back
- * through this file-scope record. That is safe here because the unit is
- * strictly synchronous: dispatch() keeps at most one task in flight and there
- * is no render thread, so two attempts cannot overlap. The MPP decoder always
- * sets @c decoder_dsc->decoded for a whole image, which means the callback runs
- * exactly once per task and the record cannot be overwritten mid-attempt.
- */
+/* Synchronous draw unit: one full-image decoder and at most one task in
+ * flight. A failed DMA keeps this descriptor and its owned resources alive;
+ * subsequent public calls refuse work until reboot. */
 static bool s_blit_called;
 static bool s_blit_ok;
 static bool s_blit_failed;
 static lv_aic_rgb_image_t *rgb_quarantined;
-bool lv_draw_aic_ge2d_image_faulted(void) { return rgb_quarantined!=NULL; }
+/* Stable address: decoders may retain pointers into their descriptor. */
+static lv_image_decoder_dsc_t image_decoder;
+static bool decoder_quarantined;
+bool lv_draw_aic_ge2d_image_faulted(void)
+{
+    return rgb_quarantined != NULL || decoder_quarantined;
+}
 static bool s_blit_validate_only;
 
 static int lv_draw_aic_ge2d_angle_2_12(int32_t angle, bool cosine)
@@ -482,26 +481,6 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     return true;
 }
 
-/**
- * Core callback handed to lv_draw_image_normal_helper().
- *
- * Only records the outcome; the fallback decision belongs to the caller, which
- * still holds the original draw descriptor and the task.
- */
-static void lv_draw_aic_ge2d_image_cb(lv_draw_task_t *task,
-                                      const lv_draw_image_dsc_t *draw_dsc,
-                                      const lv_image_decoder_dsc_t *decoder_dsc,
-                                      lv_draw_image_sup_t *sup,
-                                      const lv_area_t *img_coords,
-                                      const lv_area_t *clipped_img_area)
-{
-    LV_UNUSED(sup);
-
-    s_blit_called = true;
-    s_blit_ok = lv_draw_aic_ge2d_blit(task, draw_dsc, decoder_dsc, img_coords,
-                                      clipped_img_area);
-}
-
 /* Keep the decoder open across both passes. No tile writes before every
  * clipped tile has passed geometry/address checks; never replay a partial
  * blend through software after an engine failure. */
@@ -691,24 +670,40 @@ static lv_result_t image_draw(lv_draw_task_t *task,
     s_blit_ok = false;
     s_blit_failed = false;
 
-    /* GE consumes the decoded byte stride directly. Default bin-decoder
-     * normalization can replace a padded CMA source with an inaccessible
-     * LVGL heap copy. Preserve its layout and straight alpha instead.
-     * LVGL still owns decode, clipping and the decoder lifetime. */
-    if (blit_dsc->tile) {
-        lv_image_decoder_dsc_t decoder;
-        if (lv_image_decoder_open(&decoder, blit_dsc->src, &decoder_args) == LV_RESULT_OK) {
-            int tiled = lv_draw_aic_ge2d_tiles(task, blit_dsc, &decoder);
-            lv_image_decoder_close(&decoder);
-            if (tiled == 2) return LV_RESULT_OK;
-            s_blit_called = true;
+    /* Own the decoder through completion. Upstream helpers unconditionally
+     * close it after the callback, which is unsafe after uncertain DMA.
+     * Whole-image decoders use GE; partial decoders retain the SW path. */
+    lv_area_t draw_area = task->area, clipped;
+    if (!blit_dsc->tile && (blit_dsc->rotation ||
+        blit_dsc->scale_x != LV_SCALE_NONE || blit_dsc->scale_y != LV_SCALE_NONE)) {
+        lv_image_buf_get_transformed_area(&draw_area,
+            lv_area_get_width(&task->area), lv_area_get_height(&task->area),
+            blit_dsc->rotation, blit_dsc->scale_x, blit_dsc->scale_y, &blit_dsc->pivot);
+        lv_area_move(&draw_area, task->area.x1, task->area.y1);
+    }
+    if (!lv_area_intersect(&clipped, &draw_area, &task->clip_area)) return LV_RESULT_OK;
+    if (lv_image_decoder_open(&image_decoder, blit_dsc->src, &decoder_args) == LV_RESULT_OK) {
+        if (blit_dsc->tile) {
+            int tiled = lv_draw_aic_ge2d_tiles(task, blit_dsc, &image_decoder);
+            s_blit_called = tiled != 2;
             s_blit_ok = tiled > 0;
             s_blit_failed = tiled < 0;
+            if (tiled == 2) {
+                lv_image_decoder_close(&image_decoder);
+                return LV_RESULT_OK;
+            }
         }
-    }
-    else {
-        lv_draw_image_normal_helper(task, blit_dsc, &task->area,
-                                    lv_draw_aic_ge2d_image_cb, &decoder_args);
+        else if (image_decoder.decoded) {
+            s_blit_called = true;
+            s_blit_ok = lv_draw_aic_ge2d_blit(task, blit_dsc, &image_decoder,
+                                            &task->area, &clipped);
+        }
+        if (s_blit_failed) {
+            /* Retain decoder-owned pixels, cache references and file state.
+             * Dispatcher retains the task and destination until reboot. */
+            decoder_quarantined = true;
+        }
+        else lv_image_decoder_close(&image_decoder);
     }
 
     if (s_blit_failed) {
@@ -758,8 +753,8 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,lv_draw_aic_ge2d_outcome
     s_blit_failed=false;
     lv_result_t result=image_draw(task,outcome);
     if(lease) {
-        /* Decoder close may have run already, but this extra lease still owns
-         * both producer pixels and every decoded snapshot consumed by GE. */
+        /* Preserve the producer lease as well as the open decoder snapshot
+         * if DMA completion is uncertain. */
         if(s_blit_failed) rgb_quarantined=lease;
         else lv_aic_rgb_image_release_lease(lease);
     }

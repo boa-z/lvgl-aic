@@ -98,6 +98,102 @@ void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *b, const lv_area_t 
 int mpp_ge_fillrect(struct mpp_ge *ge, struct ge_fillrect *fill)
 { (void)ge; captured_fill = *fill; fills++; return fail_at == 1 ? -1 : 0; }
 
+/* Synchronous mocks alone may drain and reset a faulted decoder. */
+static void reset_decoder_fault(void)
+{
+    assert(decoder_quarantined);
+    lv_image_decoder_close(&image_decoder);
+    decoder_quarantined = false;
+}
+static const char lifetime_file[] = "Z:/dma-lifetime.test";
+static const uint8_t lifetime_encoded[] = {0x42};
+static const lv_image_dsc_t lifetime_raw = {
+    .header = {.magic=LV_IMAGE_HEADER_MAGIC, .cf=LV_COLOR_FORMAT_RAW, .w=32, .h=32},
+    .data=lifetime_encoded, .data_size=sizeof(lifetime_encoded)
+};
+static unsigned lifetime_opens, lifetime_closes;
+static lv_draw_buf_t *lifetime_pixels;
+static lv_result_t lifetime_info(lv_image_decoder_t *dec, lv_image_decoder_dsc_t *dsc,
+                                 lv_image_header_t *header)
+{
+    (void)dec;
+    if (dsc->src != &lifetime_raw &&
+        !(dsc->src_type == LV_IMAGE_SRC_FILE && !strcmp(dsc->src, lifetime_file)))
+        return LV_RESULT_INVALID;
+    *header = (lv_image_header_t){.magic=LV_IMAGE_HEADER_MAGIC,
+        .cf=LV_COLOR_FORMAT_ARGB8888, .w=32, .h=32, .stride=128};
+    return LV_RESULT_OK;
+}
+static lv_result_t lifetime_open(lv_image_decoder_t *dec, lv_image_decoder_dsc_t *dsc)
+{
+    (void)dec;
+    assert(!lifetime_pixels);
+    lifetime_pixels = lv_draw_buf_create(32,32,LV_COLOR_FORMAT_ARGB8888,128);
+    assert(lifetime_pixels);
+    memset(lifetime_pixels->data,0x3c,lifetime_pixels->data_size);
+    allowed_src = lifetime_pixels->data;
+    dsc->decoded = lifetime_pixels;
+    dsc->user_data = dsc; /* Detect moving a decoder descriptor after open. */
+    lifetime_opens++;
+    return LV_RESULT_OK;
+}
+static void lifetime_close(lv_image_decoder_t *dec, lv_image_decoder_dsc_t *dsc)
+{
+    (void)dec;
+    assert(dsc->user_data == dsc && dsc->decoded == lifetime_pixels);
+    lv_draw_buf_destroy(lifetime_pixels); lifetime_pixels = NULL;
+    dsc->decoded = NULL; lifetime_closes++;
+}
+static void *lifetime_fs_open(lv_fs_drv_t *drv,const char *path,lv_fs_mode_t mode)
+{ (void)drv; (void)path; (void)mode; return (void *)(uintptr_t)1; }
+static lv_fs_res_t lifetime_fs_close(lv_fs_drv_t *drv,void *file)
+{ (void)drv; (void)file; return LV_FS_RES_OK; }
+static lv_fs_res_t lifetime_fs_seek(lv_fs_drv_t *drv,void *file,uint32_t pos,lv_fs_whence_t whence)
+{ (void)drv; (void)file; (void)pos; (void)whence; return LV_FS_RES_OK; }
+static void generic_decoder_lifetime(lv_layer_t *layer)
+{
+    static lv_fs_drv_t fs;
+    lv_fs_drv_init(&fs); fs.letter='Z'; fs.open_cb=lifetime_fs_open;
+    fs.close_cb=lifetime_fs_close; fs.seek_cb=lifetime_fs_seek;
+    lv_fs_drv_register(&fs);
+    lv_image_decoder_t *dec = lv_image_decoder_create();
+    lv_image_decoder_set_info_cb(dec,lifetime_info);
+    lv_image_decoder_set_open_cb(dec,lifetime_open);
+    lv_image_decoder_set_close_cb(dec,lifetime_close);
+    lv_draw_image_dsc_t d;
+    lv_draw_task_t task = {0};
+    lv_draw_image_dsc_init(&d);
+    d.header = (lv_image_header_t){.magic=LV_IMAGE_HEADER_MAGIC,
+        .cf=LV_COLOR_FORMAT_ARGB8888,.w=32,.h=32,.stride=128};
+    d.image_area = (lv_area_t){0,0,31,31};
+    task.type = LV_DRAW_TASK_TYPE_IMAGE; task.draw_dsc = &d;
+    task.target_layer = layer; task.area = task.clip_area = d.image_area;
+    for (unsigned raw=0;raw<2;raw++) for (unsigned tile=0;tile<2;tile++) {
+        d.src = raw ? (const void *)&lifetime_raw : lifetime_file; d.tile = tile;
+        for (fail_at=1;fail_at<=3;fail_at++) {
+            unsigned old_closes=lifetime_closes;
+            lv_draw_aic_ge2d_outcome_t outcome;
+            assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_INVALID);
+            assert(lv_draw_aic_ge2d_image_faulted() && lifetime_pixels);
+            assert(lifetime_closes==old_closes && lifetime_opens==old_closes+1);
+            lv_image_cache_drop(d.src);
+            assert(lifetime_pixels->data[0]==0x3c);
+            int before=submits;
+            assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_INVALID);
+            assert(submits==before && lifetime_closes==old_closes);
+            lv_draw_aic_ge2d_deinit(); lv_draw_aic_ge2d_init();
+            assert(lifetime_pixels->data[0]==0x3c && lifetime_closes==old_closes);
+            reset_decoder_fault();
+            assert(lifetime_closes==lifetime_opens && !lifetime_pixels);
+        }
+        fail_at=0;
+        lv_draw_aic_ge2d_outcome_t outcome;
+        assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK);
+        assert(outcome==LV_DRAW_AIC_GE2D_OUTCOME_ENGINE && lifetime_opens==lifetime_closes);
+        lv_image_cache_drop(d.src);
+    }
+    lv_image_decoder_delete(dec);
+}
 int main(void)
 {
     combined_transform_contract();
@@ -190,6 +286,7 @@ int main(void)
         task.area = origin; task.clip_area = clip;
         assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
         assert(outcome != LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+        reset_decoder_fault();
     }
     fail_at = 0;
     {
@@ -237,6 +334,7 @@ int main(void)
             rotate_fail = 1;
             assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
             assert(outcome != LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+        reset_decoder_fault();
             rotate_fail = 0;
         }
     }
@@ -292,6 +390,7 @@ int main(void)
             rotate_fail = fail_at == 1;
             assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
             assert(outcome != LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+        reset_decoder_fault();
         }
         rotate_fail = fail_at = 0;
         {
@@ -441,6 +540,7 @@ int main(void)
             assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
             assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING);
             assert(submits == before + tile && !s_blit_validate_only);
+            reset_decoder_fault();
         }
         fail_submission = 0;
         before = submits;
@@ -487,6 +587,7 @@ int main(void)
             before=submits; fail_submission=before+tile;
             assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_INVALID);
             assert(outcome!=LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE && submits==before+tile);
+            reset_decoder_fault();
         }
         fail_submission=0;
         /* Earlier cells are supported, but the last is narrower than scaler
@@ -621,10 +722,12 @@ int main(void)
         int before=submits;
         assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_INVALID && submits==before);
         /* Mock engine has no DMA. Only the test may release/reset quarantine. */
+        reset_decoder_fault();
         lv_aic_rgb_image_release_lease(rgb_quarantined); rgb_quarantined=NULL;
         assert(rgb_retained==rgb_released);
     }
     assert(lv_aic_rgb_image_decoder_deinit());
+    fail_at = 0; generic_decoder_lifetime(&layer);
     lv_deinit();
     return 0;
 }

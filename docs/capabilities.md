@@ -473,3 +473,22 @@ Remaining fault-lifetime work: ordinary FILE/RAW decoder resources are closed by
 LVGL image helpers after draw callbacks. The leased RGB/YUV source protection
 does not establish safe lifetime for every generic decoder on DMA failure.
 Audit and retain those resources before claiming complete GE fault isolation.
+
+
+### Generic GE decoder lifetime (2026-10-04)
+
+The GE image path now owns one stable-address decoder descriptor across normal
+and tiled full-image submissions. It closes only after successful synchronization
+or preflight rejection. Failed bitblt/rotate/emit/sync retains decoder-owned pixels,
+cache references and custom session state, and triggers the shared client/task
+quarantine. No LVGL or SDK source changes are required. Partial decoders still
+use the software renderer; successful hardware operations preserve their geometry.
+
+Host coverage includes FILE and RAW custom decoders whose close callbacks destroy
+the pixel allocation, all three DMA failure stages, normal/tiled paths, cache drop,
+retry refusal and init/deinit attempts. Existing RGB snapshot/producer leases,
+rotation and transformed tile contracts remain covered. Test-only cleanup is
+possible because mocks start no DMA; production recovery still requires reboot.
+External caller-owned variable pixels and child layers must stay alive while their
+task is in progress. Full LVGL teardown during a fault is still unsupported.
+Board validation NOT_RUN; this supersedes the generic decoder pending item above.
