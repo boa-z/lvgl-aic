@@ -57,7 +57,7 @@ phase documents are historical; source presence and switches are not board proof
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
 | Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
-| Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu now have host compatibility contracts; target retention and direct video-window composition need separate validation; camera/player use separate opt-in adapters |
+| Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu have host interaction contracts, a manual page and target linkage gates; physical input/rendering and direct video-window composition remain pending; camera/player use separate opt-in adapters |
 
 SDK image roller is now optional via AIC_LVGL_USE_IMG_ROLLER: application-owned
 carousel, looping, direction, zoom and active selection. Host lifecycle/layout
@@ -459,3 +459,17 @@ Other independent GE clients and SDK reset semantics remain outside this guard.
 Host coverage checks all four fault origins, no resubmission, queued-task state,
 client open/close counts and pseudo-image refusal without CPU writes. Board
 NOT_RUN; no runtime recovery or reset procedure is claimed.
+
+
+#### Shared-client firmware evidence
+
+Full GE/fonts/GIF/widgets/AICP/player/APNG boot/app/static/image/manifest gates PASS.
+Clean source component `78e70bd531e13f2527fc43b11944bb01e36ed9d9`, SDK
+`f8413d83045fc7ab207b1a3ee5cc3582d21999f1`. Host **50/50 PASS**.
+SDK-relative evidence image: `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`.
+SHA256 `ca55e795522a2fff8465d00097a559425800bd3afa7c0aebcf243df9e67957a5`. Board **NOT_RUN**.
+
+Remaining fault-lifetime work: ordinary FILE/RAW decoder resources are closed by
+LVGL image helpers after draw callbacks. The leased RGB/YUV source protection
+does not establish safe lifetime for every generic decoder on DMA failure.
+Audit and retain those resources before claiming complete GE fault isolation.
