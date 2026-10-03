@@ -75,6 +75,13 @@ includes += [os.path.join(cwd, 'common'), os.path.join(cwd, 'image', 'mpp'),
 group += DefineGroup('Application-LVGL-AIC', src, depend=['AIC_LVGL_PORT'], CPPPATH=includes,
                      CPPDEFINES=['AIC_LVGL_BSP_RTTHREAD=1', 'AIC_LVGL_BSP_MPP=1'])
 
+# 兼容旧应用的原生 list/menu 入口仅在控件 smoke 配置中保留，不自动创建 UI。
+if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_IMG_ROLLER') and GetDepend('AIC_LVGL_USE_SWIPE_V1'):
+    for api in ('lv_list_create', 'lv_list_add_text', 'lv_list_add_button', 'lv_list_get_button_text',
+                'lv_menu_create', 'lv_menu_page_create', 'lv_menu_cont_create',
+                'lv_menu_set_load_page_event', 'lv_menu_set_page', 'lv_menu_get_cur_main_page'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
+
 # 媒体构建配置保留完整控件入口，验证链接闭包；不自动播放或占用设备。
 if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_PLAYER'):
     for api in ('create', 'configure', 'set_video_plane', 'set_video_plane_rotation_budget', 'set_src', 'start', 'stop', 'close',

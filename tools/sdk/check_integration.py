@@ -324,7 +324,10 @@ def main():
     if args.with_widgets:
         text = map_path.read_text(encoding="utf-8", errors="replace")
         for symbol in ("lv_img_roller_create", "lv_img_roller_ready",
-                       "lv_swipe_v1_create", "lv_swipe_v1_set_next"):
+                       "lv_swipe_v1_create", "lv_swipe_v1_set_next",
+                       "lv_list_create", "lv_list_add_button", "lv_list_get_button_text",
+                       "lv_menu_create", "lv_menu_page_create", "lv_menu_cont_create",
+                       "lv_menu_set_load_page_event", "lv_menu_set_page", "lv_menu_get_cur_main_page"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("SDK widget live symbol absent: " + symbol)
         print("SDK widget live symbols: PASS")
