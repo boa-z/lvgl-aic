@@ -163,8 +163,7 @@ static int tiles(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame)
     const lv_draw_image_dsc_t *d=task->draw_dsc;
     lv_area_t visible;
     int32_t w=frame->width, h=frame->height;
-    if (d->rotation || d->scale_x!=LV_SCALE_NONE || d->scale_y!=LV_SCALE_NONE ||
-        w<8 || h<8 || !task->target_layer || !task->target_layer->draw_buf) return 0;
+    if (w<8 || h<8 || !task->target_layer || !task->target_layer->draw_buf) return 0;
     if (d->opa<=LV_OPA_MIN || !lv_area_intersect(&visible,&task->area,&task->clip_area) ||
         !lv_area_intersect(&visible,&visible,&task->target_layer->buf_area)) return 2;
     const lv_area_t *anchor=d->image_area.x2==LV_COORD_MIN ? &task->area : &d->image_area;
@@ -175,6 +174,7 @@ static int tiles(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame)
     lv_draw_image_dsc_t tile_dsc=*d;
     lv_draw_task_t tile_task=*task;
     tile_dsc.tile=0; tile_task.draw_dsc=&tile_dsc;
+    bool drawn=false;
     for (int pass=0;pass<2;pass++) {
         for (int64_t y=y0;y<=visible.y2;y+=h) {
             for (int64_t x=x0;x<=visible.x2;x+=w) {
@@ -182,11 +182,13 @@ static int tiles(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame)
                 tile_task.area=(lv_area_t){(int32_t)x,(int32_t)y,(int32_t)(x+w-1),(int32_t)(y+h-1)};
                 if (!lv_area_intersect(&tile_task.clip_area,&tile_task.area,&visible)) continue;
                 int result=submit(&tile_task,frame,pass==0);
+                if (result==2) continue; /* A transformed tile can be empty. */
                 if (result!=1) return pass ? -1 : result;
+                drawn=true;
             }
         }
     }
-    return 1;
+    return drawn ? 1 : 2;
 }
 int lv_draw_aic_ge2d_yuv(lv_draw_task_t *task)
 {

@@ -195,12 +195,6 @@ static bool lv_draw_aic_ge2d_accepts_image(const lv_draw_task_t *task)
         return false;
     }
 
-    /* Initial tiled path uses native spacing; transformed tiles remain SW. */
-    if (dsc->tile && (dsc->rotation != 0 || dsc->scale_x != LV_SCALE_NONE ||
-                     dsc->scale_y != LV_SCALE_NONE)) {
-        return false;
-    }
-
     if (!lv_draw_aic_ge2d_dsc_is_plain(dsc)) {
         return false;
     }

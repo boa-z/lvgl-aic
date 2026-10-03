@@ -10,7 +10,22 @@
 #include "../../draw/ge2d/lv_draw_aic_ge2d_image.c"
 #include "../../draw/ge2d/lv_draw_aic_ge2d_fill.c"
 
-static struct ge_bitblt captured;
+static struct ge_bitblt captured, tile_history[16];
+static bool record_tiles;
+static unsigned tile_count, oracle_count;
+static lv_area_t oracle_cells[16], oracle_clips[16];
+/* Run the upstream tiled helper as an independent grid/clip oracle. */
+static void tile_oracle(lv_draw_task_t *t,const lv_draw_image_dsc_t *d,
+    const lv_image_decoder_dsc_t *decoder,lv_draw_image_sup_t *sup,
+    const lv_area_t *cell,const lv_area_t *clip)
+{
+    (void)d; (void)decoder; (void)sup;
+    lv_area_t visible;
+    if(!lv_area_intersect(&visible,clip,&t->clip_area) ||
+       !lv_area_intersect(&visible,&visible,&t->target_layer->buf_area)) return;
+    assert(oracle_count<16); oracle_cells[oracle_count]=*cell;
+    oracle_clips[oracle_count++]=visible;
+}
 static struct ge_rotation captured_rotation;
 static struct ge_fillrect captured_fill;
 static int fills;
@@ -64,7 +79,7 @@ bool lv_draw_aic_ge2d_yuv_faulted(void) { return false; }
 struct mpp_ge *mpp_ge_open(void) { return (struct mpp_ge *)(uintptr_t)1; }
 void mpp_ge_close(struct mpp_ge *ge) { (void)ge; }
 int mpp_ge_bitblt(struct mpp_ge *ge, struct ge_bitblt *b)
-{ (void)ge; captured = *b; submits++; return fail_at == 1 || submits == fail_submission ? -1 : 0; }
+{ (void)ge; captured = *b; if(record_tiles) { assert(tile_count<16); tile_history[tile_count++]=*b; } submits++; return fail_at == 1 || submits == fail_submission ? -1 : 0; }
 int mpp_ge_rotate(struct mpp_ge *ge, struct ge_rotation *r)
 { (void)ge; captured_rotation = *r; rotate_submits++; return rotate_fail ? -1 : 0; }
 int mpp_ge_emit(struct mpp_ge *ge) { (void)ge; return fail_at == 2 ? -1 : 0; }
@@ -231,7 +246,7 @@ int main(void)
         d.scale_x = d.scale_y = LV_SCALE_NONE; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 900; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 0; d.tile = 1; assert(lv_draw_aic_ge2d_accepts_image(&task));
-        d.rotation = 900; assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        d.rotation = 900; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 0;
         d.tile = 0; d.recolor_opa = 128; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         assert(submits == before);
@@ -420,6 +435,54 @@ int main(void)
         task.clip_area = (lv_area_t){200, 300, 210, 310};
         assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
         assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING && submits == before);
+        /* Transform each native grid cell, matching upstream helper coordinates.
+         * Independent floating inverse checks phases with nonzero pivot and
+         * anisotropic scales for all four orthogonal rotations. */
+        task.clip_area=(lv_area_t){95,195,148,248};
+        d.scale_x=384; d.scale_y=512; d.pivot=(lv_point_t){16,16};
+        for(int angle=0;angle<3600;angle+=900) {
+            d.rotation=angle; oracle_count=tile_count=0;
+            lv_draw_image_tiled_helper(&task,&d,&task.area,tile_oracle,NULL);
+            before=submits; record_tiles=true;
+            assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK);
+            record_tiles=false;
+            assert(outcome==LV_DRAW_AIC_GE2D_OUTCOME_ENGINE && tile_count==oracle_count && tile_count==4);
+            for(unsigned i=0;i<tile_count;i++) {
+                struct ge_bitblt *b=&tile_history[i]; lv_area_t *c=&oracle_clips[i];
+                assert(b->dst_buf.crop.x==c->x1-layer.buf_area.x1);
+                assert(b->dst_buf.crop.y==c->y1-layer.buf_area.y1);
+                assert(b->dst_buf.crop.width==lv_area_get_width(c) && b->dst_buf.crop.height==lv_area_get_height(c));
+                double minx=1e6,miny=1e6,r=angle*3.141592653589793/1800;
+                for(unsigned corner=0;corner<4;corner++) {
+                    double x=((corner&1)?c->x2:c->x1)-oracle_cells[i].x1-d.pivot.x;
+                    double y=((corner&2)?c->y2:c->y1)-oracle_cells[i].y1-d.pivot.y;
+                    double sx=d.pivot.x+(cos(r)*x+sin(r)*y)*256/d.scale_x;
+                    double sy=d.pivot.y+(-sin(r)*x+cos(r)*y)*256/d.scale_y;
+                    if(sx<minx) minx=sx;
+                    if(sy<miny) miny=sy;
+                }
+                assert(fabs(b->src_buf.crop.x+b->scale_phase.h_phase_16[0]/65536.0-minx)<0.00025);
+                assert(fabs(b->src_buf.crop.y+b->scale_phase.v_phase_16[0]/65536.0-miny)<0.00025);
+                assert(b->scale_phase.dx_16[0]==43690 && b->scale_phase.dy_16[0]==32768);
+            }
+        }
+        d.scale_x=d.scale_y=256; d.rotation=450;
+        before=rotate_submits;
+        assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK);
+        assert(outcome==LV_DRAW_AIC_GE2D_OUTCOME_ENGINE && rotate_submits==before+4);
+        d.rotation=0; d.scale_x=d.scale_y=512; d.pivot=(lv_point_t){0,0};
+        for(int tile=1;tile<=4;tile++) {
+            before=submits; fail_submission=before+tile;
+            assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_INVALID);
+            assert(outcome!=LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE && submits==before+tile);
+        }
+        fail_submission=0;
+        /* Earlier cells are supported, but the last is narrower than scaler
+         * limits. Preflight must decline before writing those earlier cells. */
+        task.area.x2=154; task.clip_area.x2=154; before=submits;
+        assert(lv_draw_aic_ge2d_tiles(&task,&d,&decoder)==0 && submits==before);
+        task.area.x2=153; task.clip_area.x2=148;
+        d.scale_x=d.scale_y=256;
         /* A huge task with a tiny visible clip must skip invisible tiles. */
         task.area = (lv_area_t){-1000000000, -1000000000, 1000000000, 1000000000};
         task.clip_area = (lv_area_t){95, 195, 100, 200};

@@ -18,7 +18,7 @@
  * descriptor and the identical blit runs - there is no second code path to keep
  * in step, and no separate "blend a layer" implementation to drift.
  *
- * Normal images use LVGL's helper. Native-size tiles hold one LVGL decoder
+ * Normal images use LVGL's helper. Tiles hold one LVGL decoder
  * across validation and submission passes so unsupported later tiles cannot
  * cause software replay over pixels already blended by GE.
  *
@@ -513,7 +513,9 @@ static int lv_draw_aic_ge2d_tiles(lv_draw_task_t *task, const lv_draw_image_dsc_
     if (!lv_area_intersect(&visible, &task->area, &task->clip_area) ||
         !lv_area_intersect(&visible, &visible, &task->target_layer->buf_area)) return 2;
     lv_area_t anchor = lv_area_get_width(&dsc->image_area) >= 0 ? dsc->image_area : task->area;
-    /* Match LVGL's initial anchor and positive stepping; jump over invisible
+    /* LVGL tiles step by untransformed source dimensions, even with scale or
+     * rotation. Each cell clips its transformed image; do not scale the grid.
+     * Match LVGL's initial anchor and positive stepping; jump over invisible
      * rows/columns without iterating an unbounded off-screen prefix. */
     int64_t x0 = anchor.x1, y0 = anchor.y1;
     if (x0 + w - 1 < visible.x1) x0 += ((visible.x1 - x0) / w) * w;

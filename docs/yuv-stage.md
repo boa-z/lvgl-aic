@@ -160,6 +160,7 @@ dispatch leaves a second queued task WAITING, performs no additional image
 execution and increments the error counter only once. This synchronous mock
 does not establish hardware quiescence or authorize a production reset path.
 
-Remaining scope: transformed tiles, broader board CSC
+Bounded transformed tiling is now implemented; see ge-tiling-stage.md.
+Remaining scope: transformed-tile board probes, broader board CSC
 and clipped-rotation numeric probes,
 and camera/player/video-window ownership. This stage does not close those gaps.

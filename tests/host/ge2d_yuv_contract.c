@@ -143,7 +143,23 @@ int main(void)
         d.scale_x=d.scale_y=256; task.clip_area=layer.buf_area;
         d.tile=1; task.area=(lv_area_t){64,64,127,95};
         reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==4);
-        d.tile=0; task.area=(lv_area_t){64,64,95,79};
+        d.scale_x=d.scale_y=512;
+        reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==4);
+        for(unsigned i=0;i<4;i++) {
+            assert(history[i].dst_buf.crop.x==(int)(54+(i%2)*32));
+            assert(history[i].dst_buf.crop.y==(int)(44+(i/2)*16));
+            assert(history[i].dst_buf.crop.width==32 && history[i].dst_buf.crop.height==16);
+            assert(history[i].scale_phase.dx_16[0]==32768 && history[i].scale_phase.dy_16[0]==32768);
+        }
+        d.rotation=900; d.pivot=(lv_point_t){16,8};
+        reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==4);
+        for(unsigned i=0;i<4;i++) {
+            assert(history[i].ctrl.flags==MPP_ROTATION_90);
+            assert(history[i].dst_buf.crop.x==(int)(56+(i%2)*32));
+            assert(history[i].dst_buf.crop.width==30 && history[i].dst_buf.crop.height==16);
+        }
+        d.rotation=0; d.pivot=(lv_point_t){0,0};
+        d.scale_x=d.scale_y=256; d.tile=0; task.area=(lv_area_t){64,64,95,79};
         lv_aic_yuv_image_destroy(image); assert(live==0);
     }
     frame.format=LV_COLOR_FORMAT_I420; d.rotation=0;
@@ -177,8 +193,14 @@ int main(void)
     task.clip_area=layer.buf_area; reset();
     assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==4);
     d.image_area.x2=LV_COORD_MIN;
-    d.scale_x=384; reset(); assert(lv_draw_aic_ge2d_yuv(&task)==0 && !calls);
-    d.scale_x=256; d.tile=0; task.area=(lv_area_t){64,64,95,79};
+    d.scale_x=384; reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==4);
+    /* Empty first transformed cell must not hide a later visible cell. */
+    d.scale_x=d.scale_y=128; task.clip_area=(lv_area_t){81,64,110,71};
+    reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==1);
+    assert(captured.dst_buf.crop.x==86 && captured.dst_buf.crop.width==15);
+    task.clip_area.x2=95; reset();
+    assert(lv_draw_aic_ge2d_yuv(&task)==2 && !calls && !src_caches && !dst_caches);
+    d.scale_x=d.scale_y=256; d.tile=0; task.area=(lv_area_t){64,64,95,79};
     d.rotation=450; assert(lv_draw_aic_ge2d_yuv(&task)==0); d.rotation=0;
     task.clip_area=(lv_area_t){0,0,1,1}; assert(lv_draw_aic_ge2d_yuv(&task)==2);
     task.clip_area=layer.buf_area; d.opa=0; assert(lv_draw_aic_ge2d_yuv(&task)==2); d.opa=128;
