@@ -685,4 +685,39 @@ lv_aic_playback_status_t lv_aic_player_get_status(lv_obj_t *obj)
     return backend_active(b)?backend_status(b):b->status;
 }
 unsigned lv_aic_player_pending_cleanup(void) { return orphans; }
+
+/* Native LVGL image state is shared by main and slave players; keep transform
+ * behavior independent of media/APNG backend selection. */
+void lv_aic_player_set_pivot(lv_obj_t *obj,int32_t x,int32_t y)
+{ lv_image_set_pivot(obj,x,y); }
+void lv_aic_player_get_pivot(lv_obj_t *obj,lv_point_t *pivot)
+{ lv_image_get_pivot(obj,pivot); }
+void lv_aic_player_set_rotation(lv_obj_t *obj,int32_t value)
+{ lv_image_set_rotation(obj,value); }
+int32_t lv_aic_player_get_rotation(lv_obj_t *obj)
+{ return lv_image_get_rotation(obj); }
+void lv_aic_player_set_scale(lv_obj_t *obj,uint32_t value)
+{ lv_image_set_scale(obj,value); }
+int32_t lv_aic_player_get_scale(lv_obj_t *obj)
+{ return lv_image_get_scale(obj); }
+void lv_aic_player_set_scale_x(lv_obj_t *obj,uint32_t value)
+{ lv_image_set_scale_x(obj,value); }
+int32_t lv_aic_player_get_scale_x(lv_obj_t *obj)
+{ return lv_image_get_scale_x(obj); }
+void lv_aic_player_set_scale_y(lv_obj_t *obj,uint32_t value)
+{ lv_image_set_scale_y(obj,value); }
+int32_t lv_aic_player_get_scale_y(lv_obj_t *obj)
+{ return lv_image_get_scale_y(obj); }
+void lv_aic_player_set_offset_x(lv_obj_t *obj,int32_t value)
+{ lv_image_set_offset_x(obj,value); }
+int32_t lv_aic_player_get_offset_x(lv_obj_t *obj)
+{ return lv_image_get_offset_x(obj); }
+void lv_aic_player_set_offset_y(lv_obj_t *obj,int32_t value)
+{ lv_image_set_offset_y(obj,value); }
+int32_t lv_aic_player_get_offset_y(lv_obj_t *obj)
+{ return lv_image_get_offset_y(obj); }
+void lv_aic_player_set_inner_align(lv_obj_t *obj,lv_image_align_t value)
+{ lv_image_set_inner_align(obj,value); }
+lv_image_align_t lv_aic_player_get_inner_align(lv_obj_t *obj)
+{ return lv_image_get_inner_align(obj); }
 #endif

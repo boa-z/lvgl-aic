@@ -683,6 +683,29 @@ int main(void)
     assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
     lv_image_decoder_delete(window_decoder);
 #endif
+    /* SDK-named transforms use the same native image state on both classes. */
+    static const uint8_t transform_pixels[32*16*4]={0};
+    lv_image_dsc_t transform_image={.header={.magic=LV_IMAGE_HEADER_MAGIC,
+        .cf=LV_COLOR_FORMAT_ARGB8888,.w=32,.h=16,.stride=128},
+        .data_size=sizeof(transform_pixels),.data=transform_pixels};
+    for(unsigned slave=0;slave<2;slave++) {
+        lv_obj_t *image=slave?lv_aic_slave_player_create(screen):lv_aic_player_create(screen);
+        assert(image);lv_image_set_src(image,&transform_image);
+        lv_aic_player_set_pivot(image,7,5);lv_point_t pivot;
+        lv_aic_player_get_pivot(image,&pivot);assert(pivot.x==7 && pivot.y==5);
+        lv_aic_player_set_rotation(image,900);assert(lv_aic_player_get_rotation(image)==900);
+        lv_aic_player_set_scale(image,384);
+        assert(lv_aic_player_get_scale_x(image)==384 && lv_aic_player_get_scale_y(image)==384);
+        lv_aic_player_set_scale_x(image,512);lv_aic_player_set_scale_y(image,128);
+        assert(lv_aic_player_get_scale(image)==512 && lv_image_get_scale_x(image)==512);
+        assert(lv_aic_player_get_scale_y(image)==128);
+        lv_aic_player_set_inner_align(image,LV_IMAGE_ALIGN_TILE);
+        assert(lv_aic_player_get_inner_align(image)==LV_IMAGE_ALIGN_TILE);
+        lv_aic_player_set_offset_x(image,3);lv_aic_player_set_offset_y(image,4);
+        assert(lv_aic_player_get_offset_x(image)==3 && lv_aic_player_get_offset_y(image)==4);
+        lv_obj_delete(image);tick();
+    }
+    assert(!lv_aic_player_pending_cleanup());
     lv_display_delete(d); assert(lv_aic_yuv_image_decoder_deinit()); assert(lv_aic_rgb_image_decoder_deinit()); lv_deinit();
     return 0;
 }

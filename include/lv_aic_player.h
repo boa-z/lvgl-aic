@@ -110,6 +110,28 @@ lv_aic_playback_status_t lv_aic_player_get_status(lv_obj_t *obj);
  * worker exit finish. Run timers until pending_cleanup==0 before lv_deinit;
  * also close/delete live widgets. Never force-release a GE-quarantined frame. */
 unsigned lv_aic_player_pending_cleanup(void);
+/* SDK-shaped image transforms for player and slave image objects. Native
+ * LVGL 9.6 units/validation/notifications apply: rotation is 0.1 degrees,
+ * scale 256 is unity; get_scale returns the x scale. This does not select a
+ * video plane or change media timing. Use owner thread, outside draw callbacks.
+ * Width/height-based automatic scaling is a separate, unsupported SDK API. */
+void lv_aic_player_set_pivot(lv_obj_t *obj,int32_t x,int32_t y);
+void lv_aic_player_get_pivot(lv_obj_t *obj,lv_point_t *pivot);
+void lv_aic_player_set_rotation(lv_obj_t *obj,int32_t value);
+int32_t lv_aic_player_get_rotation(lv_obj_t *obj);
+void lv_aic_player_set_scale(lv_obj_t *obj,uint32_t value);
+int32_t lv_aic_player_get_scale(lv_obj_t *obj);
+void lv_aic_player_set_scale_x(lv_obj_t *obj,uint32_t value);
+int32_t lv_aic_player_get_scale_x(lv_obj_t *obj);
+void lv_aic_player_set_scale_y(lv_obj_t *obj,uint32_t value);
+int32_t lv_aic_player_get_scale_y(lv_obj_t *obj);
+void lv_aic_player_set_offset_x(lv_obj_t *obj,int32_t value);
+int32_t lv_aic_player_get_offset_x(lv_obj_t *obj);
+void lv_aic_player_set_offset_y(lv_obj_t *obj,int32_t value);
+int32_t lv_aic_player_get_offset_y(lv_obj_t *obj);
+void lv_aic_player_set_inner_align(lv_obj_t *obj,lv_image_align_t value);
+lv_image_align_t lv_aic_player_get_inner_align(lv_obj_t *obj);
+
 #ifdef __cplusplus
 }
 #endif

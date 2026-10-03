@@ -112,3 +112,31 @@ player builds. The unified test holds native readers through video-to-APNG and
 APNG-to-video switches, checks latest-source wins, shared slave/transform survival,
 replay/pause/rate/metadata and delayed deletion. Strict combined-feature E907
 compile **PASS**. Firmware linkage and physical playback are separate gates.
+
+## SDK-shaped image transform accessors (2026-10-04)
+
+The player header now exports paired `lv_aic_player_set/get_` APIs for pivot,
+rotation, scale, scale_x, scale_y, offset_x, offset_y and inner_align (16 functions).
+They operate on native LVGL image state for both main and slave player classes,
+independent of media/APNG backend. Rotation uses tenths of degrees; scale 256 is
+unity; `get_scale` reads the x scale, matching native LVGL. Native 9.6 validation
+and notification behavior applies; these wrappers do not inject the SDK's extra
+synthetic SIZE_CHANGED event or select a native video plane.
+
+This closes the naming/API migration gap for already-supported image transforms.
+It does not implement the SDK width/height request fields or deferred automatic
+scaling: those must not be approximated with plain object width/height setters.
+Command dispatch continues through the checked component API, not the SDK void
+set_cmd interface. Physical transformed-plane behavior remains separately gated.
+
+Validation: **70/70 host PASS**, including read/write state on real player and
+slave image instances and clean deletion. Strict D13x compile PASS; SDK
+`output/player-transforms-lv_aic_player.o` SHA256:
+`b0e966f3802ef945415c3b2a6387c2c3ae4f047865d2d59d418990263bfed307`.
+Logs: `output/player-transforms-build.log`, `output/player-transforms-tests.log`,
+`output/player-transforms-target.log`. Final live-symbol linkage for these new
+entry points and physical execution are **NOT_RUN**.
+
+RGB565 GE color-key acceptance remains deferred: the existing `key565_probe`
+compares keyed output to independent unkeyed hardware conversion. No hardware
+result was supplied for it, so the production software fallback remains active.
