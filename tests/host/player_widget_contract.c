@@ -552,15 +552,17 @@ int main(void)
     assert(lv_aic_player_pause(o)==LV_RESULT_OK);tick();lv_obj_set_size(o,6,5);tick();
     assert(plane_w==6 && plane_h==5 && lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
     assert(lv_aic_player_set_video_plane_rotation_budget(o,16384)==LV_RESULT_INVALID);
+    lv_display_set_resolution(d,16,12);lv_timer_pause(lv_display_get_refr_timer(d));
     for(unsigned rotation=1;rotation<=3;rotation++) {
         lv_display_set_rotation(d,(lv_display_rotation_t)rotation);lv_timer_pause(lv_display_get_refr_timer(d));tick();
         assert(plane_degrees==360-rotation*90 && plane_budget==8192);
         assert(plane_w==(rotation==2?6:5) && plane_h==(rotation==2?5:6));
         assert(plane_x==(rotation==1?4:rotation==2?7:7));
-        assert(plane_y==(rotation==1?7:rotation==2?7:3));
+        assert(plane_y==(rotation==1?3:rotation==2?3:3));
         assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
     }
     lv_display_set_rotation(d,LV_DISPLAY_ROTATION_0);tick();assert(plane_degrees==0);
+    lv_display_set_resolution(d,16,16);lv_timer_pause(lv_display_get_refr_timer(d));
     lv_obj_delete(s1);tick();
     /* Seek cannot retire the old epoch until scanout has been disabled. */
     plane_fail_close=true;assert(lv_aic_player_seek(o,100)==LV_RESULT_OK);tick();assert(plane_live && active->readers);
@@ -591,6 +593,24 @@ int main(void)
     assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT && !plane_live);
     lv_obj_delete(o);tick();lv_display_set_offset(d,0,0);
     assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
+    /* Every display orientation rejects real offsets before acquiring UI alpha.
+     * Missing rotation budget also rejects without changing alpha/scanout. */
+    for(unsigned rotation=1;rotation<=3;rotation++) {
+        lv_display_set_rotation(d,(lv_display_rotation_t)rotation);
+        lv_timer_pause(lv_display_get_refr_timer(d));
+        for(unsigned scenario=0;scenario<3;scenario++) {
+            o=make();assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+            if(scenario) assert(lv_aic_player_set_video_plane_rotation_budget(o,8192)==LV_RESULT_OK);
+            lv_display_set_offset(d,scenario==1,scenario==2);
+            assert(lv_aic_player_set_src(o,"reject.mp4")==LV_RESULT_OK);
+            assert(lv_aic_player_start(o)==LV_RESULT_OK);
+            unsigned before=alpha_enables;frames=1;tick();
+            assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT && !plane_live && alpha_enables==before);
+            lv_obj_delete(o);tick();lv_display_set_offset(d,0,0);
+            assert(!active && created==freed && retained==released);
+        }
+    }
+    lv_display_set_rotation(d,LV_DISPLAY_ROTATION_0);lv_timer_pause(lv_display_get_refr_timer(d));
     /* Top/system/bottom layers are visible roots, unlike inactive screens. */
     lv_obj_t *roots[]={lv_display_get_layer_top(d),lv_display_get_layer_sys(d),lv_display_get_layer_bottom(d)};
     for(unsigned i=0;i<3;i++) {

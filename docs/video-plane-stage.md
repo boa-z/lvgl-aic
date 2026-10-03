@@ -214,3 +214,10 @@ lvgl-aic: db07e82e39a3a0970954915fc0a60386aad0ee83
 lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
 images/d13x.elf SHA256: 906cc2bb7bbe8107724fbd24dfe9b7533f36cabf3324bc32f15a0eaa37327e81
 images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: d79c0024ca065124738d316b20e0da274df24836a2f481df42419b89ca2d7262
+
+Display-rotation preflight follow-up: missing rotation budget now rejects before
+opening a plane or acquiring UI alpha. Non-square 16x12 host geometry verifies
+all three angles; nine missing-budget/X-offset/Y-offset cases verify failure
+without alpha mutation and balanced cleanup. Full host **49/49 PASS**, strict
+E907 **PASS**. This follow-up has no new firmware image; the previous manifest
+remains the last packaged build. Physical rotated-window acceptance is NOT_RUN.

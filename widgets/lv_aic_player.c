@@ -440,6 +440,8 @@ static bool present_plane(player_binding_t *b)
         ox=lv_display_get_physical_horizontal_resolution(display)-ox;
         oy=lv_display_get_physical_vertical_resolution(display)-oy;
     }
+    unsigned degrees=(360U-(unsigned)rotation*90U)%360U;
+    if(degrees && !b->plane_rotation_budget) return false;
     if(display!=lv_display_get_default() || ox || oy ||
        lv_display_get_color_format(display)!=LV_COLOR_FORMAT_ARGB8888 ||
        lv_image_get_rotation(obj) || lv_image_get_scale_x(obj)!=LV_SCALE_NONE ||
@@ -472,8 +474,6 @@ static bool present_plane(player_binding_t *b)
     if(!current || lv_image_src_get_type(current)!=LV_IMAGE_SRC_FILE || strcmp(current,window)) return false;
     if(!b->plane) b->plane=lv_aic_video_plane_open();
     if(!b->plane || !lv_aic_video_plane_enable_ui_alpha(b->plane)) return false;
-    unsigned degrees=(360U-(unsigned)lv_display_get_rotation(display)*90U)%360U;
-    if(degrees && !b->plane_rotation_budget) return false;
     lv_display_rotate_area(display,&area);
     if(source==b->plane_source && degrees==b->plane_degrees && !memcmp(&area,&b->plane_area,sizeof(area))) return true;
     if(!lv_aic_video_plane_present_rotated(b->plane,source,area.x1,area.y1,
