@@ -355,6 +355,15 @@ int main(void)
         assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 0;
         assert(lv_draw_buf_init(&src,32,32,LV_COLOR_FORMAT_RGB565,128,pixels,sizeof(pixels)) == LV_RESULT_OK);
+        /* Even RGB channel endpoints cannot establish whether GE compares
+         * packed RGB565 or expanded RGB888; keep all corners on software. */
+        for(unsigned corner=0;corner<8;corner++) {
+            key.low=key.high=lv_color_make(corner&4?255:0,corner&2?255:0,corner&1?255:0);
+            int count=submits;
+            assert(!lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&clip));
+            assert(submits==count);
+        }
+        key.low=key.high=lv_color_make(128,0,255);
         int before = submits;
         assert(!lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&clip));
         assert(submits == before);

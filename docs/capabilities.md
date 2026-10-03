@@ -326,3 +326,14 @@ Player plane image offsets now follow native same-sized fake-window placement,
 including right-angle rotation, with bounded offsets and full ancestor visibility.
 Nonzero offsets with tile/auto alignment remain unsupported. Focused host and
 strict E907 pass; the latest media-path image predates this offset increment.
+
+## RGB565 color-key evidence boundary (2026-10-04)
+
+The SDK GE paths (`mpp/ge/cmdq_ops.c` and `hal/ge/hal_ge_hw.c`) write ck_value
+without documenting whether RGB565 comparison precedes or follows expansion.
+LVGL compares `lv_color16_to_color` output. Descriptor mocks cannot prove these
+spaces agree, even for full-intensity channel endpoints. RGB565 keyed images
+therefore retain software fallback. Focused GE tests now verify all eight RGB
+cube corner keys and an intermediate key reject before GE submission (PASS).
+Closing this hardware acceleration gap needs documented GE comparison semantics
+or a board pixel probe; no hardware parity claim is made by this test.
