@@ -108,6 +108,12 @@ int lv_aic_mpp_resource_test_run(void)
     if (resource_probe("L:/data/mpp_test/aic_801x479.jpg",false) ||
         resource_probe("L:/data/mpp_test/b.png",true) ||
         resource_probe("L:/data/mpp_test/c.png",true)) goto done;
+    AIC_TEST_I("BEGIN BMP resource probes");
+    if (resource_probe("L:/data/mpp_test/probe-16.bmp",true) ||
+        resource_probe("L:/data/mpp_test/probe-rgb565.bmp",true) ||
+        resource_probe("L:/data/mpp_test/probe-24.bmp",true) ||
+        resource_probe("L:/data/mpp_test/probe-32.bmp",true)) goto done;
+    AIC_TEST_I("PASS BMP file-memory parity and cache lifecycle");
 #ifdef AIC_MPP_AICP_DEC_ENABLE
     AIC_TEST_I("BEGIN AICP resource probes");
     if (resource_probe("L:/data/mpp_test/bird.aicp",true)) goto done;

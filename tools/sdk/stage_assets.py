@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 from sdk_paths import sdk_root, component_root, lvgl_root
+from bmp_fixtures import fixtures
 parser = argparse.ArgumentParser()
 parser.add_argument("--fonts", action="store_true")
 parser.add_argument("--gif", action="store_true")
@@ -39,16 +40,20 @@ if args.aicp:
     vendor = root / "packages/artinchip/lvgl-ui/aic_demo/aic_widget_demo/img_usage_demo/assets/image"
     files.update({name: vendor / name for name in ("bird.aicp", "flower.aicp")})
 # Remove only previously inventoried generated assets absent from this profile.
+generated = fixtures()
 previous = stage / "SHA256.json"
 if previous.exists():
     for name in json.loads(previous.read_text(encoding="utf-8")):
-        if name not in files:
+        if name not in files and name not in generated:
             if Path(name).name != name:
                 raise ValueError("Invalid staged asset name: " + name)
             path = stage / name
             if path.is_file():
                 path.unlink()
 inventory = {}
+for name, data in sorted(generated.items()):
+    (stage / name).write_bytes(data)
+    inventory[name] = hashlib.sha256(data).hexdigest()
 for name, path in sorted(files.items()):
     shutil.copyfile(path, stage / name)
     inventory[name] = hashlib.sha256(path.read_bytes()).hexdigest()
