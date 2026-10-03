@@ -243,6 +243,47 @@ static int ge_probe(void)
         }
         AIC_TEST_I("PASS I420 tile rot=%u pixels=%d max_error=%d guards=OK",probe*90,checked,tiled_worst);
     }
+    /* Packed 4:2:2 source formats absent from LVGL's native enum. */
+    lv_aic_yuv_image_destroy(image);image=NULL;
+    const lv_aic_yuv_format_t packed_formats[]={LV_AIC_YUV_YVYU,LV_AIC_YUV_VYUY};
+    for(unsigned f=0;f<2;f++) for(unsigned space=0;space<4;space++) {
+        frame.format=packed_formats[f];frame.color_space=space;
+        frame.planes[0]=(lv_aic_yuv_plane_t){source,64,1024};
+        for(unsigned y=0;y<16;y++) for(unsigned x=0;x<32;x+=2) {
+            uint8_t *p=source+y*64+x*2;
+            uint8_t y0=40+3*x+y,y1=y0+3;
+            if(!f) { p[0]=y0;p[1]=180;p[2]=y1;p[3]=90; }
+            else { p[0]=180;p[1]=y0;p[2]=90;p[3]=y1; }
+        }
+        if(!lv_aic_yuv_to_rgb888(&frame,reference,96,32*16*3)) goto done;
+        image=lv_aic_yuv_image_create(&frame,retain_probe,release_probe,&refs);
+        if(!image) goto done;
+        lv_draw_image_dsc_init(&d);d.src=lv_aic_yuv_image_source(image);d.pivot=(lv_point_t){0,0};
+        if(lv_image_decoder_get_info(d.src,&d.header)!=LV_RESULT_OK) goto done;
+        task.area=(lv_area_t){8,8,39,23};task.clip_area=(lv_area_t){10,10,37,21};
+        memset(output,0xa5,64*64*3);
+        aicos_dcache_clean_invalid_range((unsigned long *)output,64*64*3);
+        lv_draw_aic_ge2d_outcome_t outcome;
+        if(lv_draw_aic_ge2d_image(&task,&outcome)!=LV_RESULT_OK ||
+           outcome!=LV_DRAW_AIC_GE2D_OUTCOME_ENGINE) goto done;
+        aicos_dcache_invalid_range((unsigned long *)output,64*64*3);
+        int worst=0;
+        for(int y=0;y<64;y++) for(int x=0;x<64;x++) for(int c=0;c<3;c++) {
+            bool inside=x>=10 && x<=37 && y>=10 && y<=21;
+            int got=output[(y*64+x)*3+c];
+            if(!inside) { if(got!=0xa5) goto done; }
+            else {
+                int error=got-reference[((y-8)*32+x-8)*3+c];
+                if(error<0) error=-error;
+                if(error>worst) worst=error;
+            }
+        }
+        if(worst>3) {
+            AIC_TEST_E("FAIL packed YUV fmt=%u space=%u error=%d",(unsigned)frame.format,space,worst);goto done;
+        }
+        AIC_TEST_I("PASS packed YUV fmt=%u space=%u error=%d guards=OK",(unsigned)frame.format,space,worst);
+        lv_aic_yuv_image_destroy(image);image=NULL;
+    }
     result=0;
 done:
     if (image) lv_aic_yuv_image_destroy(image);

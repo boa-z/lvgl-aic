@@ -26,6 +26,8 @@ bool lv_aic_yuv_layout(lv_aic_yuv_format_t format, uint32_t w, uint32_t h,
         break;
     case LV_COLOR_FORMAT_YUY2:
     case LV_COLOR_FORMAT_UYVY:
+    case LV_AIC_YUV_YVYU:
+    case LV_AIC_YUV_VYUY:
         result.row_bytes[0] = ((w+1)/2)*4;
         break;
     case LV_COLOR_FORMAT_I400: break;
@@ -64,10 +66,13 @@ static void sample(const lv_aic_yuv_frame_t *f, uint32_t x, uint32_t y, int *lum
     const uint8_t *p = f->planes[0].data + (size_t)y * f->planes[0].stride;
     *luma = p[x]; *u = *v = 128;
     if (f->format == LV_COLOR_FORMAT_I400) return;
-    if (f->format == LV_COLOR_FORMAT_YUY2 || f->format == LV_COLOR_FORMAT_UYVY) {
+    if (f->format == LV_COLOR_FORMAT_YUY2 || f->format == LV_COLOR_FORMAT_UYVY ||
+        f->format == LV_AIC_YUV_YVYU || f->format == LV_AIC_YUV_VYUY) {
         p += (x/2)*4;
         if (f->format == LV_COLOR_FORMAT_YUY2) { *luma = p[(x%2)*2]; *u = p[1]; *v = p[3]; }
-        else { *luma = p[(x%2)*2+1]; *u = p[0]; *v = p[2]; }
+        else if (f->format == LV_COLOR_FORMAT_UYVY) { *luma = p[(x%2)*2+1]; *u = p[0]; *v = p[2]; }
+        else if (f->format == LV_AIC_YUV_YVYU) { *luma = p[(x%2)*2]; *v = p[1]; *u = p[3]; }
+        else { *luma = p[(x%2)*2+1]; *v = p[0]; *u = p[2]; }
         return;
     }
     if (f->format != LV_COLOR_FORMAT_I444) x /= 2;

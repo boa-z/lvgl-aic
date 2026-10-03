@@ -57,7 +57,7 @@ phase documents are historical; source presence and switches are not board proof
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
 | Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
-| AIC canvas | Owned ARGB8888 CMA buffer; bounded peak allocation; positioned and clearing centered text; host pixels/lifecycle and target live-link gates | Board CMA/cache/display validation; standalone packed-RGB/linear-YUV fill helper implemented; board gradient/CSC probes pending |
+| AIC canvas | Owned ARGB8888 CMA buffer; bounded peak allocation; positioned and clearing centered text; host pixels/lifecycle and target live-link gates | Board CMA/cache/display validation; standalone packed-RGB/linear-YUV fill helper implemented; gradient/CSC numeric probes implemented; physical execution pending |
 | Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu have host interaction contracts, a manual page and target linkage gates; physical input/rendering and direct video-window composition remain pending; camera/player use separate opt-in adapters |
 
 SDK image roller is now optional via AIC_LVGL_USE_IMG_ROLLER: application-owned
@@ -120,7 +120,7 @@ not from assumptions that every LVGL draw feature is hardware accelerated.
 | Capability | SDK source evidence | Port status / next work |
 |---|---|---|
 | Image tiling | lv_ge2d/lv_draw_ge2d_img.c calls the tiled image helper | Clipped IMAGE tiles with bounded scale/rotation and whole-task preflight implemented; native-size target probes exist; transformed probes and board validation remain; see [tiling stage](ge-tiling-stage.md) |
-| YUV image input | lv_ge2d/lv_draw_ge2d.c accepts YUV with orthogonal rotations | Bounded 10-format views, CPU conversion, immutable image publication and native-size GE orthogonal rendering implemented; bounded GE scaling plus orthogonal rotation and transformed tiling implemented; board acceptance pending; see [YUV stage](yuv-stage.md) |
+| YUV image input | lv_ge2d/lv_draw_ge2d.c accepts YUV with orthogonal rotations | Bounded 12-format views, CPU conversion, immutable image publication and native-size GE orthogonal rendering implemented; bounded GE scaling plus orthogonal rotation and transformed tiling implemented; board acceptance pending; see [YUV stage](yuv-stage.md) |
 | fake image | aic_ui.h encodes dimensions/blend/color in a .fake path; GE turns it into a fill | Implemented bounded parser, LVGL 9.6 virtual-file bridge and GE/CPU replacement/blend; board pending; see [fake stage](fake-image-stage.md) |
 | Arbitrary rotation plus scale | ge2d_draw_img_supported explicitly rejects it | Future extension beyond this SDK baseline |
 | Recolor / bitmap mask | ge2d_draw_img_supported explicitly rejects both | Software fallback is consistent with SDK; GE support is an extension |
@@ -770,3 +770,21 @@ image/manifest **PASS**. Clean component `8cbb4b1f95979d05834ddd0812423252633621
 SDK `93cf1254efce054ce707339693f30e93cc36d563`.
 Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
 SHA256 `93daaa919777fb8f8b3f3304ed9dc7ca10cae9605dfe786baf72ff68752024dc`. Board **NOT_RUN**.
+
+### Packed YVYU / VYUY frame parity (2026-10-04)
+
+The SDK accepts YVYU and VYUY packed 4:2:2 sources, but the port previously
+rejected them. `LV_AIC_YUV_YVYU` and `LV_AIC_YUV_VYUY` now extend the frame-only
+format namespace without leaking custom tags into native LVGL image headers.
+Both formats support checked odd-width CPU layouts, independent BT.601/709
+limited/full conversion, immutable image publication, MPP import/export with
+packed crop offsets, and the existing bounded GE rotation/scale/tile path.
+GE still requires even subsampled dimensions; unsupported geometry falls back
+to the CPU decoder. Ordinary JPEG/PNG metadata and RGB GE policies are unchanged.
+
+Host tests cover all 12 formats against independent floating-point conversion
+across 256 input patterns and four color spaces, capacity guards, cropped MPP
+round trips, native image publication pixels, and GE rotation/scale descriptors.
+The board runner additionally checks both new packed layouts in all four color
+spaces against the CPU reference, including cropped output guards. Host and
+firmware evidence does not establish hardware CSC or panel acceptance.

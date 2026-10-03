@@ -14,6 +14,8 @@ bool lv_aic_yuv_to_mpp(const lv_aic_yuv_frame_t *frame, uint32_t address_floor,
     if (!output || !lv_aic_yuv_validate(frame)) return false;
     if (frame->format==LV_AIC_YUV_NV16) result.format=MPP_FMT_NV16;
     else if (frame->format==LV_AIC_YUV_NV61) result.format=MPP_FMT_NV61;
+    else if (frame->format==LV_AIC_YUV_YVYU) result.format=MPP_FMT_YVYU;
+    else if (frame->format==LV_AIC_YUV_VYUY) result.format=MPP_FMT_VYUY;
     else if (!lv_aic_pixel_format_to_mpp(frame->format, &result.format)) return false;
     bool sub_x = frame->format != LV_COLOR_FORMAT_I400 && frame->format != LV_COLOR_FORMAT_I444;
     bool sub_y = frame->format == LV_COLOR_FORMAT_I420 ||
@@ -48,6 +50,8 @@ bool lv_aic_yuv_from_mpp(const struct mpp_buf *buffer, const size_t capacities[3
         buffer->size.width <= 0 || buffer->size.height <= 0) return false;
     if (buffer->format == MPP_FMT_NV16) result.format = LV_AIC_YUV_NV16;
     else if (buffer->format == MPP_FMT_NV61) result.format = LV_AIC_YUV_NV61;
+    else if (buffer->format == MPP_FMT_YVYU) result.format = LV_AIC_YUV_YVYU;
+    else if (buffer->format == MPP_FMT_VYUY) result.format = LV_AIC_YUV_VYUY;
     else {
         if (!lv_aic_pixel_format_from_mpp(buffer->format, &format)) return false;
         result.format = format;
@@ -67,7 +71,8 @@ bool lv_aic_yuv_from_mpp(const struct mpp_buf *buffer, const size_t capacities[3
         bool sub_x = result.format != LV_COLOR_FORMAT_I400 && result.format != LV_COLOR_FORMAT_I444;
         bool sub_y = result.format == LV_COLOR_FORMAT_I420 || result.format == LV_COLOR_FORMAT_NV12 ||
                      result.format == LV_COLOR_FORMAT_NV21;
-        bool packed = result.format == LV_COLOR_FORMAT_YUY2 || result.format == LV_COLOR_FORMAT_UYVY;
+        bool packed = result.format == LV_COLOR_FORMAT_YUY2 || result.format == LV_COLOR_FORMAT_UYVY ||
+                      result.format == LV_AIC_YUV_YVYU || result.format == LV_AIC_YUV_VYUY;
         if (c->x < 0 || c->y < 0 || c->width <= 0 || c->height <= 0 ||
             (uint64_t)c->x + c->width > result.width ||
             (uint64_t)c->y + c->height > result.height ||

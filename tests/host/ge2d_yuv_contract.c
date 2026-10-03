@@ -40,7 +40,7 @@ static void release(void *context) { (void)context; live--; }
 static void reset(void) { calls=emits=syncs=src_caches=dst_caches=0; }
 int main(void)
 {
-    const lv_aic_yuv_format_t formats[]={LV_AIC_YUV_NV16,LV_AIC_YUV_NV61,LV_COLOR_FORMAT_I420,LV_COLOR_FORMAT_I422,
+    const lv_aic_yuv_format_t formats[]={LV_AIC_YUV_YVYU,LV_AIC_YUV_VYUY,LV_AIC_YUV_NV16,LV_AIC_YUV_NV61,LV_COLOR_FORMAT_I420,LV_COLOR_FORMAT_I422,
         LV_COLOR_FORMAT_I444,LV_COLOR_FORMAT_I400,LV_COLOR_FORMAT_NV12,LV_COLOR_FORMAT_NV21,
         LV_COLOR_FORMAT_YUY2,LV_COLOR_FORMAT_UYVY};
     const unsigned rotations[]={MPP_ROTATION_0,MPP_ROTATION_90,MPP_ROTATION_180,MPP_ROTATION_270};
@@ -69,6 +69,8 @@ int main(void)
             assert(lv_draw_aic_ge2d_yuv(&task)==1);
             assert(calls==1 && emits==1 && syncs==1 && src_caches==1 && dst_caches==1);
             assert(captured.src_buf.phy_addr[0]==0x40001000 && captured.src_buf.stride[0]==64);
+            if(frame.format==LV_AIC_YUV_YVYU) assert(captured.src_buf.format==MPP_FMT_YVYU);
+            if(frame.format==LV_AIC_YUV_VYUY) assert(captured.src_buf.format==MPP_FMT_VYUY);
             assert(captured.src_buf.flags==MPP_COLOR_SPACE_BT709_FULL_RANGE);
             assert(captured.src_buf.crop.x==0 && captured.src_buf.crop.y==0);
             assert(captured.src_buf.crop.width==32 && captured.src_buf.crop.height==16);

@@ -22,6 +22,7 @@ static void reject_mpp(const struct mpp_buf *buffer, const size_t capacities[3])
 int main(void)
 {
     const struct { lv_aic_yuv_format_t lv; enum mpp_pixel_format mpp; unsigned planes; } formats[] = {
+        {LV_AIC_YUV_YVYU,MPP_FMT_YVYU,1}, {LV_AIC_YUV_VYUY,MPP_FMT_VYUY,1},
         {LV_AIC_YUV_NV16,MPP_FMT_NV16,2}, {LV_AIC_YUV_NV61,MPP_FMT_NV61,2},
         {LV_COLOR_FORMAT_I420,MPP_FMT_YUV420P,3}, {LV_COLOR_FORMAT_I422,MPP_FMT_YUV422P,3},
         {LV_COLOR_FORMAT_I444,MPP_FMT_YUV444P,3}, {LV_COLOR_FORMAT_I400,MPP_FMT_YUV400,1},
@@ -57,7 +58,8 @@ int main(void)
             bool sub_x = frame.format != LV_COLOR_FORMAT_I400 && frame.format != LV_COLOR_FORMAT_I444;
             bool sub_y = frame.format == LV_COLOR_FORMAT_I420 || frame.format == LV_COLOR_FORMAT_NV12 ||
                          frame.format == LV_COLOR_FORMAT_NV21;
-            bool packed = frame.format == LV_COLOR_FORMAT_YUY2 || frame.format == LV_COLOR_FORMAT_UYVY;
+            bool packed = frame.format == LV_COLOR_FORMAT_YUY2 || frame.format == LV_COLOR_FORMAT_UYVY ||
+                          frame.format == LV_AIC_YUV_YVYU || frame.format == LV_AIC_YUV_VYUY;
             for (unsigned p = 0; p < formats[f].planes; p++) {
                 size_t offset = (p && sub_y ? 96 : 192) +
                                 (packed ? 4 : p && sub_x && formats[f].planes == 3 ? 1 : 2);
@@ -85,7 +87,7 @@ int main(void)
             assert(!lv_aic_yuv_from_mpp(&out, capacities, s, NULL));
             reject_mpp(NULL, capacities);
             lv_color_format_t lv;
-            if(frame.format==LV_AIC_YUV_NV16 || frame.format==LV_AIC_YUV_NV61)
+            if(frame.format>=LV_AIC_YUV_NV16)
                 assert(!lv_aic_pixel_format_from_mpp(out.format,&lv));
             else assert(lv_aic_pixel_format_from_mpp(out.format,&lv) && lv==frame.format);
             /* General metadata mapping must not accidentally widen the JPEG/

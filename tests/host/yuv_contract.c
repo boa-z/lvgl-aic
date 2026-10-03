@@ -29,6 +29,7 @@ static unsigned vval(unsigned x, unsigned y, unsigned seed) { return (x*13+y*97+
 int main(void)
 {
     const struct { lv_aic_yuv_format_t cf; unsigned sx, sy, planes; } formats[] = {
+        {LV_AIC_YUV_YVYU,2,1,1}, {LV_AIC_YUV_VYUY,2,1,1},
         {LV_AIC_YUV_NV16,2,1,2}, {LV_AIC_YUV_NV61,2,1,2},
         {LV_COLOR_FORMAT_I420,2,2,3}, {LV_COLOR_FORMAT_I422,2,1,3},
         {LV_COLOR_FORMAT_I444,1,1,3}, {LV_COLOR_FORMAT_I400,1,1,1},
@@ -50,10 +51,13 @@ int main(void)
                 for (unsigned x = 0; x < 6; x++) {
                     unsigned yy = luma(x,y,seed), u = uval(x/formats[f].sx,y/formats[f].sy,seed);
                     unsigned v = vval(x/formats[f].sx,y/formats[f].sy,seed);
-                    if (frame.format == LV_COLOR_FORMAT_YUY2 || frame.format == LV_COLOR_FORMAT_UYVY) {
+                    if (frame.format == LV_COLOR_FORMAT_YUY2 || frame.format == LV_COLOR_FORMAT_UYVY ||
+                        frame.format == LV_AIC_YUV_YVYU || frame.format == LV_AIC_YUV_VYUY) {
                         uint8_t *p = planes[0] + y*24 + (x/2)*4;
                         if (frame.format == LV_COLOR_FORMAT_YUY2) { p[(x%2)*2]=yy; p[1]=u; p[3]=v; }
-                        else { p[(x%2)*2+1]=yy; p[0]=u; p[2]=v; }
+                        else if(frame.format == LV_COLOR_FORMAT_UYVY) { p[(x%2)*2+1]=yy; p[0]=u; p[2]=v; }
+                        else if(frame.format == LV_AIC_YUV_YVYU) { p[(x%2)*2]=yy; p[1]=v; p[3]=u; }
+                        else { p[(x%2)*2+1]=yy; p[0]=v; p[2]=u; }
                     }
                     else {
                         planes[0][y*24+x] = yy;

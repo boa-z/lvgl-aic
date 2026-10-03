@@ -103,6 +103,25 @@ int main(void)
         assert(live==0);
     }
     }
+    /* Packed frame-only formats must publish RGB headers, never truncate the
+     * custom tag into the LVGL color-format bitfield. */
+    uint8_t packed[32], expected[48];
+    const lv_aic_yuv_format_t packed_formats[]={LV_AIC_YUV_YVYU,LV_AIC_YUV_VYUY};
+    for(unsigned f=0;f<2;f++) for(unsigned cycle=0;cycle<4;cycle++) {
+        frame.format=packed_formats[f];frame.color_space=cycle;
+        frame.planes[0]=(lv_aic_yuv_plane_t){packed,8,sizeof(packed)};
+        for(unsigned pair=0;pair<8;pair++) {
+            uint8_t *p=packed+pair*4;
+            if(!f) { p[0]=60+pair;p[1]=210;p[2]=100+pair;p[3]=70; }
+            else { p[0]=210;p[1]=60+pair;p[2]=70;p[3]=100+pair; }
+        }
+        assert(lv_aic_yuv_to_rgb888(&frame,expected,12,sizeof(expected)));
+        image=lv_aic_yuv_image_create(&frame,retain_frame,release_frame,&live);assert(image);
+        lv_image_set_src(widget,lv_aic_yuv_image_source(image));lv_refr_now(display);
+        for(unsigned row=0;row<4;row++) assert(!memcmp(pixels+row*48,expected+row*12,12));
+        lv_image_set_src(widget,NULL);lv_refr_now(display);lv_aic_yuv_image_destroy(image);
+        assert(!live);
+    }
     lv_obj_delete(widget);
     lv_display_delete(display);
     assert(retained==released);
