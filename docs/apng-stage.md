@@ -416,3 +416,37 @@ ELF SHA256 `c17d8f4a03d6b97053c0a0283e92c5ec820231458a5717d48dfa193e37ba5325`.
 The map now also verifies APNG slave creation/binding and the shared command
 adapter as live symbols. `lv_aic_apng_test show` opens the master/slave test pair.
 No flashing or physical acceptance was performed.
+
+
+## Unified media/APNG player and firmware (2026-10-03)
+
+The existing image-based player now selects the SDK-compatible, case-sensitive
+PNG/APNG suffix backend, retaining ordinary media slave bindings and native
+image transforms. Source replacement drains old workers/native readers before
+opening the latest queued source. PNG budgets remain explicit and independent
+of video budgets. Rate, replay, pause, metadata and finite-repeat commands route
+to the selected backend. Standalone APNG widgets remain available without
+media/audio. See [current command contract](player-command-compat.md).
+
+Host **40/40 PASS** and strict combined-feature E907 compile **PASS**.
+Clean combined GE2D/fonts/GIF/widgets/AICP/player/APNG firmware:
+boot/app/static/image/manifest **PASS**. Sources:
+- SDK: `61f10745cd91fdbb2b1228ea7ab2cb99b858d398`.
+- lvgl-aic: `32ce88e1b63e5fafcccde2c55555475323386cb6`.
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+
+Artifact:
+`output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`
+under the isolated SDK worktree.
+Image SHA256:
+`90f01246fafe1e6579a06a339ef37c76ec6a7df7603569a0a745bded7e1a9dc6`.
+ELF SHA256:
+`cc46f6c51b847c62868258ae7a62a3077ec591917317ea12a6970a9c745df1d4`.
+
+Map checks include unified APNG configuration and rate APIs. The existing manual
+APNG overlay still exercises the standalone widget; cross-backend handoff was
+tested with host mocks, not physical video/APNG decoding. No flashing occurred;
+all new board codec/display/timing acceptance remains **NOT_RUN**. Groups and
+lower video-plane ownership remain SDK parity work. This evidence supersedes
+older “unified selection missing” statements above; subsequent documentation
+commits do not change the firmware source identities recorded here.

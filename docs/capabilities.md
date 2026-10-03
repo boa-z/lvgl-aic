@@ -7,7 +7,9 @@ APNG worker and other suffixes to SDK media, retaining the same image object,
 transforms and slave bindings across drained source replacement. APNG rate,
 zero-time replay, finite repeat and metadata use checked common commands.
 The standalone APNG widget remains usable without SDK media/audio.
-Host **40/40 PASS** and strict combined-feature E907 compile **PASS**.
+Host **40/40 PASS**, strict combined-feature E907 compile **PASS**, and clean
+combined firmware boot/app/static/image/manifest **PASS**; [artifact evidence](apng-stage.md).
+Physical validation remains **NOT_RUN**.
 
 Remaining player parity: group lifecycle, explicit lower video-plane ownership,
 physical codec/timing/audio/multi-view acceptance. Arbitrary APNG time seek and
@@ -15,8 +17,6 @@ video playback-rate changes are not supported by the SDK reference either.
 See [current command contract](player-command-compat.md). The milestone notes
 below record historical checkpoints; older “remaining” items for APNG worker,
 widget, command, metadata and automatic backend selection are superseded here.
-
-
 
 Maintained inventory, 2026-10-03. Development branch: codex/sdk-basic-capabilities.
 Comparison: the SDK's ArtInChip LVGL 9.1.0 implementation. Earlier
@@ -27,7 +27,7 @@ phase documents are historical; source presence and switches are not board proof
 | Integration | App-owned pins; LV_OS_CUSTOM RT events | Board regression after app/OS refactor |
 | Display | One framebuffer, DIRECT, PAN/VSync; whole-screen 90/180/270 GE copy with software fallback before submission | GE target/board rotation acceptance, SPI/multi-display, extended cache/VSync tests; see [rotation stage](display-rotation-stage.md) |
 | Touch / input | Touch worker, mapping, diagnostics and optional recovery; application-owned encoder and mouse providers create native LVGL indevs | Board-specific encoder/USB mouse sampling and board acceptance remain application scope |
-| Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership; SDK L-drive .fake pseudo-fills; immutable RGB/YUV frame publication | New AICP/BMP/fake/YUV board probes NOT_RUN; media device integration remains absent |
+| Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership; SDK L-drive .fake pseudo-fills; immutable RGB/YUV frame publication | New AICP/BMP/fake/YUV board probes NOT_RUN; integrated media/APNG workers await physical acceptance |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
 | GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded transformed tiling, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, arbitrary-angle plus scale, recolor/masks; YUV uses the separate frame path below |
@@ -37,7 +37,7 @@ phase documents are historical; source presence and switches are not board proof
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
 | Optional core | Host official demo selection; vector remains disabled | Target vector/demo choices and vendor extensions need separate integration |
-| Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu and vendor camera/player/video-window remain outside this profile |
+| Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu and direct video-window composition remain outside this profile; camera/player use separate opt-in adapters |
 
 SDK image roller is now optional via AIC_LVGL_USE_IMG_ROLLER: application-owned
 carousel, looping, direction, zoom and active selection. Host lifecycle/layout
