@@ -38,7 +38,21 @@ outputs on invalid input. MPP mapping uses synthetic addresses without DMA.
 
 A board startup CPU probe checks four color matrices, odd I420 output/guards
 and metadata rejection/acceptance. It deliberately logs that GE DMA is not
-tested. Target build and board execution for this stage are pending.
+tested.
+
+Target validation: PASS, full ge2d-fonts-gif-widgets-aicp profile.
+
+- Command: tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -Jobs 8.
+- SDK: a45530e3; component: a32613c; LVGL: 80ca777e.
+- Boot/app builds, static checks, image checks and manifest: PASS.
+- Allocated target text contains lv_aic_yuv_to_rgb888, lv_aic_yuv_to_mpp
+  and lv_aic_yuv_test_run; these are not merely discarded source objects.
+- Evidence: SDK output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp.
+- Image: images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
+- SHA256: 49f9d124ef4d3c344fa1467b3ad7e02eebd2b058fd675625e718a6faf67d96a7.
+- Manifest records clean source states; later documentation commits are
+  excluded from this build, and the profile directory is reused by later builds.
+- Physical board execution: NOT_RUN.
 
 Remaining scope: application frame retain/release publication, LVGL decoder
 integration, real GE YUV descriptors/cache maintenance, orthogonal rotation
