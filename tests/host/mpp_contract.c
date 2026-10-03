@@ -313,11 +313,72 @@ static void aicp_fixture_contract(const char *root)
 }
 #endif
 
+static void bmp_put32(uint8_t *p, uint32_t v)
+{ for (unsigned i = 0; i < 4; i++) p[i] = (uint8_t)(v >> (8 * i)); }
+
+static void bmp_pixel_contract(void)
+{
+    lv_image_decoder_t *decoder;
+    assert(lv_aic_mpp_decoder_init(&decoder) == LV_AIC_OK);
+    lv_aic_mpp_cache_set_limit(4096);
+    for (int bpp = 24; bpp <= 32; bpp += 8) {
+        for (int top = 0; top < 2; top++) {
+            uint8_t bytes[94] = {'B', 'M'};
+            bmp_put32(bytes + 10, 70); bmp_put32(bytes + 14, 40);
+            bmp_put32(bytes + 18, 3); bmp_put32(bytes + 22, top ? (uint32_t)-2 : 2);
+            bytes[26] = 1; bytes[28] = bpp;
+            uint8_t expected[2][12] = {{0}};
+            unsigned row_bytes = 3 * bpp / 8;
+            for (unsigned y = 0; y < 2; y++) {
+                for (unsigned x = 0; x < row_bytes; x++)
+                    expected[y][x] = (uint8_t)(20 + y * 70 + x);
+                memcpy(bytes + 70 + (top ? y : 1 - y) * 12, expected[y], row_bytes);
+            }
+            const char *filename = "bmp-contract.BMP";
+            FILE *f = fopen(filename, "wb"); assert(f);
+            assert(fwrite(bytes, 1, sizeof(bytes), f) == sizeof(bytes)); fclose(f);
+            lv_image_dsc_t image = {0};
+            image.header.magic = LV_IMAGE_HEADER_MAGIC; image.header.cf = LV_COLOR_FORMAT_RAW;
+            image.data = bytes; image.data_size = sizeof(bytes);
+            for (int memory = 0; memory < 2; memory++) {
+                const void *src = memory ? (const void *)&image : (const void *)"L:bmp-contract.BMP";
+                lv_image_decoder_args_t args = {0};
+                args.premultiply = false;
+                lv_image_decoder_dsc_t a, b;
+                int before = decodes;
+                open_mpp(&a, src, &args);
+                assert(decodes == before); /* Software BMP never invokes MPP codec. */
+                for (unsigned y = 0; y < 2; y++)
+                    assert(memcmp(a.decoded->data + y * a.decoded->header.stride,
+                                  expected[y], row_bytes) == 0);
+                open_mpp(&b, src, &args);
+                assert(a.decoded == b.decoded);
+                lv_aic_mpp_cache_drop(src);
+                lv_image_decoder_close(&a);
+                assert(live_cma > 0);
+                lv_image_decoder_close(&b);
+                assert(live_cma == 0);
+                fail_alloc = 1;
+                assert(lv_image_decoder_open(&a, src, &args) == LV_RESULT_INVALID);
+                fail_alloc = 0;
+                assert(live_cma == 0);
+            }
+            assert(remove(filename) == 0);
+        }
+    }
+    lv_aic_mpp_decoder_deinit(decoder);
+}
+
 int main(int argc, char **argv) {
     jpeg_header_boundaries();
     assert(argc == 2 || argc == 3);
     lv_init();
     aicp_header_contract();
+    if (argc == 3 && strcmp(argv[2], "--bmp") == 0) {
+        bmp_pixel_contract();
+        lv_deinit();
+        return 0;
+    }
 #ifdef AIC_MPP_AICP_DEC_ENABLE
     if (argc == 3 && strcmp(argv[2], "--aicp") == 0) {
         aicp_fixture_contract(argv[1]);

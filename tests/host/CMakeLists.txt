@@ -62,6 +62,7 @@ set(AIC_SOURCES
     "${AIC_ROOT}/image/mpp/lv_aic_mpp_format.c"
     "${AIC_ROOT}/image/mpp/lv_aic_mpp_stream.c"
     "${AIC_ROOT}/image/mpp/lv_aic_mpp_decoder.c")
+list(APPEND AIC_SOURCES "${AIC_ROOT}/image/mpp/lv_aic_bmp_header.c")
 add_library(lvgl_aic STATIC ${AIC_SOURCES})
 target_include_directories(lvgl_aic
     PUBLIC "${AIC_ROOT}/include"
@@ -274,6 +275,7 @@ if(AIC_SDK_ROOT)
     endif()
     add_test(NAME lvgl_aic_ge2d_scale_contract COMMAND lvgl_aic_ge2d_scale_contract)
     add_executable(lvgl_aic_mpp_contract mpp_contract.c
+        "${AIC_ROOT}/image/mpp/lv_aic_bmp_header.c"
         "${AIC_ROOT}/common/lv_aic_pixel_format.c"
         "${AIC_ROOT}/image/mpp/lv_aic_mpp_format.c"
         "${AIC_ROOT}/image/mpp/lv_aic_mpp_stream.c")
@@ -289,6 +291,8 @@ if(AIC_SDK_ROOT)
         target_compile_options(lvgl_aic_mpp_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     endif()
     add_test(NAME lvgl_aic_mpp_contract COMMAND lvgl_aic_mpp_contract "${AIC_ROOT}/tests/data/mpp")
+    add_test(NAME lvgl_aic_bmp_pixel_contract COMMAND lvgl_aic_mpp_contract
+        "${AIC_ROOT}/tests/data/mpp" --bmp)
     if(AIC_BUILD_AICP_TESTS)
         target_compile_definitions(lvgl_aic_mpp_contract PRIVATE AIC_MPP_AICP_DEC_ENABLE=1)
         if(AIC_BUILD_AICP_V31_TESTS)

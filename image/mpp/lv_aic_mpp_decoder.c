@@ -14,6 +14,9 @@
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_aic_mpp_decoder.h"
 #include "lv_aic_mpp_format.h"
+#include "lv_aic_bmp_header.h"
+/* Component-local software codec tag, never passed to mpp_decoder_create. */
+#define LV_AIC_CODEC_BMP ((enum mpp_codec_type)-1)
 #include "lv_aic_mpp_stream.h"
 
 #if AIC_LVGL_USE_MPP_DEC && AIC_LVGL_BSP_MPP
@@ -273,6 +276,7 @@ static lv_result_t lv_aic_mpp_source_open(const void *src, lv_aic_mpp_stream_t *
     if (type == LV_IMAGE_SRC_FILE) {
         if (lv_aic_mpp_is_jpeg_path(src)) *codec = MPP_CODEC_VIDEO_DECODER_MJPEG;
         else if (lv_aic_mpp_is_png_path(src)) *codec = MPP_CODEC_VIDEO_DECODER_PNG;
+        else if (lv_aic_mpp_has_ext(src, "bmp")) *codec = LV_AIC_CODEC_BMP;
 #ifdef AIC_MPP_AICP_DEC_ENABLE
         else if (lv_aic_mpp_has_ext(src, "aicp")) *codec = MPP_CODEC_VIDEO_DECODER_AICP;
 #endif
@@ -287,6 +291,8 @@ static lv_result_t lv_aic_mpp_source_open(const void *src, lv_aic_mpp_stream_t *
             return LV_RESULT_INVALID;
         if (image->data[0] == 0xff && image->data[1] == 0xd8)
             *codec = MPP_CODEC_VIDEO_DECODER_MJPEG;
+        else if (image->data[0] == 'B' && image->data[1] == 'M')
+            *codec = LV_AIC_CODEC_BMP;
         else if (image->data_size >= 8 && memcmp(image->data,"\x89PNG\r\n\x1a\n",8) == 0)
             *codec = MPP_CODEC_VIDEO_DECODER_PNG;
 #ifdef AIC_MPP_AICP_DEC_ENABLE
@@ -602,6 +608,15 @@ static void lv_aic_mpp_cache_insert(lv_image_decoder_dsc_t *dsc, lv_aic_mpp_sess
     lv_aic_mpp_cache_make_newest(s); g_cache.entries++; g_cache.bytes += s->cache_cost;
 }
 
+static bool lv_aic_bmp_read_header(lv_aic_mpp_stream_t *stream, lv_aic_bmp_header_t *header)
+{
+    uint8_t bytes[54];
+    uint32_t got = 0;
+    return lv_aic_mpp_stream_read(stream, bytes, sizeof(bytes), &got) == LV_FS_RES_OK &&
+           got == sizeof(bytes) &&
+           lv_aic_bmp_parse_header(bytes, got, stream->size, header);
+}
+
 static lv_result_t lv_aic_mpp_decode_source(const void *src, enum mpp_codec_type codec,
                                           enum mpp_pixel_format mpp_fmt,
                                           lv_color_format_t lv_fmt, int width, int height,
@@ -654,6 +669,26 @@ static lv_result_t lv_aic_mpp_decode_source(const void *src, enum mpp_codec_type
     session->height = (uint32_t)height;
     session->color_format = lv_fmt;
 
+    if (codec == LV_AIC_CODEC_BMP) {
+        lv_aic_bmp_header_t bmp;
+        if (!lv_aic_bmp_read_header(&stream, &bmp) || bmp.width != session->width ||
+            bmp.height != session->height ||
+            (bmp.bpp == 24 ? LV_COLOR_FORMAT_RGB888 : LV_COLOR_FORMAT_ARGB8888) != lv_fmt) goto fail;
+        ext_alloc.session = session;
+        uint32_t output_stride = lv_aic_mpp_align_up(bmp.width * (bmp.bpp / 8U), 8U);
+        if (lv_aic_mpp_alloc_ext_frame(&ext_alloc.allocator, &frame,
+                                       output_stride, bmp.height, mpp_fmt) != 0) goto fail;
+        for (uint32_t y = 0; y < bmp.height; y++) {
+            uint32_t source_row = bmp.top_down ? y : bmp.height - 1U - y;
+            uint32_t bytes = bmp.width * (bmp.bpp / 8U);
+            if (lv_aic_mpp_stream_seek(&stream, bmp.offset + source_row * bmp.stride) != LV_FS_RES_OK ||
+                lv_aic_mpp_stream_read(&stream, (uint8_t *)session->allocation_base + y * output_stride,
+                                       bytes, &read_done) != LV_FS_RES_OK || read_done != bytes) goto fail;
+        }
+        /* Pixels were written by CPU, unlike the MPP hardware path. */
+        aicos_dcache_clean_invalid_range((unsigned long *)session->allocation_base, session->cma_size);
+        goto decoded_buffer;
+    }
     dec = mpp_decoder_create(codec);
     if (dec == NULL) {
         goto fail;
@@ -706,6 +741,7 @@ static lv_result_t lv_aic_mpp_decode_source(const void *src, enum mpp_codec_type
     mpp_decoder_put_frame(dec, &frame);
     mpp_decoder_destory(dec);
     dec = NULL;
+decoded_buffer:
     lv_aic_mpp_stream_close(&stream);
 
     cma_base = session->allocation_base;
@@ -784,7 +820,15 @@ static lv_result_t lv_aic_mpp_info_cb(lv_image_decoder_t *decoder,
     if (!dsc || !header ||
         lv_aic_mpp_source_open(dsc->src,&stream,&codec) != LV_RESULT_OK)
         return LV_RESULT_INVALID;
-    if (codec == MPP_CODEC_VIDEO_DECODER_MJPEG) {
+    if (codec == LV_AIC_CODEC_BMP) {
+        lv_aic_bmp_header_t bmp;
+        result = lv_aic_bmp_read_header(&stream, &bmp) ? LV_RESULT_OK : LV_RESULT_INVALID;
+        if (result == LV_RESULT_OK) {
+            width = bmp.width; height = bmp.height;
+            cf = bmp.bpp == 24 ? LV_COLOR_FORMAT_RGB888 : LV_COLOR_FORMAT_ARGB8888;
+        }
+    }
+    else if (codec == MPP_CODEC_VIDEO_DECODER_MJPEG) {
         result = lv_aic_mpp_parse_jpeg_header(&stream,&width,&height,&components);
         /* Four-component AICP is not a CMYK JPEG decoder contract. */
         if (components == 4) result = LV_RESULT_INVALID;
