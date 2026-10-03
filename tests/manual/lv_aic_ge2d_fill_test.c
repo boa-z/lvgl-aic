@@ -9,6 +9,7 @@
 #include "lvgl_aic_private.h"
 #include "lv_draw_aic_ge2d.h"
 #include <aic_core.h>
+#include <mpp_ge.h>
 #include <aic_osal.h>
 #include "lv_aic_test_log.h"
 #include <string.h>
@@ -187,6 +188,72 @@ done:
     return result;
 }
 
+/* Diagnostic only: bypass production RGB565 key fallback to measure hardware.
+ * Compare keyed output with a separate no-key conversion, not guessed RGB
+ * expansion. These finite samples are evidence, not exhaustive format parity. */
+static int key565_probe(void)
+{
+    const uint16_t colors[]={0,0xffff,0xf800,0x07e0,0x001f,0xf81f,0x07ff,0xffe0,0x8410};
+    uint8_t *src=NULL,*base=NULL,*keyed=NULL;
+    struct mpp_ge *ge=lv_draw_aic_ge2d_device();
+    if(fill_probe_poisoned || !ge) return -1;
+    src=aicos_malloc_align(MEM_CMA,1024,64);
+    base=aicos_malloc_align(MEM_CMA,1024,64);
+    keyed=aicos_malloc_align(MEM_CMA,1024,64);
+    int result=-1;
+    if(!src || !base || !keyed) goto done;
+    for(unsigned c=0;c<sizeof(colors)/sizeof(colors[0]);c++) {
+        memset(src,0xa5,1024);memset(base,0xa5,1024);memset(keyed,0xa5,1024);
+        for(unsigned y=0;y<16;y++) for(unsigned x=0;x<8;x++) {
+            uint16_t pixel=x<4?colors[c]:(uint16_t)~colors[c];
+            memcpy(src+y*64+x*2,&pixel,2);
+        }
+        lv_color16_t packed;memcpy(&packed,&colors[c],2);
+        lv_color_t rgb=lv_color16_to_color(packed);
+        struct ge_bitblt blt={0};
+        blt.src_buf=(struct mpp_buf){.buf_type=MPP_PHY_ADDR,.format=MPP_FMT_RGB_565,
+            .size={8,16},.stride={64},.phy_addr={(uint32_t)(uintptr_t)src}};
+        blt.dst_buf=(struct mpp_buf){.buf_type=MPP_PHY_ADDR,.format=MPP_FMT_ARGB_8888,
+            .size={8,16},.stride={64}};
+        blt.ctrl.src_global_alpha=255;
+        aicos_dcache_clean_invalid_range((unsigned long *)src,1024);
+        for(unsigned keyed_pass=0;keyed_pass<2;keyed_pass++) {
+            uint8_t *dst=keyed_pass?keyed:base;
+            blt.dst_buf.phy_addr[0]=(uint32_t)(uintptr_t)dst;
+            blt.ctrl.ck_en=keyed_pass;
+            blt.ctrl.ck_value=lv_color_to_u32(rgb)&0xffffffU;
+            aicos_dcache_clean_invalid_range((unsigned long *)dst,1024);
+            if(mpp_ge_bitblt(ge,&blt)<0 || mpp_ge_emit(ge)<0 || mpp_ge_sync(ge)<0) {
+                fill_probe_poisoned=true;
+                AIC_TEST_E("FAIL key565 DMA; retaining 3072 CMA bytes until reboot");
+                return -1;
+            }
+            aicos_dcache_invalid_range((unsigned long *)dst,1024);
+        }
+        /* An unchanged baseline must not make a no-op engine look correct. */
+        for(unsigned y=0;y<16;y++) for(unsigned x=0;x<8;x++) {
+            const uint8_t *pixel=base+y*64+x*4;
+            if(pixel[0]==0xa5 && pixel[1]==0xa5 && pixel[2]==0xa5) {
+                AIC_TEST_E("FAIL key565 unchanged baseline sample=%u",c);goto done;
+            }
+        }
+        for(unsigned y=0;y<16;y++) for(unsigned b=0;b<64;b++) {
+            uint8_t want=b<16 || b>=32?0xa5:base[y*64+b];
+            if(keyed[y*64+b]!=want || (b>=32 && base[y*64+b]!=0xa5)) {
+                AIC_TEST_E("FAIL key565 sample=%u y=%u byte=%u got=%u want=%u",c,y,b,keyed[y*64+b],want);
+                goto done;
+            }
+        }
+        AIC_TEST_I("PASS key565 sample=%u key=%06x guards=OK",c,(unsigned)blt.ctrl.ck_value);
+    }
+    result=0;
+done:
+    if(src) aicos_free_align(MEM_CMA,src);
+    if(base) aicos_free_align(MEM_CMA,base);
+    if(keyed) aicos_free_align(MEM_CMA,keyed);
+    return result;
+}
+
 int lv_aic_ge2d_fill_test_run(void)
 {
     const lv_color_format_t formats[] = {LV_COLOR_FORMAT_RGB565, LV_COLOR_FORMAT_RGB888,
@@ -199,6 +266,7 @@ int lv_aic_ge2d_fill_test_run(void)
     }
     AIC_TEST_I("PASS 12 solid-fill numeric probes; panel acceptance remains separate");
     if (fake_probe(0) || fake_probe(128) || fake_probe(255)) return -1;
+    if(key565_probe()) return -1;
     return 0;
 }
 #endif

@@ -154,3 +154,12 @@ successful decode. D13x's V30 profile does not include the SDK V10 H.264 codec.
 
 The entry now permits RGB/YUV media testing, but neither codec output, A/V timing
 nor whole-display rotation has been accepted on hardware. Hardware NOT_RUN.
+
+The GE fill acceptance sequence now includes an offscreen raw-GE RGB565 color-key
+probe with eight channel endpoints and one intermediate sample. It compares
+keyed output against a no-key conversion, rejects an unchanged baseline, checks
+matched background retention, nonmatched pixels and destination stride guards.
+On uncertain DMA failure, 3072 bytes remain pinned until reboot. This diagnostic
+bypasses production fallback only for its owned buffers; it does not enable
+RGB565 key acceleration. Nine sample PASS lines would be finite evidence, not
+exhaustive format parity. Hardware execution is NOT_RUN.
