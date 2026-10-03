@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_aic_apng_widget.h"
+#include "lv_aic_player_control.h"
+#include <math.h>
 #include "../../tests/manual/lv_aic_apng_test.h"
 #include "lv_aic_rgb_image_private.h"
 #include "lvgl_aic_private.h"
@@ -68,6 +70,17 @@ int main(void)
     lv_obj_t *obj=make(screen);assert(lv_aic_apng_set_rate(obj,2,1)==LV_RESULT_OK);
     assert(lv_aic_apng_set_src(obj,"one.png")==LV_RESULT_OK);tick();assert(active);
     assert(lv_aic_apng_get_status(obj).state==LV_AIC_APNG_READY);
+    float rate=NAN;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate)==LV_RESULT_INVALID);
+    rate=INFINITY;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate)==LV_RESULT_INVALID);
+    rate=0.5f;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate)==LV_RESULT_OK);tick();
+    rate=99;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_GET_PLAYBACK_RATE,&rate)==LV_RESULT_OK && rate==0.5f);
+    rate=2;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate)==LV_RESULT_OK);tick();
+    uint64_t target=1;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_SET_PLAY_TIME,&target)==LV_RESULT_INVALID);
+    target=99;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_GET_PLAY_TIME,&target)==LV_RESULT_INVALID && target==99);
+    int32_t volume=77;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_GET_VOLUME,&volume)==LV_RESULT_INVALID && volume==77);
+    assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_PLAY_END,NULL)==LV_RESULT_INVALID);
+    assert(lv_aic_player_control(screen,LV_AIC_PLAYER_CMD_START,NULL)==LV_RESULT_INVALID);
+    assert(lv_aic_player_control(obj,(lv_aic_player_cmd_t)99,NULL)==LV_RESULT_INVALID);
     assert(lv_aic_apng_start(obj)==LV_RESULT_OK);frames=1;tick();
     const lv_aic_rgb_frame_t *f;
     lv_aic_rgb_image_t *reader=lv_aic_rgb_image_acquire(lv_image_get_src(obj),&f);assert(reader);
@@ -78,7 +91,7 @@ int main(void)
     lv_aic_rgb_image_release_lease(reader);tick();assert(!strcmp(last_path,"three.png"));
     assert(lv_aic_apng_get_status(obj).state==LV_AIC_APNG_PLAYING && active->status.rate_num==2);
     active->status.state=LV_AIC_APNG_TERMINAL;tick();assert(lv_aic_apng_start(obj)==LV_RESULT_OK);
-    assert(active->status.restarts==1);assert(lv_aic_apng_pause(obj,true)==LV_RESULT_OK);tick();
+    assert(active->status.restarts==1);target=0;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_SET_PLAY_TIME,&target)==LV_RESULT_OK);assert(active->status.restarts==2);assert(lv_aic_apng_pause(obj,true)==LV_RESULT_OK);tick();
     assert(lv_aic_apng_get_status(obj).state==LV_AIC_APNG_PLAYBACK_PAUSED);
     frames=1;tick();lv_draw_task_t pending={0};d->layer_head->draw_task_head=&pending;
     lv_obj_delete(obj);lv_timer_pause(lv_display_get_refr_timer(d));tick();

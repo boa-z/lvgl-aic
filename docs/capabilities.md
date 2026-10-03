@@ -185,13 +185,13 @@ APNG now provides an asynchronous native-file playback API under
 `AIC_LVGL_USE_APNG`: worker preparation, start/pause/rate/replay, immutable image
 polling, coherent status and deferred cleanup. Final publication retries after
 reader backpressure. Host **38/38 PASS** and strict E907 compile **PASS**;
-widget/backend selection, seek compatibility, APNG firmware linkage and physical
+widget/backend selection, command compatibility, APNG firmware linkage and physical
 codec/timing validation are still open. See [APNG stage record](apng-stage.md).
 
 A native APNG image widget is now available with `AIC_LVGL_USE_APNG_WIDGET`:
 explicit configuration, source replacement, start/pause/rate/replay, saved-path
 reopen and timer-based deferred deletion. Host **39/39 PASS** and strict E907
-compile **PASS**. APNG firmware linkage, SDK player backend/seek compatibility
+compile **PASS**. APNG firmware linkage, SDK player backend/command compatibility
 and physical codec/display acceptance remain open; see [APNG stages](apng-stage.md).
 
 The combined GE2D/fonts/GIF/widgets/AICP/player/APNG image now passes clean SDK
@@ -205,4 +205,12 @@ with original generated finite/infinite/static fixtures and the UI-thread
 `lv_aic_apng_test` shell mailbox. Host **39/39 PASS**, independent fixture
 composition **9/9 PASS**, full image/link checks **PASS**. Hardware execution is
 **NOT_RUN**; this closes the missing manual test entry, not physical acceptance
-or SDK unified backend/seek compatibility.
+or SDK unified backend/command compatibility.
+
+Checked SDK-style command dispatch is now available for both native player and
+APNG widgets, with explicit unsupported results and transactional query outputs.
+SDK review confirms APNG only supports zero-time replay, while the media backend
+rejects rate changes; arbitrary APNG seek/video rate are not parity gaps.
+Host **39/39 PASS**, strict E907 compile **PASS**. Automatic source/backend
+selection, media-info ABI, groups and APNG slave sharing remain; see
+[command compatibility](player-command-compat.md).

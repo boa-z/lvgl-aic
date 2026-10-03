@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_aic_player.h"
+#include "lv_aic_player_control.h"
 #include "lv_aic_yuv_image_private.h"
 #include "lv_aic_rgb_image_private.h"
 #include "lvgl_aic_private.h"
@@ -105,14 +106,26 @@ int main(void)
     assert(lv_aic_player_set_src(o,"one.mp4")==LV_RESULT_OK);
     assert(active->status.volume==37); active->status.state=LV_AIC_PLAYBACK_READY; tick();
     assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_READY);
-    assert(lv_aic_player_start(o)==LV_RESULT_OK); lv_obj_set_pos(o,0,0);
+    int32_t queried_volume=-99;
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_VOLUME,&queried_volume)==LV_RESULT_OK && queried_volume==37);
+    float rate=2;assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate)==LV_RESULT_INVALID);
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_PLAYBACK_RATE,&rate)==LV_RESULT_OK && rate==1);
+    uint64_t position=99;
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_PLAY_TIME,&position)==LV_RESULT_INVALID && position==99);
+    active->status.position_valid=true;active->status.position_us=-1;tick();
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_PLAY_TIME,&position)==LV_RESULT_INVALID && position==99);
+    active->status.position_us=1234;tick();
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_PLAY_TIME,&position)==LV_RESULT_OK && position==1234);
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_MEDIA_INFO,&position)==LV_RESULT_INVALID && position==1234);
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_ATTACH_SLAVE,NULL)==LV_RESULT_INVALID);
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_START,NULL)==LV_RESULT_OK); lv_obj_set_pos(o,0,0);
     for(unsigned i=0;i<4;i++) {
         rgb=(i&1)!=0; frames=1; tick(); lv_refr_now(d);
         for(unsigned y=0;y<4;y++) for(unsigned x=0;x<12;x++) assert(pixels[y*48+x]==255);
         assert(retained-released==1);
     }
     assert(lv_aic_player_seek(o,1000001)==LV_RESULT_INVALID);
-    assert(lv_aic_player_seek(o,500000)==LV_RESULT_OK);
+    position=500000;assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_SET_PLAY_TIME,&position)==LV_RESULT_OK);
     assert(lv_aic_player_seek(o,400000)==LV_RESULT_INVALID);
     tick(); assert(!lv_image_get_src(o) && retained==released);
     assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_SEEKING);
@@ -154,10 +167,10 @@ int main(void)
     o=make(); lv_obj_delete(o); tick();
     /* Slaves share one immutable source/producer across independent transforms. */
     o=make(); assert(lv_aic_player_set_src(o,"shared.mp4")==LV_RESULT_OK);
-    assert(lv_aic_player_start(o)==LV_RESULT_OK); lv_obj_set_pos(o,0,0);
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_START,NULL)==LV_RESULT_OK); lv_obj_set_pos(o,0,0);
     lv_obj_t *s1=lv_aic_slave_player_create(screen),*s2=lv_aic_slave_player_create(screen);
     assert(s1 && s2 && !lv_aic_slave_player_get_master(s1));
-    assert(lv_aic_slave_player_set_master(s1,o)==LV_RESULT_OK);
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_ATTACH_SLAVE,s1)==LV_RESULT_OK);
     assert(lv_aic_slave_player_set_master(s2,o)==LV_RESULT_OK);
     assert(lv_aic_slave_player_get_master(s1)==o);
     lv_obj_set_pos(s1,5,0); lv_obj_set_pos(s2,10,0);

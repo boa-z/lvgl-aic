@@ -255,7 +255,7 @@ physical VE timing or codec correctness.
 Strict E907 compile **PASS**; `output/lvgl-apng-playback.o` SHA256:
 `a5d1ec944a47823ff9cc46a1e63136ee0e654e6e446efd034dbd71836e7ee244`.
 
-Remaining: LVGL widget/backend selection, APNG seek/SDK command compatibility,
+Remaining: LVGL widget/backend selection, SDK command compatibility,
 media-enabled APNG link/image profile and physical validation. No new firmware
 image is claimed by this compile/host stage.
 
@@ -295,7 +295,7 @@ Strict E907 compile **PASS**; `output/lvgl-apng-widget.o` SHA256:
 `cb0570457ce1681acacc8f97d77ff7192623cb6ab9ed69a40a1417841701cab8`.
 
 Remaining: APNG-enabled firmware/link profile and on-board probes, SDK player
-backend selection/command compatibility, seek parity and physical codec/timing
+backend selection/command compatibility and physical codec/timing
 validation. This stage does not claim a new image or a verified panel result.
 
 ## Firmware link/image profile (2026-10-03)
@@ -335,7 +335,7 @@ SDK's clock/world-cup/ayanami APNG cases, then pause/rate/replay/source replacem
 and deletion with outstanding draws. Capture raw logs, image identity, memory
 recovery and panel behavior separately. The existing smoke pages do not yet
 provide these APNG controls; an interactive test page remains a development item.
-SDK unified player backend selection/seek compatibility also remains open.
+SDK unified player backend selection also remains open.
 
 ## Interactive acceptance image (2026-10-03)
 
@@ -367,4 +367,13 @@ Latest image (same profile directory replaces prior artifact):
 SHA256: `94d8f9e2c2060ed9c77ebd0ddbac1707c0939e4de2bab7396c70b1f046f10773`.
 ELF SHA256: `636bcbc8ec39d78dbd83750729ea5f5ed4a93549409be7b3a62fd7dab808bd78`.
 Board execution/panel/timing/memory acceptance **NOT_RUN**; no flashing performed.
-SDK unified player backend/seek compatibility and other documented SDK gaps remain.
+SDK unified player backend selection and other documented SDK gaps remain.
+
+## Checked SDK-style command dispatch (2026-10-03)
+
+A checked shared command API now dispatches to native media-player or APNG
+widgets, including zero-time APNG replay and APNG rate control. SDK source review
+confirmed that nonzero APNG seek is unsupported in the original PNG backend;
+it is not a missing parity capability. Automatic unified source/backend
+selection, media-info ABI, groups and APNG slave sharing remain separate work.
+See [command capability table and validation](player-command-compat.md).

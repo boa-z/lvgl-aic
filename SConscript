@@ -53,6 +53,8 @@ if GetDepend('AIC_LVGL_USE_SWIPE_V1'):
     src += Glob('widgets/lv_swipe_v1.c')
 if GetDepend('AIC_LVGL_USE_VIDEO_WINDOW'):
     src += Glob('widgets/lv_aic_video_window.c')
+if GetDepend('AIC_LVGL_USE_PLAYER') or GetDepend('AIC_LVGL_USE_APNG_WIDGET'):
+    src += Glob('widgets/lv_aic_player_control.c')
 if GetDepend('AIC_LVGL_USE_PLAYER'):
     src += Glob('widgets/lv_aic_player.c')
 if GetDepend('AIC_LVGL_USE_APNG_WIDGET'):
@@ -76,6 +78,9 @@ if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_PLAYER'):
 
     for api in ('create', 'set_master', 'get_master'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_slave_player_' + api])
+
+if GetDepend('AIC_LVGL_SMOKE_APP') and (GetDepend('AIC_LVGL_USE_PLAYER') or GetDepend('AIC_LVGL_USE_APNG_WIDGET')):
+    Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_player_control'])
 
 # Keep all APNG widget roots live in the opt-in smoke profile. No autoplay.
 if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_APNG_WIDGET'):
