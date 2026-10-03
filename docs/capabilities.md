@@ -127,3 +127,10 @@ output path at the adapter level, including bounded crops and immutable decoder
 views. GE retains producer and decoded-snapshot leases on DMA failures for both
 normal and tiled RGB draws. This does not establish real MJPEG playback or
 physical DMA acceptance. See [player-stage.md](player-stage.md).
+
+The optional native `lv_aic_player` image widget now connects the background
+worker to LVGL: explicit configuration, prepare/start/pause/resume, volume,
+stop/close/replay and deferred source replacement/deletion. Host contracts
+verify RGB/YUV rendering and frame-reader lifetimes; strict target compilation
+passes. Seek, repeat/rate, groups/slaves and video-plane output remain gaps.
+Media firmware linkage and physical playback are not yet validated.

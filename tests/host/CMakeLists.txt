@@ -661,3 +661,17 @@ endif()
 add_test(NAME lvgl_aic_camera_widget_contract COMMAND lvgl_aic_camera_widget_contract)
 
 set_tests_properties(lvgl_aic_camera_widget_contract PROPERTIES TIMEOUT 15)
+
+add_executable(lvgl_aic_player_widget_contract player_widget_contract.c
+    "${AIC_ROOT}/widgets/lv_aic_player.c"
+    "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/image/mpp/lv_aic_yuv_image.c"
+    "${AIC_ROOT}/image/mpp/lv_aic_rgb_image.c")
+target_include_directories(lvgl_aic_player_widget_contract PRIVATE
+    "${AIC_ROOT}/include" "${AIC_ROOT}/compat")
+target_compile_definitions(lvgl_aic_player_widget_contract PRIVATE AIC_LVGL_USE_PLAYER=1)
+target_link_libraries(lvgl_aic_player_widget_contract PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_player_widget_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_player_widget_contract COMMAND lvgl_aic_player_widget_contract)
+set_tests_properties(lvgl_aic_player_widget_contract PROPERTIES TIMEOUT 15)

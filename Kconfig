@@ -156,4 +156,13 @@ config AIC_LVGL_USE_PLAYER_SESSION
         RGB/YUV frame publication bridge with deferred decoder-frame return,
         coherent SDK events and an asynchronous prepare/start/pause/volume/
         close worker. Uses SDK external-render timing, not a second scheduler.
-        This is not yet the player widget, seek controller or video-plane owner.
+        Does not provide seek or lower video-plane ownership.
+
+config AIC_LVGL_USE_PLAYER
+    bool "Build asynchronous LVGL player widget"
+    default n
+    depends on AIC_LVGL_USE_PLAYER_SESSION && LV_USE_IMAGE
+    help
+        RGB/YUV image widget with deferred source replacement, playback,
+        pause/resume, stop/replay, volume and asynchronous deletion cleanup.
+        Explicit CMA budget and RGB/YUV decoder initialization required.

@@ -20,7 +20,7 @@ $includes=@('.', 'bsp/common/include', 'bsp/artinchip/sys/d13x/include',
     'kernel/rt-thread/components/libc/compilers/common/include')
 $arguments=@('-std=gnu99','-Wall','-Wextra','-Werror',
     '-march=rv32imafdcpzpsfoperand_xtheade','-mabi=ilp32d',
-    '-DAIC_LVGL_USE_PLAYER_SESSION=1','-DAIC_MPP_PLAYER_VIDEO_EXT_RENDER=1',
+    '-DAIC_LVGL_USE_PLAYER=1','-DAIC_LVGL_USE_PLAYER_SESSION=1','-DAIC_MPP_PLAYER_VIDEO_EXT_RENDER=1',
     '-DRT_USING_NEWLIB','-DRT_USING_LIBC','-D_POSIX_C_SOURCE=1','-D_SYS__PTHREADTYPES_H_')
 foreach ($path in $includes) { $arguments+=@('-isystem',(Join-Path $sdk $path)) }
 $arguments+=('-I'+(Join-Path $component 'compat'))
@@ -30,13 +30,13 @@ foreach ($path in @($component,(Join-Path $component 'include'),(Join-Path $comp
     $arguments+=('-I'+$path)
 }
 $arguments+=@('-include',(Join-Path $component 'compat/lvgl_aic_build_config.h'),'-DAIC_LVGL_BSP_MPP=1')
-foreach ($module in @('player_session','player_playback','player_allocator','player_frames','player_events','player_clock','rgb_image','rgb_mpp')) {
+foreach ($module in @('player_session','player_playback','player_allocator','player_frames','player_events','player_clock','rgb_image','rgb_mpp','player')) {
     $output=Join-Path $sdk ("output/lvgl-"+$module.Replace('_','-')+'.o')
     New-Item -ItemType Directory -Force (Split-Path $output) | Out-Null
-    $directory=if ($module -in @('player_clock','rgb_mpp')) { 'common' } elseif ($module -eq 'rgb_image') { 'image/mpp' } else { 'port' }
+    $directory=if ($module -in @('player_clock','rgb_mpp')) { 'common' } elseif ($module -eq 'player') { 'widgets' } elseif ($module -eq 'rgb_image') { 'image/mpp' } else { 'port' }
     $compileArgs=$arguments+@('-c',(Join-Path $component "$directory/lv_aic_$module.c"),'-o',$output)
     & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
     if ($LASTEXITCODE -ne 0) { throw "$module target compilation failed" }
     Get-FileHash $output -Algorithm SHA256
 }
-Write-Output 'PASS compile-only player session/playback/allocator/frame bridge/events/clock/RGB; no media link or hardware execution'
+Write-Output 'PASS compile-only player session/playback/allocator/frame bridge/events/clock/RGB/widget; no media link or hardware execution'

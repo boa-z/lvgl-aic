@@ -271,7 +271,34 @@ SDK tooling still reports its existing short-version/pywin32 environment warning
 
 ## Remaining SDK parity
 
-Implement player widget controls and seek with reader/decoder flushing, source replacement, repeat/rate behavior, slave and group
+Implement seek with reader/decoder flushing, repeat/rate behavior, slave and group
 lifetimes, APNG backend, and explicit video-plane composition/ownership.
-Do not report this internal session as a complete player widget or as tested
+Do not report the current widget as complete SDK player parity or as tested
 hardware decoding. All physical verification remains deferred.
+
+## Native player widget (2026-10-03)
+
+`AIC_LVGL_USE_PLAYER` adds `lv_aic_player.h`, an LVGL image subclass using the
+asynchronous playback worker. Configure an explicit CMA budget, extra-frame
+limit and colorimetry, initialize both image decoders, then set the SDK URI.
+Preparation does not auto-start. Supports start/pause/resume, volume,
+stop/close, manual terminal replay and deferred source replacement (latest
+queued URI wins). Volume persists when reopening. Use native image transforms;
+do not replace its image source with `lv_image_set_src`.
+
+Deletion keeps an orphan cleanup timer until queued draws, immutable frame
+readers and the worker finish. Run LVGL timers until pending_cleanup is zero
+before lv_deinit, and close/delete live widgets too. GE fault quarantine must
+never be force-released. VALUE_CHANGED reports state/applied volume; callbacks
+can delete the widget or replace its source. TERMINAL remains an SDK terminal
+notification, not proof of clean EOF. Seek/repeat/rate and video-plane output
+are not implemented.
+
+Host regression: **32/32 PASS**. The widget contract uses real LVGL/decoders and
+mock playback, checks displayed RGB/YUV pixels, reader-delayed replacement,
+latest-source selection, volume persistence, terminal replay, stop/restart,
+queued-draw deletion, blocked worker exit, callback deletion/replacement and
+fault cleanup. The separate worker contract exercises real worker code with
+mock SDK. Strict E907 widget compilation: **PASS**; output/lvgl-player.o SHA256
+`8e14df2e234d1babe7f24ea0a386532be7927118d4168c5f40caa28e63942d9d`.
+Media-enabled firmware linking and physical playback: **NOT_RUN**.
