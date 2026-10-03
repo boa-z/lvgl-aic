@@ -9,7 +9,7 @@ phase documents are historical; source presence and switches are not board proof
 | Integration | App-owned pins; LV_OS_CUSTOM RT events | Board regression after app/OS refactor |
 | Display | One framebuffer, DIRECT, PAN/VSync; whole-screen 90/180/270 GE copy with software fallback before submission | GE target/board rotation acceptance, SPI/multi-display, extended cache/VSync tests; see [rotation stage](display-rotation-stage.md) |
 | Touch / input | Touch worker, mapping, diagnostics and optional recovery; application-owned encoder and mouse providers create native LVGL indevs | Board-specific encoder/USB mouse sampling and board acceptance remain application scope |
-| Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership; SDK L-drive .fake pseudo-fills in GE profiles | New AICP/BMP/fake board probes NOT_RUN; YUV integration remains absent |
+| Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership; SDK L-drive .fake pseudo-fills; immutable YUV frame publication | New AICP/BMP/fake/YUV board probes NOT_RUN; media device integration remains absent |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
 | GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, native-size tiling, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, arbitrary-angle plus scale, YUV, transformed tiling/recolor/masks |
@@ -79,7 +79,7 @@ not from assumptions that every LVGL draw feature is hardware accelerated.
 | Capability | SDK source evidence | Port status / next work |
 |---|---|---|
 | Image tiling | lv_ge2d/lv_draw_ge2d_img.c calls the tiled image helper | Native-size clipped IMAGE tiles implemented with whole-task preflight; target build and probe integration PASS; transformed tiles and board validation remain; see [tiling stage](ge-tiling-stage.md) |
-| YUV image input | lv_ge2d/lv_draw_ge2d.c accepts YUV with orthogonal rotations | Bounded 8-format views, CPU conversion, MPP metadata and immutable LVGL image publication implemented; direct GE YUV rendering still pending; see [YUV stage](yuv-stage.md) |
+| YUV image input | lv_ge2d/lv_draw_ge2d.c accepts YUV with orthogonal rotations | Bounded 8-format views, CPU conversion, immutable image publication and native-size GE orthogonal rendering implemented; GE scale/tile and board acceptance pending; see [YUV stage](yuv-stage.md) |
 | fake image | aic_ui.h encodes dimensions/blend/color in a .fake path; GE turns it into a fill | Implemented bounded parser, LVGL 9.6 virtual-file bridge and GE/CPU replacement/blend; board pending; see [fake stage](fake-image-stage.md) |
 | Arbitrary rotation plus scale | ge2d_draw_img_supported explicitly rejects it | Future extension beyond this SDK baseline |
 | Recolor / bitmap mask | ge2d_draw_img_supported explicitly rejects both | Software fallback is consistent with SDK; GE support is an extension |

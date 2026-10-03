@@ -33,7 +33,34 @@ two simultaneous readers, owner retirement, deferred release, rejected decoder
 teardown, exact conversion pixels, real lv_image software rendering, 20 frame
 replacement cycles without stale pixels and repeated LVGL init/deinit.
 The board CPU probe also exercises decoder pixels and deferred producer release.
-Direct GE YUV consumption remains pending; the current decoder produces RGB.
+The decoder's normal open path produces RGB. A GE task can now acquire a
+native frame lease before opening the decoder and submit its original planes.
+
+## Direct GE path
+
+Native-size IMAGE tasks support the eight frame layouts and 0/90/180/270
+rotation with aligned clipping and global alpha. The path preserves explicit
+CSC flags and independent plane addresses, cleans source planes, prepares the
+destination cache and waits for GE completion before releasing its frame lease.
+Source/destination aliasing, inaccessible planes, geometry below the SDK's
+8-pixel minimum, odd subsampled crops and unsupported effects decline before
+any cache operation or submission. Scale, tiled YUV and arbitrary rotations
+currently retain the RGB conversion/rendering fallback.
+
+On a submission/emit/sync failure, software replay is forbidden. One source
+lease is quarantined and further YUV submissions fail. The dispatcher keeps
+the task/destination layer in flight and stops rendering, requiring reboot;
+an error return cannot prove DMA quiescence. Direct callers must likewise
+retain destination storage. There is deliberately no production reset/unpin
+API based merely on a failed wait or GE close.
+
+Host validation: 21/21 PASS. Native submission tests use real SDK descriptors
+with mocked GE/cache operations: eight layouts, all orthogonal rotations,
+nonzero layer origin, aligned/odd clipping, address/alias rejection, producer
+retirement during sync and all three hardware failure stages. The mock alone
+can prove it has no pending DMA and explicitly releases quarantine in tests.
+The actual dispatcher fault-stop branch and physical DMA/cache behavior still
+need target/board validation.
 
 The internal MPP adapter preserves format, plane addresses, strides and color
 space. It rejects pointers outside the configured physical window/32-bit range,
@@ -60,8 +87,10 @@ short spans, pointer overflow, output aliasing, MPP metadata and unchanged
 outputs on invalid input. MPP mapping uses synthetic addresses without DMA.
 
 A board startup CPU probe checks four color matrices, odd I420 output/guards
-and metadata rejection/acceptance. It deliberately logs that GE DMA is not
-tested.
+and metadata rejection/acceptance. A separate new CMA I420 probe calls the
+public image executor at all four orthogonal rotations, compares 512 pixels
+per rotation against CPU conversion (tolerance 3), and checks every outside
+pixel. Its DMA allocations remain pinned after a hardware failure.
 
 Target validation: PASS, full ge2d-fonts-gif-widgets-aicp profile.
 
@@ -81,6 +110,6 @@ Target validation: PASS, full ge2d-fonts-gif-widgets-aicp profile.
 This image supersedes the frame-contract-only a32613c candidate
 (SHA256 49f9d124ef4d3c344fa1467b3ad7e02eebd2b058fd675625e718a6faf67d96a7).
 
-Remaining scope: real GE YUV descriptors/cache maintenance, orthogonal rotation
-and scaling with chroma phase, exact clip fallback, board CSC numeric probes,
+Remaining scope: YUV scaling with chroma phase, tiled YUV, broader board CSC
+and clipped-rotation numeric probes, dispatcher fault-stop validation,
 and camera/player/video-window ownership. This stage does not close those gaps.
