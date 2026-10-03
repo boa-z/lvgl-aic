@@ -66,16 +66,20 @@ tested.
 Target validation: PASS, full ge2d-fonts-gif-widgets-aicp profile.
 
 - Command: tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -Jobs 8.
-- SDK: a45530e3; component: a32613c; LVGL: 80ca777e.
+- SDK: 2ecbe9ff; component: 467509b; LVGL: 80ca777e.
 - Boot/app builds, static checks, image checks and manifest: PASS.
-- Allocated target text contains lv_aic_yuv_to_rgb888, lv_aic_yuv_to_mpp
-  and lv_aic_yuv_test_run; these are not merely discarded source objects.
+- Allocated target text contains conversion/metadata/probe code as well as
+  lv_aic_yuv_image_decoder_init, lv_aic_yuv_image_create and
+  lv_aic_yuv_image_destroy; these are not merely discarded source objects.
 - Evidence: SDK output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp.
 - Image: images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
-- SHA256: 49f9d124ef4d3c344fa1467b3ad7e02eebd2b058fd675625e718a6faf67d96a7.
+- SHA256: 467e6682531d0aebe82d8d855ef30948a04240bf40eabce498d7d084f01d7d40.
 - Manifest records clean source states; later documentation commits are
   excluded from this build, and the profile directory is reused by later builds.
 - Physical board execution: NOT_RUN.
+
+This image supersedes the frame-contract-only a32613c candidate
+(SHA256 49f9d124ef4d3c344fa1467b3ad7e02eebd2b058fd675625e718a6faf67d96a7).
 
 Remaining scope: real GE YUV descriptors/cache maintenance, orthogonal rotation
 and scaling with chroma phase, exact clip fallback, board CSC numeric probes,
