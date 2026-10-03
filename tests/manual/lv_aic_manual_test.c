@@ -22,6 +22,13 @@ static lv_obj_t *lv_aic_widget_root;
 #define LV_AIC_WIDGET_TEST 0
 #endif
 
+#if LV_AIC_WIDGET_TEST && LV_USE_LIST && LV_USE_MENU
+#define LV_AIC_NAV_TEST 1
+static lv_obj_t *lv_aic_legacy_root;
+#else
+#define LV_AIC_NAV_TEST 0
+#endif
+
 static lv_obj_t *lv_aic_manual_root;
 static lv_obj_t *lv_aic_manual_status;
 static lv_obj_t *lv_aic_manual_marker;
@@ -155,9 +162,9 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
 int lv_aic_manual_page_count(void)
 {
 #if LV_AIC_GE2D_IMAGE_TEST
-    return 3 + LV_AIC_WIDGET_TEST;
+    return 3 + LV_AIC_WIDGET_TEST + LV_AIC_NAV_TEST;
 #else
-    return 1 + LV_AIC_WIDGET_TEST;
+    return 1 + LV_AIC_WIDGET_TEST + LV_AIC_NAV_TEST;
 #endif
 }
 
@@ -171,7 +178,12 @@ static void lv_aic_nav_update(void)
     static const char *const titles[] = {"Overview", "Image rotation", "Rotation + scale"};
     if (!lv_aic_nav_title) return;
 #if LV_AIC_WIDGET_TEST
-    if (lv_aic_manual_page_active == lv_aic_manual_page_count() - 1)
+#if LV_AIC_NAV_TEST
+    if(lv_aic_manual_page_active==lv_aic_manual_page_count()-1)
+        lv_label_set_text(lv_aic_nav_title,"List / menu compatibility");
+    else
+#endif
+    if (lv_aic_manual_page_active == lv_aic_manual_page_count() - 1 - LV_AIC_NAV_TEST)
         lv_label_set_text(lv_aic_nav_title, "SDK widgets");
     else
 #endif
@@ -195,7 +207,10 @@ void lv_aic_manual_page_poll(void)
     lv_aic_manual_page_active = page;
     lv_obj_set_hidden(lv_aic_manual_root, page != 0);
 #if LV_AIC_WIDGET_TEST
-    lv_obj_set_hidden(lv_aic_widget_root, page != lv_aic_manual_page_count() - 1);
+    lv_obj_set_hidden(lv_aic_widget_root, page != lv_aic_manual_page_count() - 1 - LV_AIC_NAV_TEST);
+#endif
+#if LV_AIC_NAV_TEST
+    lv_obj_set_hidden(lv_aic_legacy_root,page!=lv_aic_manual_page_count()-1);
 #endif
 #if LV_AIC_GE2D_IMAGE_TEST
     lv_obj_set_hidden(lv_aic_rotation_root, page != 1);
@@ -239,6 +254,46 @@ static void lv_aic_swipe_button(lv_event_t *e)
     lv_obj_t *swipe = lv_event_get_user_data(e);
     lv_swipe_v1_set_next(swipe, LV_ANIM_ON);
 }
+
+#if LV_AIC_NAV_TEST
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+static int lv_aic_legacy_page_create(lv_display_t *display)
+{
+    int32_t width=lv_display_get_horizontal_resolution(display);
+    int32_t height=lv_display_get_vertical_resolution(display)-64;
+    lv_aic_legacy_root=lv_obj_create(lv_screen_active());
+    if(!lv_aic_legacy_root) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_pos(lv_aic_legacy_root,0,64);lv_obj_set_size(lv_aic_legacy_root,width,height);
+    lv_obj_set_style_pad_all(lv_aic_legacy_root,8,0);lv_obj_set_scrollable(lv_aic_legacy_root,false);
+    lv_obj_t *list=lv_list_create(lv_aic_legacy_root);
+    lv_obj_t *menu=lv_menu_create(lv_aic_legacy_root);
+    if(!list || !menu) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_set_size(list,(width-32)/2,height-20);lv_obj_set_pos(list,0,0);
+    lv_obj_set_size(menu,(width-32)/2,height-20);lv_obj_set_pos(menu,width/2,0);
+    if(!lv_list_add_text(list,"Scroll this list")) return LV_AIC_ERR_NO_MEMORY;
+    for(unsigned i=0;i<12;i++) {
+        char text[24];lv_snprintf(text,sizeof(text),"Compatibility item %u",i+1);
+        if(!lv_list_add_button(list,LV_SYMBOL_FILE,text)) return LV_AIC_ERR_NO_MEMORY;
+    }
+    lv_obj_t *home=lv_menu_page_create(menu,"Home");
+    lv_obj_t *detail=lv_menu_page_create(menu,"Details");
+    if(!home || !detail) return LV_AIC_ERR_NO_MEMORY;
+    lv_obj_t *entry=lv_menu_cont_create(home),*label;
+    if(!entry || !(label=lv_label_create(entry))) return LV_AIC_ERR_NO_MEMORY;
+    lv_label_set_text(label,"Open details");lv_menu_set_load_page_event(menu,entry,detail);
+    label=lv_label_create(detail);if(!label) return LV_AIC_ERR_NO_MEMORY;
+    lv_label_set_text(label,"Use the menu back arrow to return.");
+    lv_obj_set_width(label,(width-64)/2);
+    lv_menu_set_page(menu,home);lv_obj_set_hidden(lv_aic_legacy_root,true);
+    return LV_AIC_OK;
+}
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+#endif
 
 static int lv_aic_widget_page_create(lv_display_t *display)
 {
@@ -714,6 +769,9 @@ int lv_aic_manual_test_create(void)
 
 #if LV_AIC_WIDGET_TEST
     if (lv_aic_widget_page_create(display) != LV_AIC_OK) goto fail;
+#if LV_AIC_NAV_TEST
+    if(lv_aic_legacy_page_create(display)!=LV_AIC_OK) goto fail;
+#endif
 #endif
     if (lv_aic_nav_create(display) != LV_AIC_OK) goto fail;
 
@@ -747,6 +805,10 @@ void lv_aic_manual_test_deinit(void)
 #if LV_AIC_WIDGET_TEST
     if (lv_aic_widget_root) lv_obj_delete(lv_aic_widget_root);
     lv_aic_widget_root = NULL;
+#if LV_AIC_NAV_TEST
+    if(lv_aic_legacy_root) lv_obj_delete(lv_aic_legacy_root);
+    lv_aic_legacy_root=NULL;
+#endif
 #endif
 #if LV_USE_GIF && AIC_LVGL_BSP_RTTHREAD
     lv_aic_gif_test_deinit();

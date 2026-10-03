@@ -163,3 +163,9 @@ On uncertain DMA failure, 3072 bytes remain pinned until reboot. This diagnostic
 bypasses production fallback only for its owned buffers; it does not enable
 RGB565 key acceleration. Nine sample PASS lines would be finite evidence, not
 exhaustive format parity. Hardware execution is NOT_RUN.
+
+The widget-enabled manual UI now adds a `List / menu compatibility` page after
+SDK widgets. Scroll the twelve-item list, open Details in the menu and use its
+back arrow, then use the shared header to change pages. Host pointer hit-testing
+covers entering/leaving Details, repeated shared-header navigation, rendering
+and three create/delete cycles. Physical scrolling/touch/rendering is NOT_RUN.

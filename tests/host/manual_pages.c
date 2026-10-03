@@ -92,7 +92,7 @@ int main(int argc, char **argv)
         assert(lv_aic_manual_test_create() == LV_AIC_ERR_INVALID_STATE);
         int count = lv_aic_manual_page_count();
 #if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1
-        assert(count == 4);
+        assert(count == 4 + (LV_USE_LIST && LV_USE_MENU));
 #else
         assert(count == 3);
 #endif
@@ -114,13 +114,27 @@ int main(int argc, char **argv)
         for (int i = 1; i <= count * 4; i++) { click(indev, next); check_page(screen, nav, initial, i % count); }
         for (int i = 1; i <= count * 4; i++) { click(indev, prev); check_page(screen, nav, initial, (count - i % count) % count); }
 #if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1
-        lv_aic_manual_page_request(count - 1); lv_aic_manual_page_poll();
-        lv_obj_t *widgets = lv_obj_get_child(screen, initial + count - 1);
+        lv_aic_manual_page_request(count - 1 - (LV_USE_LIST && LV_USE_MENU)); lv_aic_manual_page_poll();
+        lv_obj_t *widgets = lv_obj_get_child(screen, initial + count - 1 - (LV_USE_LIST && LV_USE_MENU));
         lv_obj_t *advance = find_button(widgets, "Next icon");
         assert(advance);
         click(indev, advance);
         for (int tick = 0; tick < 30; tick++) { lv_tick_inc(20); lv_timer_handler(); }
         lv_aic_manual_page_request(0); lv_aic_manual_page_poll();
+#endif
+#if AIC_LVGL_USE_IMG_ROLLER && AIC_LVGL_USE_SWIPE_V1 && LV_USE_LIST && LV_USE_MENU
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        lv_aic_manual_page_request(count-1);lv_aic_manual_page_poll();
+        lv_obj_t *legacy=lv_obj_get_child(screen,initial+count-1);
+        lv_obj_t *menu=lv_obj_get_child(legacy,1);
+        lv_obj_t *home=lv_menu_get_cur_main_page(menu);assert(home);
+        click(indev,lv_obj_get_child(home,0));
+        assert(lv_menu_get_cur_main_page(menu)!=home);
+        click(indev,lv_menu_get_main_header_back_button(menu));
+        assert(lv_menu_get_cur_main_page(menu)==home);
+        lv_aic_manual_page_request(0);lv_aic_manual_page_poll();
+#pragma GCC diagnostic pop
 #endif
         lv_aic_manual_page_request(-1); lv_aic_manual_page_request(99);
         lv_aic_manual_page_poll(); check_page(screen, nav, initial, 0);

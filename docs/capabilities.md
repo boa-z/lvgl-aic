@@ -370,3 +370,8 @@ No automatic list/menu UI is created. Host lifecycle/navigation coverage remains
 - lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
 - images/d13x.elf SHA256: d0256049319f2ba7bae05e8039a9f780ee7bfd3477aa188dd15f6b6eaf7b7302
 - images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: 02c75558ff06cdccf97b0b333d64e042b9db0e714a5007bdfdada109fe7a532a
+
+Legacy list/menu now have a dedicated manual page. Host pointer hit tests verify
+menu entry/back navigation and preserve the existing carousel/swipe page index;
+page refresh and repeated teardown pass. This page increment has not yet been
+packaged into a target image. Physical scrolling/touch/rendering remains NOT_RUN.
