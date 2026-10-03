@@ -105,19 +105,21 @@ pixel. Its DMA allocations remain pinned after a hardware failure.
 Target validation: PASS, full ge2d-fonts-gif-widgets-aicp profile.
 
 - Command: tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -Jobs 8.
-- SDK: 101722f5; component: f709dd6; LVGL: 80ca777e.
+- SDK: 4d1c096d; component: 1b3e5b2; LVGL: 80ca777e.
 - Boot/app builds, static checks, image checks and manifest: PASS.
 - Allocated target text contains conversion/metadata/probe code, source leases,
   lv_draw_aic_ge2d_yuv and lv_draw_aic_ge2d_prepare_yuv_cache; these are not
   merely discarded source objects.
 - Evidence: SDK output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp.
 - Image: images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
-- SHA256: 4c77cf3929c2efcb13a3d09e6b50213f10382978417c6c0cfaab3f6d5a151518.
+- SHA256: bff582369c94d5d8dd0182c8a99058c0eacaeb44a34b261df2825494bda6b608.
 - Manifest records clean source states; later documentation commits are
   excluded from this build, and the profile directory is reused by later builds.
 - Physical board execution: NOT_RUN.
 
-This image supersedes the CPU-decoder-only 467509b candidate
+This image adds bounded scaling to the native-rotation f709dd6 candidate
+(SHA256 4c77cf3929c2efcb13a3d09e6b50213f10382978417c6c0cfaab3f6d5a151518).
+It supersedes the CPU-decoder-only 467509b candidate
 (SHA256 467e6682531d0aebe82d8d855ef30948a04240bf40eabce498d7d084f01d7d40)
 and the earlier frame-contract-only a32613c candidate.
 
