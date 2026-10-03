@@ -9,8 +9,31 @@ these descriptors must not be passed to LVGL as if they were decoded pixels.
 CPU conversion to native RGB888 validates every span and output overlap before
 writing. Odd dimensions use rounded-up chroma storage. Conversion performs no
 allocation/cache insertion, does not mutate source planes and preserves output
-padding. It supplies the future renderer's fallback/reference path; it is not
-yet wired into LVGL image decoding or direct GE YUV submission.
+padding. It supplies the renderer's fallback/reference path.
+
+## Immutable LVGL image publication
+
+include/lv_aic_yuv_image.h provides an optional decoder independent of MPP/GE.
+Call lv_aic_yuv_image_decoder_init after lv_init, create a frame image with
+mandatory retain/release callbacks, and pass lv_aic_yuv_image_source(image)
+to lv_image_set_src. Creation copies metadata and retains the producer once.
+Producer pixels must remain immutable and CPU-coherent until release.
+
+Each decoder open owns a separate RGB888 conversion. No generic image-cache
+entry retains the producer or reuses a previous video frame. Detach images from
+widgets and complete queued draws before destroying the owner reference.
+Already-open readers retain their snapshot and the producer; release occurs
+only after the final reader closes. Retired descriptors cannot be reopened,
+and decoder deinit refuses while any image or reader remains. All calls run
+on the LVGL owner thread; producer callbacks must not re-enter LVGL. Destroy
+images, close readers and deinit this decoder before lv_deinit.
+
+Host integration: 20/20 PASS. New coverage includes allocation/retain failures,
+two simultaneous readers, owner retirement, deferred release, rejected decoder
+teardown, exact conversion pixels, real lv_image software rendering, 20 frame
+replacement cycles without stale pixels and repeated LVGL init/deinit.
+The board CPU probe also exercises decoder pixels and deferred producer release.
+Direct GE YUV consumption remains pending; the current decoder produces RGB.
 
 The internal MPP adapter preserves format, plane addresses, strides and color
 space. It rejects pointers outside the configured physical window/32-bit range,
@@ -54,7 +77,6 @@ Target validation: PASS, full ge2d-fonts-gif-widgets-aicp profile.
   excluded from this build, and the profile directory is reused by later builds.
 - Physical board execution: NOT_RUN.
 
-Remaining scope: application frame retain/release publication, LVGL decoder
-integration, real GE YUV descriptors/cache maintenance, orthogonal rotation
+Remaining scope: real GE YUV descriptors/cache maintenance, orthogonal rotation
 and scaling with chroma phase, exact clip fallback, board CSC numeric probes,
 and camera/player/video-window ownership. This stage does not close those gaps.

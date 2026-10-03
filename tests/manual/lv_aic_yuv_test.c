@@ -1,12 +1,42 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+#define AIC_LVGL_USE_PRIVATE_API 1
 #define LOG_TAG "lvgl.yuv"
 #define LOG_LVL LOG_LVL_INFO
 #include "lv_aic_manual_test.h"
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_RTTHREAD
 #include "lv_aic_yuv.h"
 #include "lv_aic_yuv_mpp.h"
+#include "lv_aic_yuv_image.h"
+#include "lvgl_aic_private.h"
 #include "lv_aic_test_log.h"
 #include <string.h>
+
+static bool retain_probe(void *context) { (*(int *)context)++; return true; }
+static void release_probe(void *context) { (*(int *)context)--; }
+static int image_probe(const lv_aic_yuv_frame_t *frame)
+{
+    int refs=0, result=-1;
+    lv_image_decoder_dsc_t reader={0};
+    bool opened=false;
+    lv_aic_yuv_image_t *image=NULL;
+    if (!lv_aic_yuv_image_decoder_init()) return -1;
+    image=lv_aic_yuv_image_create(frame,retain_probe,release_probe,&refs);
+    if (!image || refs!=1) goto done;
+    if (lv_image_decoder_open(&reader,lv_aic_yuv_image_source(image),NULL)!=LV_RESULT_OK) goto done;
+    opened=true;
+    lv_aic_yuv_image_destroy(image); image=NULL;
+    if (refs!=1 || lv_aic_yuv_image_decoder_deinit()) goto done;
+    /* Source is Y=81,U=90,V=240 in BT.709 full range. */
+    if (!reader.decoded || reader.decoded->data[0]!=10 ||
+        reader.decoded->data[1]!=36 || reader.decoded->data[2]!=255) goto done;
+    result=0;
+done:
+    if (image) lv_aic_yuv_image_destroy(image);
+    if (opened) lv_image_decoder_close(&reader);
+    if (refs!=0 || !lv_aic_yuv_image_decoder_deinit()) result=-1;
+    if (!result) AIC_TEST_I("PASS YUV image decoder pixels and deferred producer release");
+    return result;
+}
 
 int lv_aic_yuv_test_run(void)
 {
@@ -36,6 +66,7 @@ int lv_aic_yuv_test_run(void)
         frame.width=3; frame.height=3;
     }
     AIC_TEST_I("PASS CPU YUV matrices=4 odd I420 pixels=36 guards=OK; GE DMA not tested");
+    if (image_probe(&frame)) goto fail;
     return 0;
 fail:
     AIC_TEST_E("FAIL YUV frame/CPU conversion contract");
