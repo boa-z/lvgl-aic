@@ -47,9 +47,9 @@ enables worker-side preservation of frames not yet consumed by the UI.
 SDK media get_frame may itself drop late frames for A/V synchronization;
 the application does not override that SDK clock or guarantee decoded-index
 matching. See the backpressure stage below.
-Each backend still permits only one live instance, including closing instances
-with retained readers: currently one media plus one APNG master can coexist.
-Multiple media or multiple APNG masters still require resource/lifecycle work.
+The APNG backend now permits four independent live instances, including closing
+instances with retained readers. Media still permits one. Multiple media masters
+and physical mixed-codec arbitration remain to be completed and verified.
 
 SDK review also found a shared VE device with lazy mutex initialization in
 `packages/artinchip/mpp/ve/common/ve.c`. Removing reservations without resolving
@@ -128,3 +128,38 @@ ELF SHA256: `d9bb3477c88d9d72ed0844bb1d9b04e158f30f44130d6a12783719ce21dab7e8`.
 
 The map checks the media/APNG preserve APIs and checked media submit path.
 Physical playback/group timing remains **NOT_RUN**; no flashing performed.
+
+
+## Bounded APNG multi-instance runtime (2026-10-03)
+
+APNG playback now allows four independent instances, each with its own worker,
+path, controls, timeline, stream and immutable frame pool. Per-instance budgets
+still apply; aggregate application reservations are the sum of all configured
+budgets plus four 8192-byte worker stacks and the previously documented metadata,
+packet/codec scratch and LVGL overhead. This does not promise four physical
+decodes at the same instant or a particular frame rate.
+
+The owner-thread media runtime acquires one public SDK VE device reference before
+launching the first managed media/APNG worker. This initializes SDK lazy state
+serially. That reference remains until the last registered instance has finished
+its worker and all native frame readers. Failed thread creation rolls it back;
+one closing instance never clears another instance's reservation.
+
+APNG SDK tick and close operations additionally share an application-owned
+mutex. Inspection found that SDK PNG HAL does not check the result of its finite
+`ve_get_client` wait; serializing APNG callers prevents our APNG workers from
+contending at that unchecked boundary. The lock is released between ticks and
+cleanup retries; it is not held while waiting for readers or sleeping.
+SDK media codec threads and unrelated external VE users are outside this gate.
+Mixed media/APNG hardware timing and arbitration still require physical tests;
+no SDK source was changed and no hardware concurrency claim is made.
+
+Host **41/41 PASS** (plus focused checks after serialization changes).
+The APNG contract runs four real OSAL-mapped pthread workers and real snapshot
+pools with mocked stream decoding: independent pause/rate/replay, distinct
+immutable pixels, the fifth-instance rejection, reservation retention by a
+native reader after worker exit, progress during another worker's cleanup retry,
+and reuse while old pixels remain held. Mock codec calls deliberately overlap
+without the shared gate and assert mutual exclusion. A dedicated runtime contract
+covers failed VE open, shared acquire/release, final close and subsequent reopen.
+This establishes adapter ownership and scheduling, not physical PNG decoding.

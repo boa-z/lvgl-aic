@@ -302,6 +302,7 @@ def main():
                        "lv_aic_player_group_remove", "lv_aic_player_group_get_count",
                        "lv_aic_player_group_control", "lv_aic_player_set_group", "lv_aic_player_get_group",
                        "lv_aic_player_playback_preserve", "lv_aic_player_frames_submit_checked",
+                       "lv_aic_media_runtime_acquire", "lv_aic_media_runtime_release",
                        "lv_aic_player_set_auto_restart", "lv_aic_player_get_auto_restart_count",
                        "lv_aic_slave_player_create", "lv_aic_slave_player_set_master",
                        "lv_aic_player_playback_prepare", "lv_aic_player_frames_poll_image",

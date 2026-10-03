@@ -156,6 +156,8 @@ config AIC_LVGL_USE_APNG
         Independent of SDK player/audio. Pause, rational rate and replay are
         available through a worker and immutable RGB frame publication.
         Native file paths and explicit memory budgets are required.
+        Up to four independent APNG instances share serialized SDK decode.
+        Closing instances keep reservations until all image readers release.
         Enable the separate APNG image widget option for LVGL integration.
 
 config AIC_LVGL_USE_APNG_WIDGET

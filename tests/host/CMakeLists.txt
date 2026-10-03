@@ -336,6 +336,7 @@ if(AIC_SDK_ROOT)
     add_test(NAME lvgl_aic_player_frames_contract COMMAND lvgl_aic_player_frames_contract)
     set_tests_properties(lvgl_aic_player_frames_contract PROPERTIES TIMEOUT 15)
     add_executable(lvgl_aic_player_playback_contract player_playback_contract.c
+    "${AIC_ROOT}/port/lv_aic_media_runtime.c" media_runtime_stub.c
         "${AIC_ROOT}/image/mpp/lv_aic_rgb_image.c" "${AIC_ROOT}/common/lv_aic_rgb_mpp.c"
         "${AIC_ROOT}/port/lv_aic_player_playback.c" "${AIC_ROOT}/port/lv_aic_player_events.c"
         "${AIC_ROOT}/port/lv_aic_player_frames.c" "${AIC_ROOT}/port/lv_aic_player_session.c"
@@ -751,6 +752,7 @@ add_test(NAME lvgl_aic_apng_frames_contract COMMAND lvgl_aic_apng_frames_contrac
 set_tests_properties(lvgl_aic_apng_frames_contract PROPERTIES TIMEOUT 15)
 
 add_executable(lvgl_aic_apng_playback_contract apng_playback_contract.c
+    "${AIC_ROOT}/port/lv_aic_media_runtime.c" media_runtime_stub.c
     "${AIC_ROOT}/port/lv_aic_apng_playback.c" "${AIC_ROOT}/port/lv_aic_apng_frames.c"
     "${AIC_ROOT}/image/mpp/lv_aic_rgb_image.c")
 target_include_directories(lvgl_aic_apng_playback_contract PRIVATE
@@ -777,3 +779,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME lvgl_aic_apng_widget_contract COMMAND lvgl_aic_apng_widget_contract)
 set_tests_properties(lvgl_aic_apng_widget_contract PROPERTIES TIMEOUT 15)
+
+add_executable(lvgl_aic_media_runtime_contract media_runtime_contract.c
+    "${AIC_ROOT}/port/lv_aic_media_runtime.c")
+target_include_directories(lvgl_aic_media_runtime_contract PRIVATE
+    "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/player_stubs")
+target_compile_definitions(lvgl_aic_media_runtime_contract PRIVATE AIC_LVGL_USE_APNG=1)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_media_runtime_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_media_runtime_contract COMMAND lvgl_aic_media_runtime_contract)

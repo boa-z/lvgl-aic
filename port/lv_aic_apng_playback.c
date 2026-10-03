@@ -2,6 +2,7 @@
 #include "lvgl_aic_feature_config.h"
 #if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
 #include "lv_aic_apng_playback.h"
+#include "lv_aic_media_runtime.h"
 #include "lv_aic_apng_stream.h"
 #include "lv_aic_apng_frames.h"
 #include <aic_osal.h>
@@ -19,7 +20,8 @@ struct lv_aic_apng_playback {
     bool closing,start,paused,preserve;
     uint32_t num,den;
 };
-static lv_aic_apng_playback_t *active;
+/* Owner-thread reservations include finished workers with live readers. */
+static unsigned instances;
 static void lock(lv_aic_apng_playback_t *p) { aicos_mutex_take(p->mutex,AICOS_WAIT_FOREVER); }
 static void unlock(lv_aic_apng_playback_t *p) { aicos_mutex_give(p->mutex); }
 static uint64_t now(void *context) { (void)context;return aic_get_time_us(); }
@@ -46,12 +48,26 @@ end:
     if(file) fclose(file);
     free(data);return stream;
 }
+/* The SDK PNG codec ignores a failed ve_get_client timeout. Serialize our
+ * APNG codec operations before reaching that finite-wait hardware lock. */
+static bool stream_tick(lv_aic_apng_stream_t *stream,lv_aic_apng_stream_view_t *view)
+{
+    if(!lv_aic_media_runtime_enter()) return false;
+    bool ok=lv_aic_apng_stream_tick(stream,view);
+    lv_aic_media_runtime_leave();return ok;
+}
+static bool stream_close(lv_aic_apng_stream_t *stream)
+{
+    if(!lv_aic_media_runtime_enter()) return false;
+    bool ok=lv_aic_apng_stream_close(stream);
+    lv_aic_media_runtime_leave();return ok;
+}
 static void worker(void *argument)
 {
     lv_aic_apng_playback_t *p=argument;
     lv_aic_apng_stream_t *stream=load(p);
     lv_aic_apng_stream_view_t view={0};bool pending=false;
-    if(!stream || !lv_aic_apng_stream_pause(stream,true) || !lv_aic_apng_stream_tick(stream,&view)) fault(p);
+    if(!stream || !lv_aic_apng_stream_pause(stream,true) || !stream_tick(stream,&view)) fault(p);
     else {
         lv_aic_apng_frames_t *frames=lv_aic_apng_frames_create(view.width,view.height,
             p->options.snapshots,p->options.snapshot_budget);
@@ -65,7 +81,7 @@ static void worker(void *argument)
         uint32_t num=p->num,den=p->den;bool preserve=p->preserve;unlock(p);
         if(closing) {
             lv_aic_apng_frames_close(p->frames);
-            if(lv_aic_apng_stream_close(stream)) {
+            if(stream_close(stream)) {
                 lock(p);p->status.restart_pending=false;
                 if(p->status.state!=LV_AIC_APNG_FAULT) p->status.state=LV_AIC_APNG_CLOSED;
                 p->status.finished=true;unlock(p);return;
@@ -88,7 +104,7 @@ static void worker(void *argument)
          * Rate/pause/replay/close above still run on every bounded iteration. */
         bool advance=!(preserve && (pending || lv_aic_apng_frames_blocked(p->frames)));
         if(advance) {
-            if(!lv_aic_apng_stream_tick(stream,&view)) { fault(p);continue; }
+            if(!stream_tick(stream,&view)) { fault(p);continue; }
             if(view.step.action==LV_AIC_APNG_FRAME) pending=true;
         }
         lock(p);bool publish=!p->closing && !p->status.restart_pending;unlock(p);
@@ -111,17 +127,18 @@ static void worker(void *argument)
 }
 lv_aic_apng_playback_t *lv_aic_apng_playback_prepare(const char *path,const lv_aic_apng_playback_options_t *o)
 {
-    if(active || !path || !path[0] || strlen(path)>=128 || !o || !o->limits.file_bytes ||
+    if(instances>=LV_AIC_APNG_PLAYBACK_INSTANCES || !path || !path[0] || strlen(path)>=128 || !o || !o->limits.file_bytes ||
        o->limits.file_bytes>LONG_MAX || !o->limits.frame_png_bytes || !o->limits.canvas_pixels || !o->limits.frames ||
        !o->stream_budget || !o->snapshot_budget || !o->cma_budget || o->packet_limit<256 ||
        o->packet_limit>INT_MAX-255U || o->snapshots<2 || o->snapshots>8 ||
        !o->minimum_delay_us || o->minimum_delay_us>1000000) return NULL;
     lv_aic_apng_playback_t *p=calloc(1,sizeof(*p));if(!p) return NULL;
     p->mutex=aicos_mutex_create();if(!p->mutex) { free(p);return NULL; }
+    if(!lv_aic_media_runtime_acquire()) { aicos_mutex_delete(p->mutex);free(p);return NULL; }
     p->options=*o;memcpy(p->path,path,strlen(path)+1);p->num=p->den=1;
-    p->status=(lv_aic_apng_playback_status_t){.state=LV_AIC_APNG_OPENING,.rate_num=1,.rate_den=1};active=p;
+    p->status=(lv_aic_apng_playback_status_t){.state=LV_AIC_APNG_OPENING,.rate_num=1,.rate_den=1};instances++;
     if(!aicos_thread_create("aic_apng",8192,20,worker,p)) {
-        active=NULL;aicos_mutex_delete(p->mutex);free(p);return NULL;
+        instances--;lv_aic_media_runtime_release();aicos_mutex_delete(p->mutex);free(p);return NULL;
     }
     return p;
 }
@@ -179,6 +196,6 @@ bool lv_aic_apng_playback_destroy(lv_aic_apng_playback_t *p)
 {
     if(!p) return true;
     if(!lv_aic_apng_playback_status(p).finished || !lv_aic_apng_frames_destroy(p->frames)) return false;
-    aicos_mutex_delete(p->mutex);active=NULL;free(p);return true;
+    aicos_mutex_delete(p->mutex);instances--;lv_aic_media_runtime_release();free(p);return true;
 }
 #endif

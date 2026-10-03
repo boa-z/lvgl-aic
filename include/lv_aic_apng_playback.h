@@ -6,6 +6,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+/* Fixed bound includes closing instances whose native readers still own data.
+ * Each instance has its own explicit budgets and 8192-byte worker stack. */
+#define LV_AIC_APNG_PLAYBACK_INSTANCES 4
 typedef struct lv_aic_apng_playback lv_aic_apng_playback_t;
 typedef enum {
     LV_AIC_APNG_OPENING,LV_AIC_APNG_READY,LV_AIC_APNG_PLAYING,LV_AIC_APNG_PLAYBACK_PAUSED,
@@ -24,19 +27,20 @@ typedef struct {
     uint64_t composed,published,completed_plays,restarts;
     uint64_t file_bytes;
 } lv_aic_apng_playback_status_t;
-/* LVGL-owner API; a single APNG instance. All file/parse/MPP/compose work runs
- * on an OSAL worker. Native filesystem path <=127 bytes, no LVGL drive mapping.
+/* LVGL-owner API; up to LV_AIC_APNG_PLAYBACK_INSTANCES independent instances.
+ * Each has its own file/parse/compose worker; APNG SDK tick/close operations
+ * share a gate. Public VE initialization runs serially before launching workers. Native filesystem path <=127 bytes, no LVGL drive mapping.
  * Budgets are separate: stream allocations, snapshot pool, CMA decoder frames,
  * aligned packet buffer. During load an additional file_bytes buffer exists;
  * decoder/allocator metadata, thread stack and LVGL caches are not included.
  * Initialize the RGB image decoder before poll. No auto-start or audio. */
 lv_aic_apng_playback_t *lv_aic_apng_playback_prepare(const char *path,const lv_aic_apng_playback_options_t *options);
-/* Start does not rewind TERMINAL; use restart for replay. */
 /* Preserve unconsumed frames instead of replacing them. Default false.
  * Controls and cleanup remain responsive while worker production waits.
  * Enabling on a live worker may retain one already in-flight extra frame;
  * frames dropped before enabling cannot be recovered. No exact PTS promise. */
 bool lv_aic_apng_playback_preserve(lv_aic_apng_playback_t *p,bool enabled);
+/* Start does not rewind TERMINAL; use restart for replay. */
 bool lv_aic_apng_playback_start(lv_aic_apng_playback_t *p);
 bool lv_aic_apng_playback_pause(lv_aic_apng_playback_t *p,bool paused);
 bool lv_aic_apng_playback_rate(lv_aic_apng_playback_t *p,uint32_t numerator,uint32_t denominator);

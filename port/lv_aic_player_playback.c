@@ -2,6 +2,7 @@
 #include "lvgl_aic_feature_config.h"
 #if defined(AIC_LVGL_USE_PLAYER_SESSION) && AIC_LVGL_USE_PLAYER_SESSION
 #include "lv_aic_player_playback.h"
+#include "lv_aic_media_runtime.h"
 #include "lv_aic_player_frames.h"
 #include "lv_aic_player_events.h"
 #include <aic_osal.h>
@@ -182,9 +183,13 @@ lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const l
     if(!p->frames) {
         (void)lv_aic_player_allocator_destroy(p->allocator); aicos_mutex_delete(p->mutex); lv_free(p); return NULL;
     }
+    if(!lv_aic_media_runtime_acquire()) {
+        lv_aic_player_frames_close(p->frames); (void)lv_aic_player_frames_destroy(p->frames);
+        (void)lv_aic_player_allocator_destroy(p->allocator); aicos_mutex_delete(p->mutex); lv_free(p); return NULL;
+    }
     active=p;
     if(!aicos_thread_create("aic_playback",8192,20,worker,p)) {
-        active=NULL; lv_aic_player_frames_close(p->frames); (void)lv_aic_player_frames_destroy(p->frames);
+        active=NULL; lv_aic_media_runtime_release(); lv_aic_player_frames_close(p->frames); (void)lv_aic_player_frames_destroy(p->frames);
         (void)lv_aic_player_allocator_destroy(p->allocator); aicos_mutex_delete(p->mutex); lv_free(p); return NULL;
     }
     return p;
@@ -259,6 +264,6 @@ bool lv_aic_player_playback_destroy(lv_aic_player_playback_t *p)
     if(!lv_aic_player_allocator_destroy(p->allocator)) return false;
     p->allocator=NULL;
     if(!lv_aic_player_frames_destroy(p->frames)) return false;
-    aicos_mutex_delete(p->mutex); active=NULL; lv_free(p); return true;
+    aicos_mutex_delete(p->mutex); active=NULL; lv_aic_media_runtime_release(); lv_free(p); return true;
 }
 #endif
