@@ -29,7 +29,9 @@ void lv_mpp_image_flush_cache(struct lv_mpp_buf *image);
  * faults retain storage until reboot. Unknown/NULL handles are ignored. */
 void lv_mpp_image_free(struct lv_mpp_buf *image);
 /* SDK-shaped synchronous solid / horizontal / vertical gradient fill.
- * Packed RGB formats; physical destination dimensions/crop must be valid.
+ * Packed RGB and linear YUV formats; dimensions/crop must be valid.
+ * Subsampled YUV geometry rounds down as in SDK; effective crop >=8x8.
+ * Planar U/V strides must match; planes must not overlap.
  * Requires initialized shared GE. External buffers remain caller-owned:
  * synchronize caches before/after the call and retain storage on DMA failure.
  * Owned lv_mpp_image buffers get automatic cache synchronization and bounds

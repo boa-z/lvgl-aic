@@ -645,3 +645,27 @@ Clean component `06665c9c5ed3298296c74ac630d8820fb233f784`, SDK
 `0f62248e583c41cb87cc78e72d67e2573326ea7e`.
 SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
 SHA256 `37b2883fb39eee6befafca5b3d26a020b3a55d1f8ca82f17bfdb8801ec948385`. Board **NOT_RUN**.
+
+
+### Native linear YUV fill destinations (2026-10-04)
+
+The explicit `lv_ge_fill` helper now accepts all twelve linear SDK YUV formats:
+YUV420P/422P/444P/400, NV12/21/16/61, and YUYV/YVYU/UYVY/VYUY. SDK fill-checker
+subsampling rules are applied to a local descriptor: even horizontal geometry for
+4:2:x, even vertical geometry for 4:2:0, and effective YUV crop >=8x8. Input
+geometry must lie within the declared buffer. The caller descriptor remains
+unchanged. Color-space flags are forwarded to SDK conversion unchanged.
+
+Plane stride, row count, required addresses, 32-bit spans and non-overlap are
+validated before any cache or GE operation. Planar U/V strides must match because
+SDK output commands share their chroma pitch. Every owned allocation is bounds
+checked and synchronized once even when it contains multiple planes. Separate
+owners all remain retained after an uncertain DMA failure. External allocations
+still require caller-managed capacities, cache ownership and lifetime.
+
+Host contracts cover all twelve layouts, three fill types, blend off/on,
+subsampling normalization, missing/overlapping/short planes, shared/separate CMA
+owners and failed-sync retention. Tiled YUV layouts are not accepted as fill
+destinations. These checks establish descriptors and ownership only; color-space
+conversion, gradient endpoints and YUV pixels require board numeric probes.
+Board NOT_RUN; ordinary LVGL YUV drawing remains its separate frame path.

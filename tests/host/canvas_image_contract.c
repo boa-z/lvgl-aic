@@ -82,6 +82,71 @@ static void fill_contract(void)
         assert(cleans==old_clean && invalidates==old_invalid);
     }
 }
+static void yuv_fill_contract(void)
+{
+    for(int format=MPP_FMT_YUV420P;format<=MPP_FMT_YUV444P;format++) {
+        struct mpp_buf buf={.buf_type=MPP_PHY_ADDR,.format=format,
+            .size={17,17},.stride={64,64,64},.phy_addr={0x42000000,0x42010000,0x42020000},
+            .crop_en=1,.crop={1,1,16,16},.flags=MPP_COLOR_SPACE_BT709};
+        struct mpp_buf saved=buf;
+        for(int type=0;type<3;type++) for(int blend=0;blend<2;blend++) {
+            unsigned old=submits;
+            assert(lv_ge_fill(&buf,type,0x80112233,0xff445566,blend)==LV_RESULT_OK);
+            assert(submits==old+1 && !memcmp(&saved,&buf,sizeof(buf)));
+            assert(captured.dst_buf.flags==MPP_COLOR_SPACE_BT709);
+            bool half_x=format<=MPP_FMT_VYUY,half_y=format<=MPP_FMT_NV21;
+            assert(captured.dst_buf.size.width==(half_x?16:17));
+            assert(captured.dst_buf.size.height==(half_y?16:17));
+            assert(captured.dst_buf.crop.x==(half_x?0:1));
+            assert(captured.dst_buf.crop.y==(half_y?0:1));
+            assert(captured.dst_buf.crop.width==16 && captured.dst_buf.crop.height==16);
+        }
+        buf.crop_en=0;
+        assert(lv_ge_fill(&buf,GE_NO_GRADIENT,0,0,0)==LV_RESULT_OK);
+    }
+    struct mpp_buf buf={.buf_type=MPP_PHY_ADDR,.format=MPP_FMT_YUV420P,
+        .size={16,16},.stride={16,8,8},.phy_addr={0x42000000,0x42010000,0x42020000}};
+    for(unsigned bad=0;bad<8;bad++) {
+        struct mpp_buf b=buf;
+        if(bad==0) b.phy_addr[1]=0;
+        if(bad==1) b.phy_addr[2]=0xfffffff0;
+        if(bad==2) b.stride[1]=b.stride[2]=7;
+        if(bad==3) b.stride[2]=9;
+        if(bad==4) b.phy_addr[1]=b.phy_addr[0]+16;
+        if(bad==5) b.size.width=7;
+        if(bad==6) { b.crop_en=1;b.crop=(struct mpp_rect){0,0,7,8}; }
+        if(bad==7) b.format=MPP_FMT_YUV420_64x32_TILE;
+        unsigned old=submits;
+        assert(lv_ge_fill(&b,GE_NO_GRADIENT,0,0,0)==LV_RESULT_INVALID && submits==old && !fault);
+    }
+    next=0x43000000;
+    struct lv_mpp_buf *owner=lv_mpp_image_alloc(32,32,MPP_FMT_ARGB_8888);assert(owner);
+    buf.phy_addr[0]=next;buf.phy_addr[1]=next+256;buf.phy_addr[2]=next+320;
+    unsigned old_clean=cleans,old_invalid=invalidates;
+    assert(lv_ge_fill(&buf,GE_H_LINEAR_GRADIENT,0,~0U,1)==LV_RESULT_OK);
+    assert(cleans==old_clean+1 && invalidates==old_invalid+1); /* Same owner once. */
+    buf.phy_addr[2]=next+owner->size-32;
+    unsigned old=submits;
+    assert(lv_ge_fill(&buf,GE_NO_GRADIENT,0,0,0)==LV_RESULT_INVALID && submits==old);
+    lv_mpp_image_free(owner);assert(allocs==frees);
+    struct lv_mpp_buf *parts[3];
+    for(unsigned i=0;i<3;i++) {
+        next=0x44000000+i*0x10000;
+        parts[i]=lv_mpp_image_alloc(16,16,MPP_FMT_RGB_565);assert(parts[i]);
+        buf.phy_addr[i]=next;
+    }
+    old_clean=cleans;old_invalid=invalidates;
+    assert(lv_ge_fill(&buf,GE_V_LINEAR_GRADIENT,0,~0U,1)==LV_RESULT_OK);
+    assert(cleans==old_clean+3 && invalidates==old_invalid+3);
+    fail_step=3;old_invalid=invalidates;unsigned old_free=frees;
+    assert(lv_ge_fill(&buf,GE_NO_GRADIENT,0,0,0)==LV_RESULT_INVALID && fault);
+    assert(invalidates==old_invalid);
+    for(unsigned i=0;i<3;i++) lv_mpp_image_free(parts[i]);
+    assert(frees==old_free);
+    fault=false;fail_step=0; /* Mock-only quiescence. */
+    for(unsigned i=0;i<3;i++) lv_mpp_image_free(parts[i]);
+    assert(allocs==frees);
+}
 int main(void)
 {
     lv_init();
@@ -127,5 +192,5 @@ int main(void)
     lv_mpp_image_free(second);assert(allocs==frees);
     struct lv_mpp_buf foreign={0};lv_mpp_image_flush_cache(&foreign);lv_mpp_image_free(&foreign);
     lv_mpp_image_flush_cache(NULL);lv_mpp_image_free(NULL);
-    assert(allocs==frees);fill_contract();lv_deinit();return 0;
+    assert(allocs==frees);fill_contract();yuv_fill_contract();lv_deinit();return 0;
 }
