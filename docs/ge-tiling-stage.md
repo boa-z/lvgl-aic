@@ -96,3 +96,13 @@ and `PASS pixels=3024 ... clip_guard=OK engine=1`, then I420's
 `PASS I420 tile rot=90 pixels=1920 ... guards=OK`.
 These probes are implemented but physical execution is NOT_RUN. They supplement,
 not replace, panel/input acceptance and the deferred camera/video-plane gates.
+
+Target build including all ten transformed tile probes: PASS.
+- Source SDK cc716188, component ff1ed61, LVGL 80ca777e; clean manifest states.
+- Same GE/fonts/GIF/widgets/AICP build command; boot/app, static, image and
+  manifest checks PASS. No new component compiler warnings were reported.
+- Evidence directory: SDK output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp.
+- Image SHA256: 315720ab4d1b849dafe008fd3fb998081d2813999e3090f5fd44cabd918f76ef.
+- This replaces the prior profile image. Physical execution remains NOT_RUN;
+  camera/VIN is disabled. Actual sensor/board configuration is still needed
+  before producing a camera-enabled hardware candidate.
