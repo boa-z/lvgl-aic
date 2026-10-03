@@ -197,3 +197,8 @@ config AIC_LVGL_USE_VIDEO_PLANE
         Owner-thread native RGB/YUV frame scanout with exclusive ownership and
         deferred release after VSync. Does not automatically change UI alpha
         or bind a widget. Do not combine with unmanaged video-layer writers.
+
+config AIC_LVGL_USE_CANVAS
+    bool "Enable application-owned AIC canvas"
+    default n
+    depends on AIC_LVGL_PORT

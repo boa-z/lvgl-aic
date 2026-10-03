@@ -23,6 +23,10 @@
  * Every AIC_LVGL_USE_* symbol that is read with `#if` must be listed here:
  * a bare `#define X` makes `#if X` a compile error, not a false branch. */
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
+#ifdef AIC_LVGL_USE_CANVAS
+#undef AIC_LVGL_USE_CANVAS
+#define AIC_LVGL_USE_CANVAS 1
+#endif
 #ifdef AIC_LVGL_USE_IMG_ROLLER
 #undef AIC_LVGL_USE_IMG_ROLLER
 #define AIC_LVGL_USE_IMG_ROLLER 1

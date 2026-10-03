@@ -513,3 +513,28 @@ implementation is delivered in architecture-specific archives. Its adjacent
 native canvas contracts do not establish parity with those ownership/convenience
 APIs. Add an application-owned adapter with explicit allocation bounds and
 lifecycle tests; do not link the SDK's LVGL 9.1 private-ABI archive into 9.6.
+
+
+### Application-owned AIC canvas (2026-10-04)
+
+Opt-in `AIC_LVGL_USE_CANVAS` supplies the SDK-shaped create/alloc-buffer/text/
+centered-text entry points on native LVGL 9.6 canvas. Buffers are transparent
+ARGB8888, 64-byte row aligned, allocated in CMA on target. Dimensions are bounded
+1..4096 and a configurable 4 MiB default peak budget includes old plus replacement
+storage. Invalid sizes, exhausted budgets and allocation failures preserve the
+old image. Successful replacement and deletion release owned storage. Native
+canvas drawing APIs can be used; native source/buffer setters must not replace
+this adapter's owned buffer. Calls require the serialized LVGL owner thread.
+
+The widget profile enables and live-links the new APIs. Host contracts exercise
+real glyph rendering, centered/wrapped/clipped text, transparent initialization,
+padded stride, allocation failure, budget rejection and repeated replacement/
+deletion with balanced allocations. Host pixels do not validate target CMA/cache
+or GE execution. No SDK archive is linked; SDK standalone `lv_mpp_image_*` and
+`lv_ge_fill` helper API parity remains separate. Board NOT_RUN.
+
+SDK E907 v9 archive disassembly confirms centered-text clears to transparent
+(`lv_ge_fill` with all color/blend arguments zero), then measures unwrapped text
+with zero spacing. The adapter preserves this replacement behavior; ordinary
+positioned text draws over existing content. Empty centered text clears the
+canvas. Centered measured text is bounded to 4096 x 8192 before mutation.

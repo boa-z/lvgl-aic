@@ -323,7 +323,9 @@ def main():
         print("native GIF live symbols: PASS")
     if args.with_widgets:
         text = map_path.read_text(encoding="utf-8", errors="replace")
-        for symbol in ("lv_img_roller_create", "lv_img_roller_ready",
+        for symbol in ("lv_aic_canvas_create", "lv_aic_canvas_alloc_buffer",
+                       "lv_aic_canvas_draw_text", "lv_aic_canvas_draw_text_to_center",
+                       "lv_img_roller_create", "lv_img_roller_ready",
                        "lv_swipe_v1_create", "lv_swipe_v1_set_next",
                        "lv_list_create", "lv_list_add_button", "lv_list_get_button_text",
                        "lv_menu_create", "lv_menu_page_create", "lv_menu_cont_create",
