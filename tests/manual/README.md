@@ -123,3 +123,24 @@ It checks the C extractor/compositor against independently decoded rectangles
 and explicit alpha composition. Pillow's full animated-PNG seek path is not
 the alpha oracle: with Pillow 12.3.0 it produced alpha 191 for this half-alpha
 patch over opaque background, where straight-alpha OVER must remain 255.
+
+
+### Explicit video-plane acceptance (RT-Thread combined player/APNG profile)
+
+Use `lv_aic_plane_test show` after the manual UI starts, with other media tests
+closed. Requires ARGB8888, at least 240x240 logical resolution and the packaged
+`/data/mpp_test/apng-loop.png` fixture. The unified player uses APNG with explicit
+decode budgets and a separate 256 KiB plane rotation peak budget. No test opens
+a plane automatically at boot.
+
+Commands: `pause`, `resume`, `rotate` (next 90 degrees), `pivot` (25%/25%),
+`hide` (toggle), `status`, `close`. Prefix each with `lv_aic_plane_test`.
+Shell commands only queue work; LVGL operations run on the manual UI timer.
+Check the animated image, rotation direction, transparency against the gray
+panel, pause/rotate behavior, hide/show and close/reopen. Request status after
+close until cleanup is zero. A command result means acceptance, not hardware
+PASS; record serial state and observed pixels. A GE fault may intentionally
+retain resources until reboot. Do not run unmanaged plane/alpha writers.
+
+This entry currently exercises APNG RGB video-plane output, not YUV media,
+A/V timing or whole-display rotation. Hardware execution remains NOT_RUN.
