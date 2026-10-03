@@ -526,6 +526,9 @@ int main(void)
             assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
             assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING);
             for (unsigned i = 0; i < sizeof(output); i++) assert(output[i] == 0xa5);
+            assert(lv_draw_aic_ge2d_fill_faulted());
+            /* Synchronous mock only: a real DMA fault requires reboot. */
+            fill_dma_faulted = false;
         }
         fail_at = 0;
         d.rotation = 900; task.clip_area = layer.buf_area;

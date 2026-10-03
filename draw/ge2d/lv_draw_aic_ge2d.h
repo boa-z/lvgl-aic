@@ -106,10 +106,14 @@ void lv_draw_aic_ge2d_stats_reset(void);
  * @brief Execute a solid fill for @p task through GE2D.
  *
  * Runs fillrect -> emit -> sync synchronously. Returns LV_RESULT_INVALID if any
- * step fails, so the dispatcher can mark the task FAILED rather than FINISHED.
+ * step fails. DMA failures latch until reboot; the dispatcher retains the
+ * task and destination in flight. Preflight rejection does not latch a fault.
  * The task must already have been accepted by this unit's evaluate().
  */
 lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task);
+
+/** True after an uncertain fill DMA failure; no runtime reset is safe. */
+bool lv_draw_aic_ge2d_fill_faulted(void);
 
 /**
  * Replace a solid FILL region with the exact ARGB value, without alpha blending.

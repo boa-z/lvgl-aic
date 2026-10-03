@@ -69,6 +69,38 @@ static void dispatcher_failure_contract(lv_layer_t *layer)
     yuv_fault = rgb_fault = false;
 }
 static void reset_calls(void) { submits = emits = syncs = caches = 0; }
+static void verify_latched(lv_draw_task_t *task)
+{
+    int saved_failure = fail_at;
+    assert(lv_draw_aic_ge2d_fill_faulted());
+    fail_at = 0; reset_calls();
+    assert(lv_draw_aic_ge2d_fill(task) == LV_RESULT_INVALID);
+    assert(lv_draw_aic_ge2d_fill_replace(task, 0) == LV_RESULT_INVALID);
+    assert(submits == 0 && emits == 0 && syncs == 0 && caches == 0);
+    /* Test-only reset: synchronous mocks never start DMA. */
+    fill_dma_faulted = false; fail_at = saved_failure;
+}
+static void fill_dispatch_failure(lv_layer_t *layer, lv_draw_fill_dsc_t *dsc)
+{
+    for (fail_at = 1; fail_at <= 3; fail_at++) {
+        lv_draw_aic_ge2d_unit_t unit = {0};
+        lv_draw_task_t *task = lv_draw_add_task(layer, &layer->buf_area,
+                                               LV_DRAW_TASK_TYPE_FILL);
+        task->draw_dsc = dsc;
+        task->clip_area = layer->buf_area;
+        task->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
+        reset_calls(); lv_draw_aic_ge2d_stats_reset();
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == 1);
+        assert(task->state == LV_DRAW_TASK_STATE_IN_PROGRESS && unit.task_act == task);
+        assert(g_ge2d_stats.errors == 1 && g_ge2d_stats.fill_completed == 0);
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == LV_DRAW_UNIT_IDLE);
+        assert(submits == 1 && g_ge2d_stats.errors == 1);
+        verify_latched(task);
+        /* Mock-only cleanup, never valid for real uncertain DMA. */
+        layer->draw_task_head = NULL; lv_free(task);
+    }
+    fail_at = 0;
+}
 static void rejected(lv_draw_task_t *t)
 {
     reset_calls();
@@ -147,6 +179,7 @@ int main(void)
     for (fail_at = 1; fail_at <= 3; fail_at++) {
         reset_calls(); assert(lv_draw_aic_ge2d_fill(&task) == LV_RESULT_INVALID);
         assert(submits == 1 && emits == (fail_at >= 2) && syncs == (fail_at >= 3));
+        verify_latched(&task);
     }
     fail_at = 0; task.draw_dsc = NULL; rejected(&task); task.draw_dsc = &d;
     /* SDK blend=0 must write alpha exactly, including zero; it is not a
@@ -166,6 +199,7 @@ int main(void)
         reset_calls();
         assert(lv_draw_aic_ge2d_fill_replace(&task, 0x00123456) == LV_RESULT_INVALID);
         assert(submits == 1 && emits == (fail_at >= 2) && syncs == (fail_at >= 3));
+        verify_latched(&task);
     }
     fail_at = 0;
     allowed_dst = NULL;
@@ -175,5 +209,6 @@ int main(void)
     allowed_dst = output;
     task.type = LV_DRAW_TASK_TYPE_IMAGE; rejected(&task); rejected(NULL);
     dispatcher_failure_contract(&layer);
+    d.opa = 255; fill_dispatch_failure(&layer, &d);
     lv_deinit(); return 0;
 }

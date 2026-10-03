@@ -25,6 +25,14 @@
 #include <aic_core.h>
 #include <mpp_ge.h>
 
+/* No SDK reset primitive proves outstanding DMA is quiescent. */
+static bool fill_dma_faulted;
+
+bool lv_draw_aic_ge2d_fill_faulted(void)
+{
+    return fill_dma_faulted;
+}
+
 static lv_result_t fill_core(lv_draw_task_t *task, bool replace, uint32_t argb)
 {
     const lv_draw_fill_dsc_t *dsc;
@@ -39,7 +47,7 @@ static lv_result_t fill_core(lv_draw_task_t *task, bool replace, uint32_t argb)
     uint32_t bpp;
     lv_color_format_t cf;
 
-    if (task == NULL || task->type != LV_DRAW_TASK_TYPE_FILL) {
+    if (fill_dma_faulted || task == NULL || task->type != LV_DRAW_TASK_TYPE_FILL) {
         return LV_RESULT_INVALID;
     }
 
@@ -123,14 +131,17 @@ static lv_result_t fill_core(lv_draw_task_t *task, bool replace, uint32_t argb)
     fill.ctrl.src_alpha_mode = 0U;
 
     if (mpp_ge_fillrect(ge, &fill) < 0) {
+        fill_dma_faulted = true;
         LV_LOG_ERROR("GE2D fillrect failed");
         return LV_RESULT_INVALID;
     }
     if (mpp_ge_emit(ge) < 0) {
+        fill_dma_faulted = true;
         LV_LOG_ERROR("GE2D emit failed");
         return LV_RESULT_INVALID;
     }
     if (mpp_ge_sync(ge) < 0) {
+        fill_dma_faulted = true;
         LV_LOG_ERROR("GE2D sync failed");
         return LV_RESULT_INVALID;
     }

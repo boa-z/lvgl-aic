@@ -412,3 +412,18 @@ textarea behavior. Spinbox tests cover both endpoint rollover directions and
 clamping with rollover disabled. Focused control-widget test PASS. Events are
 dispatched through LVGL handlers; this is not pointer hit-testing or hardware
 keyboard/touch acceptance. Runtime sources and packaged image are unchanged.
+
+
+### Fill DMA lifetime protection (2026-10-04)
+
+Solid fills and SDK pseudo-image replacement fills now latch submission, emit,
+and sync failures until reboot. The dispatcher retains the active task and its
+destination layer instead of marking uncertain DMA as a releasable failed task.
+Preflight rejection remains retryable; direct callers must retain their output
+allocation on a latched fault. No SDK reset operation currently proves quiescence.
+
+Host evidence: 50/50 tests PASS, including all three injected fill failures,
+replacement-fill retries, pseudo-image propagation and scheduler task retention.
+Mock-only fault resets are not a production recovery mechanism. Board NOT_RUN.
+Broader raw-probe client poisoning and teardown during active DMA remain under
+review; this increment does not establish safe deinit or runtime fault recovery.
