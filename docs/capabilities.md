@@ -337,3 +337,11 @@ therefore retain software fallback. Focused GE tests now verify all eight RGB
 cube corner keys and an intermediate key reject before GE submission (PASS).
 Closing this hardware acceleration gap needs documented GE comparison semantics
 or a board pixel probe; no hardware parity claim is made by this test.
+
+RGB565 key probe combined firmware boot/app/static/image/manifest PASS.
+Production RGB565 color-key fallback is unchanged. Board probe execution NOT_RUN.
+- sdk: 176b20be97fd9ef9165a0de7e412251083a91be7
+- lvgl-aic: dc6a31c23de94603c80540187f7cb5f0f83239c9
+- lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
+- images/d13x.elf SHA256: 0bba2eab3d1419d6b778dad56790a149aace0cdc76032d21786bbcd067a7d53f
+- images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: 301cb15429509edd83f764449bcf2f17448d0982bf2b21315c28258b6971685f
