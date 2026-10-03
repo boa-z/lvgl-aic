@@ -17,7 +17,7 @@ static void pixel_rgb(const uint8_t *p,enum mpp_pixel_format fmt,int rgb[3])
     }
     else { rgb[0]=p[2];rgb[1]=p[1];rgb[2]=p[0]; }
 }
-static int gradient_probe(enum mpp_pixel_format fmt,int direction,int blend,int reverse)
+static int gradient_probe(enum mpp_pixel_format fmt,int direction,int blend,int reverse,int alpha_gradient)
 {
     struct lv_mpp_buf *owner=lv_mpp_image_alloc(16,16,fmt==MPP_FMT_RGB_565?fmt:MPP_FMT_ARGB_8888);
     if(!owner) return -1;
@@ -26,9 +26,10 @@ static int gradient_probe(enum mpp_pixel_format fmt,int direction,int blend,int 
     unsigned bpp=fmt==MPP_FMT_RGB_565?2:fmt==MPP_FMT_RGB_888?3:4;
     const int first[3]={32,64,96},last[3]={144,232,152};
     const int *start=reverse?last:first,*end=reverse?first:last;
-    uint32_t alpha=blend?128:255;
+    uint32_t alpha=alpha_gradient?(reverse?224:32):blend?128:255;
+    uint32_t end_alpha=alpha_gradient?(reverse?32:224):alpha;
     uint32_t start_color=(alpha<<24)|(start[0]<<16)|(start[1]<<8)|start[2];
-    uint32_t end_color=(alpha<<24)|(end[0]<<16)|(end[1]<<8)|end[2];
+    uint32_t end_color=(end_alpha<<24)|(end[0]<<16)|(end[1]<<8)|end[2];
     uint8_t background[4]={80,48,16,255};
     if(bpp==2) {
         unsigned packed=((16>>3)<<11)|((48>>2)<<5)|(80>>3);
@@ -55,20 +56,23 @@ static int gradient_probe(enum mpp_pixel_format fmt,int direction,int blend,int 
         int pos=direction==GE_H_LINEAR_GRADIENT?(int)x-4:(int)y-4;
         for(unsigned channel=0;channel<3;channel++) {
             int source=start[channel]+(end[channel]-start[channel])*pos/7;
-            int expected=blend?(source*128+bg[channel]*127+127)/255:source;
+            int pixel_alpha=(int)alpha+((int)end_alpha-(int)alpha)*pos/7;
+            int expected=blend?(source*pixel_alpha+bg[channel]*(255-pixel_alpha)+127)/255:source;
             int error=actual[channel]-expected;if(error<0) error=-error;
             if(error>worst) worst=error;
         }
-        if(!blend && bpp==4 && owner->data[y*dst.stride[0]+x*bpp+3]!=255) {
-            AIC_TEST_E("FAIL gradient replacement alpha");goto done;
+        if(bpp==4 && owner->data[y*dst.stride[0]+x*bpp+3]!=255) {
+            AIC_TEST_E("FAIL gradient opaque-background alpha");goto done;
         }
     }
-    if(worst>(bpp==2?5:2)) {
-        AIC_TEST_E("FAIL gradient fmt=%u dir=%d blend=%d reverse=%d max_error=%d",
-                   (unsigned)fmt,direction,blend,reverse,worst);goto done;
+    /* Alpha ramps can reach the far edge of a 5-bit truncation bin:
+     * allow one RGB565 step plus integer interpolation rounding. */
+    if(worst>(bpp==2?(alpha_gradient?9:5):2)) {
+        AIC_TEST_E("FAIL gradient fmt=%u dir=%d blend=%d reverse=%d alpha_grad=%d max_error=%d",
+                   (unsigned)fmt,direction,blend,reverse,alpha_gradient,worst);goto done;
     }
-    AIC_TEST_I("PASS gradient fmt=%u dir=%d blend=%d reverse=%d error=%d guards=OK",
-               (unsigned)fmt,direction,blend,reverse,worst);
+    AIC_TEST_I("PASS gradient fmt=%u dir=%d blend=%d reverse=%d alpha_grad=%d error=%d guards=OK",
+               (unsigned)fmt,direction,blend,reverse,alpha_gradient,worst);
     result=0;
 done:
     lv_mpp_image_free(owner);return result;
@@ -211,14 +215,17 @@ int lv_aic_native_fill_test_run(void)
     const enum mpp_pixel_format formats[]={MPP_FMT_ARGB_8888,MPP_FMT_RGB_888,MPP_FMT_RGB_565};
     for(unsigned f=0;f<3;f++) for(int direction=1;direction<=2;direction++)
         for(int blend=0;blend<=1;blend++) for(int reverse=0;reverse<=1;reverse++)
-            if(gradient_probe(formats[f],direction,blend,reverse)) return -1;
+            if(gradient_probe(formats[f],direction,blend,reverse,0)) return -1;
+    for(unsigned f=0;f<3;f++) for(int direction=1;direction<=2;direction++)
+        for(int reverse=0;reverse<=1;reverse++)
+            if(gradient_probe(formats[f],direction,1,reverse,1)) return -1;
     if(yuv_probes()) return -1;
     for(unsigned space=0;space<4;space++) for(int direction=1;direction<=2;direction++)
         for(int reverse=0;reverse<=1;reverse++) {
             if(yuv_gradient_probe(MPP_FMT_YUV400,space,direction,reverse) ||
                yuv_gradient_probe(MPP_FMT_YUV444P,space,direction,reverse)) return -1;
         }
-    AIC_TEST_I("PASS 24 RGB gradient, 240 YUV solid, 32 YUV gradient probes; panel separate");
+    AIC_TEST_I("PASS 36 RGB gradient, 240 YUV solid, 32 YUV gradient probes; panel separate");
     return 0;
 }
 #endif

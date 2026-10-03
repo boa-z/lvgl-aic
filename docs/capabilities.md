@@ -908,3 +908,19 @@ boot/app/static/image/manifest **PASS**, clean component
 `61643bc962d1ecec22e5df8c8ed19e50f20666d7b4a78b586ff2abaf0678f8f6`.
 Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
 Physical validation remains **NOT_RUN**; no flashing performed.
+
+
+### Native RGB alpha-gradient probes
+
+Added 12 cropped RGB gradient/blend probes: ARGB8888/RGB888/RGB565, horizontal/
+vertical, forward/reverse endpoints with alpha 32..224. Expected source-over
+uses independently interpolated color and alpha against an opaque background;
+ARGB output alpha must remain 255. All crop/padding guards remain checked.
+RGB565 alpha-ramp tolerance is 9/255 (one 5-bit quantization step plus integer
+rounding); existing constant-alpha RGB565 cases retain 5/255 and 24/32-bit cases
+retain 2/255. Host fault injection specifically fixes alpha at 128 to verify
+that ignoring the alpha gradient cannot pass. Host diagnostics now retain
+error logs instead of discarding the failing pixel context.
+Host **57/57 PASS**. Board runner now performs 308 submissions: 36 RGB gradient,
+240 solid YUV, 32 full-resolution YUV gradient. Actual GE alpha interpolation
+and blend behavior remain **NOT_RUN**, including transparent-background cases.

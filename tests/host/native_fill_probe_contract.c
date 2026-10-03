@@ -114,7 +114,9 @@ int lv_ge_fill(struct mpp_buf *buf,enum ge_fillrect_type type,unsigned start,uns
         for(unsigned c=0;c<3;c++) {
             unsigned shift=16-8*c;
             rgb[c]=(((start>>shift)&255)*(7-step)+((end>>shift)&255)*step)/7;
-            if(blend) rgb[c]=(rgb[c]*128+bg[c]*127+127)/255;
+            unsigned alpha=((start>>24)*(7-step)+(end>>24)*step)/7;
+            if(corruption==6) alpha=128;
+            if(blend) rgb[c]=(rgb[c]*alpha+bg[c]*(255-alpha)+127)/255;
         }
         if(corruption==2) rgb[1]=0; /* Detect lost green command step. */
         if(bpp==2) { unsigned v=((rgb[0]>>3)<<11)|((rgb[1]>>2)<<5)|(rgb[2]>>3);p[0]=v;p[1]=v>>8; }
@@ -125,7 +127,9 @@ int lv_ge_fill(struct mpp_buf *buf,enum ge_fillrect_type type,unsigned start,uns
 }
 int main(void)
 {
-    assert(lv_aic_native_fill_test_run()==0 && calls==296 && allocs==frees);
+    assert(lv_aic_native_fill_test_run()==0 && calls==308 && allocs==frees);
+    corruption=6;
+    assert(gradient_probe(MPP_FMT_ARGB_8888,GE_H_LINEAR_GRADIENT,1,0,1)<0 && allocs==frees && !active);
     for(corruption=1;corruption<=3;corruption++) {
         assert(lv_aic_native_fill_test_run()<0 && allocs==frees && !active);
     }
