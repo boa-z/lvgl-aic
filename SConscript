@@ -55,6 +55,8 @@ if GetDepend('AIC_LVGL_USE_VIDEO_WINDOW'):
     src += Glob('widgets/lv_aic_video_window.c')
 if GetDepend('AIC_LVGL_USE_PLAYER'):
     src += Glob('widgets/lv_aic_player.c')
+if GetDepend('AIC_LVGL_USE_APNG_WIDGET'):
+    src += Glob('widgets/lv_aic_apng_widget.c')
 if GetDepend('AIC_LVGL_USE_CAMERA'):
     src += Glob('widgets/lv_aic_camera.c')
 if GetDepend('AIC_LVGL_MANUAL_TEST'):

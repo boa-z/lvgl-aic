@@ -258,3 +258,42 @@ Strict E907 compile **PASS**; `output/lvgl-apng-playback.o` SHA256:
 Remaining: LVGL widget/backend selection, APNG seek/SDK command compatibility,
 media-enabled APNG link/image profile and physical validation. No new firmware
 image is claimed by this compile/host stage.
+
+## Native LVGL APNG image widget (2026-10-03)
+
+`include/lv_aic_apng_widget.h` / `widgets/lv_aic_apng_widget.c` expose an image
+subclass under `AIC_LVGL_USE_APNG_WIDGET` (requires `AIC_LVGL_USE_APNG`). Configure
+explicit playback budgets and initialize the RGB decoder before setting a
+native filesystem source. Setting a source prepares but does not auto-start.
+Native image position/scale/rotation/pivot APIs remain available; applications
+must not replace the widget's image source directly.
+
+The widget supplies start, pause/resume, rational rate, replay, close and status.
+Start at terminal requests replay; start after close reopens the saved path.
+Source replacement preserves configured rate, clears start/pause intent and
+waits for the previous worker plus image readers to release. Multiple queued
+replacements retain only the latest path. Start during replacement requests
+play after safe reopening. Fault remains observable until close or a new source.
+
+A timer publishes RGB image owners only between pending draw tasks. On deletion,
+the binding becomes an orphan and keeps its cleanup timer: worker exit and
+existing native/GE readers must finish before storage is released. Pump timers
+until `lv_aic_apng_pending_cleanup()==0` before deinitializing LVGL. An uncertain
+GE DMA lease can intentionally prevent cleanup. VALUE_CHANGED is the final
+operation in a timer callback and reports state/applied-rate/replay changes;
+handlers may delete the object or replace its source.
+
+Validation: **39/39 host contracts PASS**; the new test uses real LVGL widgets,
+RGB images and leases with a controlled playback substitute. Covers required
+configuration, prepare without auto-start, image publication, old-reader source
+replacement, latest queued source, rate retention, terminal replay, pause,
+pending draw deletion, delayed worker exit, callback deletion, prepare failure
+and recovery, saved-path reopen, and persistent fault. Its synthetic pending
+draw uses a paused refresh timer after object deletion (deletion itself wakes
+the timer). This is lifecycle validation, not panel rendering acceptance.
+Strict E907 compile **PASS**; `output/lvgl-apng-widget.o` SHA256:
+`cb0570457ce1681acacc8f97d77ff7192623cb6ab9ed69a40a1417841701cab8`.
+
+Remaining: APNG-enabled firmware/link profile and on-board probes, SDK player
+backend selection/command compatibility, seek parity and physical codec/timing
+validation. This stage does not claim a new image or a verified panel result.

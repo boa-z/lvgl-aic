@@ -748,3 +748,15 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME lvgl_aic_apng_playback_contract COMMAND lvgl_aic_apng_playback_contract)
 set_tests_properties(lvgl_aic_apng_playback_contract PROPERTIES TIMEOUT 15)
+
+add_executable(lvgl_aic_apng_widget_contract apng_widget_contract.c
+    "${AIC_ROOT}/widgets/lv_aic_apng_widget.c" "${AIC_ROOT}/image/mpp/lv_aic_rgb_image.c")
+target_include_directories(lvgl_aic_apng_widget_contract PRIVATE
+    "${AIC_ROOT}/compat" "${AIC_ROOT}/common" "${AIC_ROOT}/include")
+target_compile_definitions(lvgl_aic_apng_widget_contract PRIVATE AIC_LVGL_USE_APNG_WIDGET=1)
+target_link_libraries(lvgl_aic_apng_widget_contract PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_apng_widget_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_apng_widget_contract COMMAND lvgl_aic_apng_widget_contract)
+set_tests_properties(lvgl_aic_apng_widget_contract PROPERTIES TIMEOUT 15)

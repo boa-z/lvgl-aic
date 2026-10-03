@@ -187,3 +187,9 @@ polling, coherent status and deferred cleanup. Final publication retries after
 reader backpressure. Host **38/38 PASS** and strict E907 compile **PASS**;
 widget/backend selection, seek compatibility, APNG firmware linkage and physical
 codec/timing validation are still open. See [APNG stage record](apng-stage.md).
+
+A native APNG image widget is now available with `AIC_LVGL_USE_APNG_WIDGET`:
+explicit configuration, source replacement, start/pause/rate/replay, saved-path
+reopen and timer-based deferred deletion. Host **39/39 PASS** and strict E907
+compile **PASS**. APNG firmware linkage, SDK player backend/seek compatibility
+and physical codec/display acceptance remain open; see [APNG stages](apng-stage.md).

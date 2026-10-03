@@ -156,7 +156,15 @@ config AIC_LVGL_USE_APNG
         Independent of SDK player/audio. Pause, rational rate and replay are
         available through a worker and immutable RGB frame publication.
         Native file paths and explicit memory budgets are required.
-        An APNG widget/backend selector is not yet provided.
+        Enable the separate APNG image widget option for LVGL integration.
+
+config AIC_LVGL_USE_APNG_WIDGET
+    bool "Build asynchronous LVGL APNG image widget"
+    default n
+    depends on AIC_LVGL_USE_APNG
+    help
+        Application-owned image widget with source replacement, playback,
+        pause, rational rate, replay and asynchronous deletion cleanup.
 
 config AIC_LVGL_USE_PLAYER_SESSION
     bool "Build application-owned background media playback"
