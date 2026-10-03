@@ -60,7 +60,7 @@ s32 aic_player_set_uri(struct aic_player *p,char *uri)
 s32 aic_player_prepare_sync(struct aic_player *p) { worker_only(); assert(p->live); return 0; }
 s32 aic_player_get_media_info(struct aic_player *p,struct av_media_info *info)
 { worker_only(); assert(p->live); *info=(struct av_media_info){.has_video=!audio_only,.has_audio=audio_only,
-  .duration=1000000,.seek_able=!unseekable,.video_stream={audio_only?0:8,audio_only?0:16}}; return 0; }
+  .file_size=6000000000LL,.audio_stream={2,16,48000},.duration=1000000,.seek_able=!unseekable,.video_stream={audio_only?0:8,audio_only?0:16}}; return 0; }
 s32 aic_player_control(struct aic_player *p,enum aic_player_command cmd,void *data)
 {
     worker_only(); assert(p->live);
@@ -224,7 +224,11 @@ int main(void)
     assert(lv_aic_player_playback_seek(p,200000)); wait_count(&seeks,3); wait_count(&blocked,1);
     lv_aic_player_playback_close(p); wake_worker(0,true); finish(p);
     /* Prepared seek preserves the no-auto-start contract. */
-    p=prepare(); wait_state(p,LV_AIC_PLAYBACK_READY); int before_starts=atomic_load(&starts);
+    p=prepare(); wait_state(p,LV_AIC_PLAYBACK_READY);
+    lv_aic_playback_status_t metadata=lv_aic_player_playback_status(p);
+    assert(metadata.media_info_valid && metadata.media_info.file_size==6000000000LL &&
+           metadata.media_info.audio_stream.sample_rate==48000 && metadata.media_info.video_stream.width==8);
+    int before_starts=atomic_load(&starts);
     assert(lv_aic_player_playback_seek(p,123)); wait_count(&seeks,4); wait_state(p,LV_AIC_PLAYBACK_READY);
     assert(atomic_load(&starts)==before_starts); lv_aic_player_playback_close(p); finish(p);
     atomic_store(&fail_seek,1); p=prepare(); wait_state(p,LV_AIC_PLAYBACK_READY);

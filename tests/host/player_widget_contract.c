@@ -20,7 +20,7 @@ lv_aic_player_playback_t *lv_aic_player_playback_prepare(const char *uri,const l
     assert(options->cma_budget && options->extra_frames==3);
     if(active || fail_prepare) return NULL;
     strcpy(last_uri,uri); active=calloc(1,sizeof(*active)); assert(active); created++;
-    active->status=(lv_aic_playback_status_t){.state=LV_AIC_PLAYBACK_OPENING,.volume=-1,.has_video=true,.seekable=true,.duration_us=1000000}; return active;
+    active->status=(lv_aic_playback_status_t){.media_info_valid=true,.media_info={.file_size=6000000000LL,.duration=1000000,.has_video=1,.has_audio=1,.seek_able=1,.video_stream={4,4},.audio_stream={2,16,48000}},.state=LV_AIC_PLAYBACK_OPENING,.volume=-1,.has_video=true,.seekable=true,.duration_us=1000000}; return active;
 }
 bool lv_aic_player_playback_start(lv_aic_player_playback_t *p)
 { if(!p || p->closing) return false; p->status.state=LV_AIC_PLAYBACK_PLAYING; return true; }
@@ -116,7 +116,13 @@ int main(void)
     assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_PLAY_TIME,&position)==LV_RESULT_INVALID && position==99);
     active->status.position_us=1234;tick();
     assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_PLAY_TIME,&position)==LV_RESULT_OK && position==1234);
-    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_MEDIA_INFO,&position)==LV_RESULT_INVALID && position==1234);
+    lv_aic_media_info_t info;
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_MEDIA_INFO,&info)==LV_RESULT_OK);
+    assert(info.file_size==6000000000LL && info.duration==1000000 && info.has_audio && info.seek_able);
+    assert(info.video_stream.width==4 && info.audio_stream.sample_rate==48000 && info.audio_stream.nb_channel==2);
+    active->status.media_info_valid=false;lv_aic_media_info_t saved=info;
+    assert(lv_aic_player_get_media_info(o,&info)==LV_RESULT_INVALID && !memcmp(&info,&saved,sizeof(info)));
+    active->status.media_info_valid=true;
     assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_ATTACH_SLAVE,NULL)==LV_RESULT_INVALID);
     assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_START,NULL)==LV_RESULT_OK); lv_obj_set_pos(o,0,0);
     for(unsigned i=0;i<4;i++) {
@@ -136,6 +142,10 @@ int main(void)
     const lv_aic_yuv_frame_t *view;
     lv_aic_yuv_image_t *reader=lv_aic_yuv_image_acquire(lv_image_get_src(o),&view); assert(reader);
     assert(lv_aic_player_set_src(o,"two.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_get_media_info(o,&info)==LV_RESULT_INVALID && !memcmp(&info,&saved,sizeof(info)));
+    queried_volume=77;position=99;
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_VOLUME,&queried_volume)==LV_RESULT_INVALID && queried_volume==77);
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_PLAY_TIME,&position)==LV_RESULT_INVALID && position==99);
     assert(lv_aic_player_set_src(o,"three.mp4")==LV_RESULT_OK);
     assert(lv_aic_player_start(o)==LV_RESULT_OK); tick();
     assert(!strcmp(last_uri,"one.mp4") && view->planes[0].data[0]==235);

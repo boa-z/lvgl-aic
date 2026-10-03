@@ -198,7 +198,7 @@ def main():
                        "lv_aic_apng_compose", "lv_aic_apng_timeline_commit",
                        "lv_aic_apng_test_show", "lv_aic_apng_test_poll",
                        "lv_aic_apng_slave_create", "lv_aic_apng_slave_set_master",
-                       "lv_aic_player_control"):
+                       "lv_aic_player_control", "lv_aic_player_get_media_info"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("APNG live symbol absent: " + symbol)
         print("APNG widget/worker/codec/composition/timing live symbols: PASS")

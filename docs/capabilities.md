@@ -220,3 +220,10 @@ image without a second decoder or full-frame copy. The checked ATTACH_SLAVE
 command dispatches to APNG or media slaves by master type. Host **39/39 PASS**,
 strict E907 compile **PASS**; cross-backend unification and physical multi-view
 acceptance remain open. The APNG acceptance overlay displays a master/slave pair.
+
+Media-info querying now returns a coherent prepared snapshot through the checked
+command API or typed getter. The public standard-integer layout is compile-checked
+against SDK av_media_info; video/audio metadata and APNG file/dimensions are
+supported. Queries reject closing/replacement/fault states without stale writes.
+Host **39/39 PASS** plus updated focused tests; strict E907 **PASS**. Automatic
+backend selection, group lifecycle and cross-backend slave binding remain open.

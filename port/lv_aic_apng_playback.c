@@ -41,6 +41,7 @@ static lv_aic_apng_stream_t *load(lv_aic_apng_playback_t *p)
         .frame_budget=p->options.cma_budget,.packet_limit=p->options.packet_limit,
         .minimum_delay_us=p->options.minimum_delay_us,.now_us=now};
     stream=lv_aic_apng_stream_open(data,(size_t)length,&c);
+    if(stream) { lock(p);p->status.file_bytes=(uint64_t)length;unlock(p); }
 end:
     if(file) fclose(file);
     free(data);return stream;

@@ -87,6 +87,7 @@ int main(void)
     atomic_store(&thread_fail,1);assert(!lv_aic_apng_playback_prepare(path,&o));atomic_store(&thread_fail,0);
     lv_aic_apng_playback_t *p=lv_aic_apng_playback_prepare(path,&o);assert(p);
     assert(!lv_aic_apng_playback_prepare(path,&o));state(p,LV_AIC_APNG_READY);
+    assert(lv_aic_apng_playback_status(p).file_bytes==4);
     assert(!lv_aic_apng_playback_destroy(p));assert(!lv_aic_apng_playback_rate(p,11,1));
     assert(lv_aic_apng_playback_rate(p,2,1));assert(lv_aic_apng_playback_pause(p,true));
     assert(lv_aic_apng_playback_start(p));state(p,LV_AIC_APNG_PLAYBACK_PAUSED);

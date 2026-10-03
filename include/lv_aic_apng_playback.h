@@ -22,6 +22,7 @@ typedef struct {
     bool finished,restart_pending;
     uint32_t width,height,rate_num,rate_den,frame_index;
     uint64_t composed,published,completed_plays,restarts;
+    uint64_t file_bytes;
 } lv_aic_apng_playback_status_t;
 /* LVGL-owner API; a single APNG instance. All file/parse/MPP/compose work runs
  * on an OSAL worker. Native filesystem path <=127 bytes, no LVGL drive mapping.

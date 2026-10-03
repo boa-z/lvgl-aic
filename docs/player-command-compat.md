@@ -19,7 +19,8 @@ types or call from a decoder/FinSH worker.
 | ATTACH_SLAVE | Attach native media slave | Attach APNG slave | slave object directly |
 | SET_PLAYBACK_RATE | Unsupported by SDK media backend | 0.1..10x, finite float | float pointer |
 | GET_PLAYBACK_RATE | Fixed 1x | Observed applied rate, if available | float output |
-| GET_MEDIA_INFO / ATTACH_GROUP | Reserved, unsupported | Reserved, unsupported | no access |
+| GET_MEDIA_INFO | Complete prepared SDK snapshot | File size and canvas dimensions, no audio | lv_aic_media_info_t output |
+| ATTACH_GROUP | Reserved, unsupported | Reserved, unsupported | no access |
 
 APNG float rate is rounded to increments of 1e-5 and reduced to a rational
 before dispatch; NaN/Inf/out-of-range input is rejected. Typed APNG rate APIs
@@ -29,7 +30,7 @@ and media terminal does not prove clean EOF (SDK PLAY_END also covers failures).
 For APNG, pause/rate intent survives zero-time replay, and static PNG may replay
 as an extension. Media source selection and APNG source selection still use
 their distinct widgets; automatic suffix-based backend switching is not supplied
-by this command adapter. Media info ABI, groups and cross-backend slave binding remain
+by this command adapter. Groups and cross-backend slave binding remain
 explicit gaps rather than partially populated outputs.
 
 ## Corrected SDK seek comparison
@@ -51,3 +52,34 @@ slave attachment. Strict E907 combined-feature compilation **PASS**;
 `output/lvgl-player-control.o` SHA256:
 `fd6a43cf3b5bcad8cca0281d1ecebf0b15e402da8ec9cce5dd3b650fbac7d67d`.
 No new firmware or physical playback acceptance is claimed by this stage.
+
+## Coherent media metadata (2026-10-03)
+
+`lv_aic_player_get_media_info` and GET_MEDIA_INFO now share a transactional query.
+`lv_aic_media_info_t` spells the current SDK `av_media_info` layout using standard
+integer types; size and every field offset are compiled against the real SDK
+in the playback adapter. Media preparation copies the complete SDK value into
+its mutex-protected status, including 64-bit file size/duration and audio
+channels/sample size/sample rate. No live SDK call occurs on the UI thread.
+Command copying uses memcpy, avoiding incompatible-struct aliasing when a
+current SDK consumer supplies an av_media_info object with the verified layout.
+
+APNG reports actual loaded file bytes and canvas width/height, has_video=1,
+has_audio=0, duration=0 (unknown) and general seek_able=0. This follows the SDK
+PNG backend's dimension-only metadata semantics, adding known file length;
+zero-time replay remains a separate supported control. It does not invent a
+media duration or advertise arbitrary seek.
+
+Queries are accepted only for prepared/playing/paused/terminal sources. Closing,
+replacement, seek transition, fault and missing metadata reject without writes.
+Volume/time command queries now use the same source-state gate, fixing stale
+old-source values during replacement/close. Fixed media rate 1x remains a
+backend capability query. APNG applied-rate queries reject inactive states.
+
+Host full suite **39/39 PASS**, with updated focused playback/widget checks also
+passing after source-state gating. Coverage includes a 6,000,000,000-byte media
+file size, complete audio fields, real-adapter metadata publication, APNG file
+length, missing metadata and untouched outputs on source replacement. Strict
+E907 compile **PASS**, including SDK ABI layout assertions. Command adapter
+object SHA256: `cfa4d795f8ff80978178fd03e2468d9b7928374067f0a6933152eabb919f3cdf`.
+No new full firmware image or board claim is made by this stage.

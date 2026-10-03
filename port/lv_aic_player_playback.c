@@ -6,6 +6,21 @@
 #include "lv_aic_player_events.h"
 #include <aic_osal.h>
 #include <string.h>
+#include <stddef.h>
+/* Fail compilation if the SDK changes its command payload ABI. */
+_Static_assert(sizeof(lv_aic_media_info_t)==sizeof(struct av_media_info),"media info size");
+#define CHECK_INFO_OFFSET(field) _Static_assert(offsetof(lv_aic_media_info_t,field)==offsetof(struct av_media_info,field),"media info " #field)
+CHECK_INFO_OFFSET(file_size);
+CHECK_INFO_OFFSET(duration);
+CHECK_INFO_OFFSET(has_video);
+CHECK_INFO_OFFSET(has_audio);
+CHECK_INFO_OFFSET(seek_able);
+CHECK_INFO_OFFSET(video_stream.width);
+CHECK_INFO_OFFSET(video_stream.height);
+CHECK_INFO_OFFSET(audio_stream.nb_channel);
+CHECK_INFO_OFFSET(audio_stream.bits_per_sample);
+CHECK_INFO_OFFSET(audio_stream.sample_rate);
+#undef CHECK_INFO_OFFSET
 struct lv_aic_player_playback {
     aicos_mutex_t mutex;
     lv_aic_player_session_t session;
@@ -38,6 +53,8 @@ static bool open_session(lv_aic_player_playback_t *p)
     p->status.seekable=p->session.info.seek_able; p->status.duration_us=p->session.info.duration;
     p->status.width=p->session.info.video_stream.width; p->status.height=p->session.info.video_stream.height;
     p->status.volume=-1;
+    memcpy(&p->status.media_info,&p->session.info,sizeof(p->status.media_info));
+    p->status.media_info_valid=true;
     if(!p->closing && !p->status.seek_pending) p->status.state=LV_AIC_PLAYBACK_READY;
     unlock(p); return true;
 }

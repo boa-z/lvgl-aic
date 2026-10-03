@@ -19,7 +19,7 @@ lv_aic_apng_playback_t *lv_aic_apng_playback_prepare(const char *path,const lv_a
 {
     assert(o->snapshots==2 || o->snapshots==3);if(active || fail_prepare) return NULL;
     active=calloc(1,sizeof(*active));assert(active);created++;strcpy(last_path,path);
-    active->status.state=LV_AIC_APNG_READY;return active;
+    active->status.state=LV_AIC_APNG_READY;active->status.width=active->status.height=1;active->status.file_bytes=123;return active;
 }
 bool lv_aic_apng_playback_start(lv_aic_apng_playback_t *p)
 { if(!p || p->closing) return false;p->status.state=LV_AIC_APNG_PLAYING;return true; }
@@ -70,6 +70,11 @@ int main(void)
     lv_obj_t *obj=make(screen);assert(lv_aic_apng_set_rate(obj,2,1)==LV_RESULT_OK);
     assert(lv_aic_apng_set_src(obj,"one.png")==LV_RESULT_OK);tick();assert(active);
     assert(lv_aic_apng_get_status(obj).state==LV_AIC_APNG_READY);
+    lv_aic_media_info_t info;
+    assert(lv_aic_player_get_media_info(obj,&info)==LV_RESULT_OK);
+    assert(info.file_size==123 && info.has_video && !info.has_audio && !info.seek_able && !info.duration);
+    assert(info.video_stream.width==1 && info.video_stream.height==1 && !info.audio_stream.sample_rate);
+    lv_aic_media_info_t saved_info=info;
     float rate=NAN;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate)==LV_RESULT_INVALID);
     rate=INFINITY;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate)==LV_RESULT_INVALID);
     rate=0.5f;assert(lv_aic_player_control(obj,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate)==LV_RESULT_OK);tick();
@@ -85,6 +90,7 @@ int main(void)
     const lv_aic_rgb_frame_t *f;
     lv_aic_rgb_image_t *reader=lv_aic_rgb_image_acquire(lv_image_get_src(obj),&f);assert(reader);
     assert(lv_aic_apng_set_src(obj,"two.png")==LV_RESULT_OK);
+    assert(lv_aic_player_get_media_info(obj,&info)==LV_RESULT_INVALID && !memcmp(&info,&saved_info,sizeof(info)));
     assert(lv_aic_apng_set_src(obj,"three.png")==LV_RESULT_OK);
     assert(lv_aic_apng_start(obj)==LV_RESULT_OK);tick();assert(!strcmp(last_path,"one.png"));
     assert(((const uint32_t *)f->data)[0]==0xff123456);

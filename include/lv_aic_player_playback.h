@@ -2,6 +2,7 @@
 #ifndef LV_AIC_PLAYER_PLAYBACK_H
 #define LV_AIC_PLAYER_PLAYBACK_H
 #include "lv_aic_player_image.h"
+#include "lv_aic_media_info.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -24,6 +25,8 @@ typedef struct {
     bool seek_pending;
     uint64_t seek_target_us, seeks_completed; /* Request acknowledgement, not displayed PTS. */
     int volume; /* -1 until a requested volume has been applied. */
+    bool media_info_valid;
+    lv_aic_media_info_t media_info;
 } lv_aic_playback_status_t;
 /* UI-owner API. Reserve one playback instance; both RGB/YUV decoders must be
  * initialized by caller before poll. Prepare runs blocking SDK work on an
