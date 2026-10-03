@@ -95,6 +95,3 @@ if GetDepend('AIC_LVGL_USE_MPP_DEC') and GetDepend('AIC_LVGL_SMOKE_APP'):
     Depends(target, [File(path) for path in assets])
     Depends(target, Value(str([os.path.basename(path) for path in assets])))
 Return('group')
-
-
-

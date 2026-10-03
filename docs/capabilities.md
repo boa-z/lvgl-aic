@@ -193,3 +193,9 @@ explicit configuration, source replacement, start/pause/rate/replay, saved-path
 reopen and timer-based deferred deletion. Host **39/39 PASS** and strict E907
 compile **PASS**. APNG firmware linkage, SDK player backend/seek compatibility
 and physical codec/display acceptance remain open; see [APNG stages](apng-stage.md).
+
+The combined GE2D/fonts/GIF/widgets/AICP/player/APNG image now passes clean SDK
+compile, live-link, package and provenance checks via `build.ps1 -WithApng`.
+APNG is linked but not auto-played; an interactive APNG test page and physical
+codec/timing/display acceptance remain open. Exact source/image hashes are in
+[APNG stage evidence](apng-stage.md).

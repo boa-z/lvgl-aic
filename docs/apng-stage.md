@@ -297,3 +297,42 @@ Strict E907 compile **PASS**; `output/lvgl-apng-widget.o` SHA256:
 Remaining: APNG-enabled firmware/link profile and on-board probes, SDK player
 backend selection/command compatibility, seek parity and physical codec/timing
 validation. This stage does not claim a new image or a verified panel result.
+
+## Firmware link/image profile (2026-10-03)
+
+Build with:
+
+```powershell
+./tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -WithPlayer -WithApng -Jobs 8
+```
+
+`-WithApng` enables both APNG options, adds a distinct `-apng` evidence variant,
+and temporarily modifies/restores the dedicated defconfig. SCons retains every
+public APNG widget entry with linker roots so dead-code elimination cannot hide
+an empty adapter or missing dependency. Integration checks verify both generated
+config forms and live widget/worker/stream/MPP/frame/composition/timeline symbols.
+The opt-in profile links the APIs without automatically opening media/VE.
+
+Clean build identities:
+- SDK `07d7fca1372d184af55ec1b844a470448ae9a163`
+- lvgl-aic `4f5b5af5dcbd3d41c80da9da83131112555f5425`
+- LVGL `80ca777e37a2b176770726a02e07a6fb79ef0b39`
+
+Evidence under SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/`:
+boot configuration/build, assets, app configuration/build, static link check,
+image check and manifest **PASS**. All three recorded source states are clean.
+Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img` SHA256:
+`60a7fb02a00ce7783bd00cc245c41b497b330080bc20fb92c336117c4ec6b96d`.
+ELF SHA256: `b9d96022697546722ffe280bbdfb27de0c66b26b2f54994343d9b54f43172eaf`.
+Board validation **NOT_RUN**. This replaces the older media-only image as the
+latest combined link profile, but does not establish APNG playback correctness.
+
+For subsequent panel work, add an application UI-owner test page using
+`lv_aic_rgb_image_decoder_init`, `lv_aic_apng_create/configure/set_src/start`.
+The source must be a native filesystem path to a trusted PNG/APNG. Do not call
+widget methods directly from FinSH or a decoder worker. Test static PNG and the
+SDK's clock/world-cup/ayanami APNG cases, then pause/rate/replay/source replacement
+and deletion with outstanding draws. Capture raw logs, image identity, memory
+recovery and panel behavior separately. The existing smoke pages do not yet
+provide these APNG controls; an interactive test page remains a development item.
+SDK unified player backend selection/seek compatibility also remains open.
