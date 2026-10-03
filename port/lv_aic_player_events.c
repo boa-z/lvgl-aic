@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+#include "lvgl_aic_feature_config.h"
 #if defined(AIC_LVGL_USE_PLAYER_SESSION) && AIC_LVGL_USE_PLAYER_SESSION
 #include "lv_aic_player_events.h"
 #include <aic_osal.h>

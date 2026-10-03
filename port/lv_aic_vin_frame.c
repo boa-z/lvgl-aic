@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+#include "lvgl_aic_feature_config.h"
 #if defined(AIC_LVGL_USE_VIN) && AIC_LVGL_USE_VIN
 #include "lv_aic_vin_frame.h"
 bool lv_aic_vin_frame_view(const lv_aic_vin_session_t *s, uint32_t index,

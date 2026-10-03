@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+#include "lvgl_aic_feature_config.h"
 #if defined(AIC_LVGL_USE_PLAYER_SESSION) && AIC_LVGL_USE_PLAYER_SESSION
 #ifndef AIC_MPP_PLAYER_VIDEO_EXT_RENDER
 #error "Player frame ownership requires SDK external video rendering"
