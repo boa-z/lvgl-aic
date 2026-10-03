@@ -6,7 +6,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-struct lv_aic_camera_capture { lv_aic_capture_state_t state; unsigned readers; bool closing; };
+struct lv_aic_camera_capture { lv_aic_capture_state_t state; lv_aic_camera_input_status_t input; unsigned readers; bool closing; };
 static lv_aic_camera_capture_t *active;
 static unsigned created, freed, retained, released, frames;
 static bool allow_exit=true, fail_prepare;
@@ -19,7 +19,15 @@ lv_aic_camera_capture_t *lv_aic_camera_capture_prepare(const char *device,uint32
     assert(format==LV_AIC_YUV_NV16 && space==LV_AIC_YUV_BT601_LIMITED);
     if(active || fail_prepare) return NULL;
     active=calloc(1,sizeof(*active)); assert(active); created++;
-    active->state=LV_AIC_CAPTURE_OPENING; return active;
+    active->state=LV_AIC_CAPTURE_OPENING; active->input=lv_aic_camera_capture_get_input(NULL); return active;
+}
+lv_aic_camera_input_status_t lv_aic_camera_capture_get_input(lv_aic_camera_capture_t *c)
+{ return c ? c->input : (lv_aic_camera_input_status_t){.state=LV_AIC_INPUT_NONE,
+    .requested=UINT32_MAX,.applied=UINT32_MAX}; }
+bool lv_aic_camera_capture_select_input(lv_aic_camera_capture_t *c,uint32_t input)
+{
+    if(!c || c->closing || input>3 || c->input.state==LV_AIC_INPUT_PENDING) return false;
+    c->input.state=LV_AIC_INPUT_PENDING; c->input.requested=input; c->input.sequence++; return true;
 }
 bool lv_aic_camera_capture_start(lv_aic_camera_capture_t *c)
 { if(!c || c->closing) return false; c->state=LV_AIC_CAPTURE_RUNNING; return true; }
@@ -41,7 +49,7 @@ static void release(void *p)
 { producer_t *owner=p; assert(owner->capture->readers); owner->capture->readers--; released++; free(owner); }
 lv_aic_yuv_image_t *lv_aic_camera_capture_poll(lv_aic_camera_capture_t *c)
 {
-    if(!frames) return NULL;
+    if(!frames || c->input.state==LV_AIC_INPUT_PENDING) return NULL;
     frames--;
     producer_t *p=calloc(1,sizeof(*p)); assert(p); p->capture=c;
     memset(p->y,luma,sizeof(p->y)); memset(p->uv,128,sizeof(p->uv));
@@ -80,6 +88,14 @@ int main(void)
     assert(lv_aic_camera_set_format(obj,LV_AIC_CAMERA_FORMAT_NV12)==LV_RESULT_INVALID);
     active->state=LV_AIC_CAPTURE_READY; tick();
     assert(lv_aic_camera_get_state(obj)==LV_AIC_CAMERA_READY);
+    assert(lv_aic_camera_get_channel(obj)==UINT32_MAX);
+    assert(lv_aic_camera_set_channel(obj,4)==-1);
+    assert(lv_aic_camera_set_channel(obj,LV_AIC_CAMERA_CH_VIN2)==0);
+    assert(lv_aic_camera_set_channel(obj,LV_AIC_CAMERA_CH_VIN1)==-1);
+    assert(active->input.requested==2); tick();
+    assert(lv_aic_camera_get_channel_status(obj).state==LV_AIC_INPUT_PENDING);
+    active->input.state=LV_AIC_INPUT_APPLIED; active->input.applied=2; tick();
+    assert(lv_aic_camera_get_channel(obj)==2);
     assert(lv_aic_camera_start(obj)==LV_RESULT_OK);
     lv_obj_set_pos(obj,0,0);
     for(unsigned i=0;i<20;i++) {
@@ -102,6 +118,8 @@ int main(void)
     lv_aic_yuv_image_release_lease(reader); tick();
     assert(!active && lv_aic_camera_get_state(obj)==LV_AIC_CAMERA_STOPPED);
     assert(lv_aic_camera_start(obj)==LV_RESULT_OK); tick(); assert(active);
+    assert(active->input.state==LV_AIC_INPUT_PENDING && active->input.requested==2);
+    active->input.state=LV_AIC_INPUT_APPLIED; active->input.applied=2; tick();
     frames=1; tick();
     /* Simulate a queued, not-yet-opened draw reference: deletion must retain
      * source until a later idle timer pass, without waiting on UI. */
@@ -116,6 +134,13 @@ int main(void)
     obj=make(screen); assert(lv_aic_camera_open(obj)==LV_RESULT_OK);
     lv_obj_add_event_cb(obj,delete_on_state,LV_EVENT_VALUE_CHANGED,NULL);
     active->state=LV_AIC_CAPTURE_READY; tick();
+    assert(lv_aic_camera_pending_cleanup()==1); tick();
+    assert(!active && !lv_aic_camera_pending_cleanup());
+    /* An input-only status change also notifies and supports callback deletion. */
+    obj=make(screen); assert(lv_aic_camera_open(obj)==LV_RESULT_OK);
+    assert(lv_aic_camera_start(obj)==LV_RESULT_OK); tick();
+    lv_obj_add_event_cb(obj,delete_on_state,LV_EVENT_VALUE_CHANGED,NULL);
+    assert(lv_aic_camera_set_channel(obj,1)==0); tick();
     assert(lv_aic_camera_pending_cleanup()==1); tick();
     assert(!active && !lv_aic_camera_pending_cleanup());
     /* Device fault detaches pixels but remains observable until explicit close. */

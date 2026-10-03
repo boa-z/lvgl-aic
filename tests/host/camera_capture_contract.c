@@ -4,6 +4,7 @@
 #include "lv_aic_vin_session.h"
 #include "lv_aic_yuv_image_private.h"
 #include <aic_osal.h>
+#include <drv_camera.h>
 #include <assert.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -17,7 +18,8 @@ static unsigned tokens, timeout_requested, queued;
 static aic_thread_entry_t entry;
 static void *entry_arg;
 static atomic_int done, blocked, caches, returned, freed, off_calls, fail_off, fail_return, on_calls;
-static int fail_thread, fail_init;
+static int fail_thread, fail_init, input_hold, sensor_token;
+static atomic_int input_calls, input_blocked, fail_input, selected_input;
 static void worker_only(void) { assert(pthread_equal(pthread_self(),thread)); }
 aicos_mutex_t aicos_mutex_create(void)
 { pthread_mutex_t *m=malloc(sizeof(*m)); assert(m); assert(!pthread_mutex_init(m,NULL)); return m; }
@@ -38,7 +40,16 @@ aicos_thread_t aicos_thread_create(const char *name,uint32_t stack,uint32_t prio
 void aicos_dcache_invalid_range(unsigned long *addr,unsigned long size)
 { worker_only(); assert((uintptr_t)addr>=0x42000000 && !((uintptr_t)addr&31) && size); atomic_fetch_add(&caches,1); }
 int mpp_vin2_init(struct vin_dev_ctx *c)
-{ worker_only(); if(fail_init) return -1; c->state=VIN_STATE_READY; return 0; }
+{ worker_only(); if(fail_init) return -1; c->camera_dev=&sensor_token; c->state=VIN_STATE_READY; return 0; }
+int camera_set_channel(struct rt_device *device,u32 input)
+{
+    worker_only(); assert((void *)device==&sensor_token && input<=3);
+    atomic_fetch_add(&input_calls,1); atomic_store(&selected_input,(int)input);
+    pthread_mutex_lock(&gate);
+    while(input_hold) { atomic_store(&input_blocked,1); pthread_cond_wait(&wake,&gate); }
+    atomic_store(&input_blocked,0); pthread_mutex_unlock(&gate);
+    return atomic_exchange(&fail_input,0) ? -1 : 0;
+}
 void mpp_vin2_deinit(struct vin_dev_ctx *c)
 { worker_only(); assert(queued==7 || queued==0); c->state=VIN_STATE_INIT; atomic_fetch_add(&freed,1); }
 int mpp_vin2_vb_init(u32 ch,struct vin_dev_ctx *c) { worker_only(); (void)ch; (void)c; return 0; }
@@ -101,6 +112,14 @@ static void wait_state(lv_aic_camera_capture_t *capture,lv_aic_capture_state_t s
         aicos_msleep(1);
     }
     assert(!"capture state timed out");
+}
+static void wait_input(lv_aic_camera_capture_t *capture,lv_aic_camera_input_state_t state)
+{
+    for(unsigned i=0;i<3000;i++) {
+        if(lv_aic_camera_capture_get_input(capture).state==state) return;
+        aicos_msleep(1);
+    }
+    assert(!"input state timed out");
 }
 int main(void)
 {
@@ -175,6 +194,64 @@ int main(void)
     assert(lv_aic_camera_capture_state(capture)==LV_AIC_CAPTURE_CLOSED);
     assert(lv_aic_camera_capture_destroy(capture));
     assert(lv_aic_yuv_image_decoder_init());
+    /* Sensor input 2 is independent of VIN queue 0 (every ioctl asserts ch==0).
+     * READY control does not start/queue the device. Only driver success is
+     * acknowledged; no default channel is invented before the first request. */
+    capture=lv_aic_camera_capture_prepare("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED);
+    assert(capture); wait_state(capture,LV_AIC_CAPTURE_READY);
+    assert(lv_aic_camera_capture_get_input(capture).applied==UINT32_MAX);
+    assert(!lv_aic_camera_capture_select_input(capture,4));
+    assert(lv_aic_camera_capture_select_input(capture,2)); wait_input(capture,LV_AIC_INPUT_APPLIED);
+    assert(atomic_load(&selected_input)==2 && queued==0);
+    assert(lv_aic_camera_capture_get_input(capture).sequence==1);
+    /* Driver control may itself block. Its mailbox remains responsive and
+     * close cannot destroy the context or interrupt the in-flight operation. */
+    pthread_mutex_lock(&gate); input_hold=1; pthread_mutex_unlock(&gate);
+    assert(lv_aic_camera_capture_select_input(capture,3)); wait_count(&input_blocked,1);
+    assert(!lv_aic_camera_capture_select_input(capture,1));
+    assert(lv_aic_camera_capture_get_input(capture).applied==2);
+    lv_aic_camera_capture_close(capture); assert(!lv_aic_camera_capture_destroy(capture));
+    assert(lv_aic_camera_capture_get_input(capture).state==LV_AIC_INPUT_PENDING);
+    pthread_mutex_lock(&gate); input_hold=0; pthread_cond_signal(&wake); pthread_mutex_unlock(&gate);
+    wait_count(&done,1); pthread_join(thread,NULL);
+    assert(lv_aic_camera_capture_get_input(capture).state==LV_AIC_INPUT_APPLIED);
+    assert(lv_aic_camera_capture_get_input(capture).applied==3);
+    assert(lv_aic_camera_capture_destroy(capture));
+    /* A queued selection cancelled during blocked dequeue never calls sensor. */
+    capture=lv_aic_camera_capture_open("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED);
+    assert(capture); wait_count(&blocked,1); int calls=atomic_load(&input_calls);
+    assert(lv_aic_camera_capture_select_input(capture,2));
+    assert(!lv_aic_camera_capture_select_input(capture,1));
+    lv_aic_camera_capture_close(capture);
+    assert(lv_aic_camera_capture_get_input(capture).state==LV_AIC_INPUT_CANCELLED);
+    wake_worker(0,true); wait_count(&done,1); pthread_join(thread,NULL);
+    assert(atomic_load(&input_calls)==calls); assert(lv_aic_camera_capture_destroy(capture));
+    /* Published readers remain valid across an input request and completion. */
+    before=atomic_load(&caches);
+    capture=lv_aic_camera_capture_open("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED);
+    assert(capture); wait_count(&blocked,1); wake_worker(1,false);
+    wait_count(&caches,before+2); wait_count(&blocked,1);
+    image=lv_aic_camera_capture_poll(capture); assert(image);
+    reader=lv_aic_yuv_image_acquire(lv_aic_yuv_image_source(image),&view); assert(reader);
+    lv_aic_yuv_image_destroy(image);
+    assert(lv_aic_camera_capture_select_input(capture,2));
+    assert(!lv_aic_camera_capture_poll(capture)); wake_worker(0,true);
+    wait_input(capture,LV_AIC_INPUT_APPLIED); wait_count(&blocked,1);
+    assert(view->format==LV_AIC_YUV_NV16 && atomic_load(&selected_input)==2);
+    lv_aic_yuv_image_release_lease(reader); lv_aic_camera_capture_close(capture);
+    wake_worker(0,true); wait_count(&done,1); pthread_join(thread,NULL);
+    assert(lv_aic_camera_capture_destroy(capture));
+    /* Failed control can partially change hardware: report unknown/FAULT and
+     * close rather than continuing to claim the previous sensor input. */
+    capture=lv_aic_camera_capture_open("camera",0,LV_AIC_YUV_NV16,LV_AIC_YUV_BT601_LIMITED);
+    assert(capture); wait_count(&blocked,1); atomic_store(&fail_input,1);
+    assert(lv_aic_camera_capture_select_input(capture,1)); wake_worker(0,true);
+    wait_count(&done,1); pthread_join(thread,NULL);
+    assert(lv_aic_camera_capture_get_input(capture).state==LV_AIC_INPUT_FAILED);
+    assert(lv_aic_camera_capture_get_input(capture).applied==UINT32_MAX);
+    assert(lv_aic_camera_capture_state(capture)==LV_AIC_CAPTURE_FAULT);
+    assert(!lv_aic_camera_capture_select_input(capture,2));
+    assert(lv_aic_camera_capture_destroy(capture));
     /* Real widget + real worker: deletion must not wait for a blocked SDK DQ. */
     lv_display_t *display=lv_display_create(16,16);
     lv_obj_t *widget=lv_aic_camera_create(lv_screen_active()); assert(widget);

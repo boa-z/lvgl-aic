@@ -6,7 +6,7 @@ format, output negotiation, buffer pool allocation, queue/start, pause/resume,
 dequeue/return, stop and close. It accepts SDK NV12, NV16 and YUV400 capture
 formats. The session itself is not a camera widget; the worker below publishes frames.
 
-Enable AIC_LVGL_USE_VIN only with AIC_MPP_VIN and AIC_DVP_DRV configured by the
+Enable AIC_LVGL_USE_VIN only with AIC_MPP_VIN, AIC_DVP_DRV and AIC_USING_CAMERA configured by the
 application. The default test image leaves the camera disabled. The application
 must serialize calls and exclusively own the DVP device; the adapter enforces
 one local session because SDK DVP state is global, but cannot exclude unrelated
@@ -118,13 +118,13 @@ Channel terminology matters: the transport parameter is a VIN queue index.
 The SDK widget's set_channel calls camera_set_channel(camera_dev, ch), a sensor
 input selector; its VIN1=0 and VIN2=2 constants are not queue indices. Sensor
 selection needs a separate worker-side operation and must not index vin_buf
-with those constants. Sensor selection remains pending.
+with those constants. The separate selection operation is implemented below.
 
 ## Camera image widget / 摄像头图像控件
 
 启用 AIC_LVGL_USE_CAMERA（依赖 VIN）后，include/lv_aic_camera.h 提供创建、格式、
 打开、开始、暂停、恢复、停止及关闭接口。它是 LVGL image 子类，借助现有 YUV
-发布器走 GE 或软件合成；尚未实现 SDK 独立视频层、传感器输入切换或 barcode。
+发布器走 GE 或软件合成；传感器输入切换见下节，尚未实现 SDK 独立视频层或 barcode。
 
 应用必须先初始化 YUV decoder，并通过 configure 明确设备名、VIN 队列索引和
 传感器色彩空间。不会默认猜测 BT.601/BT.709。格式默认 NV16，支持 NV12/YUV400。
@@ -148,7 +148,7 @@ English contract: application-owned image widget; asynchronous request/status
 semantics, explicit colorimetry, complete device reopen on restart, and deferred
 orphan cleanup. The state event may delete the widget. Keep UI timers alive
 until deleted bindings drain. This is not binary/source compatibility for the
-SDK's public struct, synchronous return semantics, sensor-channel, video-plane,
+SDK's public struct, synchronous return semantics, video-plane,
 or optional barcode APIs.
 
 Evidence for this stage:
@@ -165,3 +165,37 @@ Evidence for this stage:
 - Camera-enabled image link, real sensor/DMA/cache, panel rendering and physical
   camera acceptance are **NOT_RUN**. The older VIN-disabled regression image
   above does not include or validate this widget.
+
+## Sensor input selection / 传感器输入选择
+
+新增 SDK 风格 lv_aic_camera_set_channel/get_channel 及原有 VIN1=0、VIN2=2
+常量；这些值原样传给 camera_set_channel(camera_dev, input)，绝不修改 VIN 队列
+索引。0..3 是 SDK 控件允许的原始选择范围，不代表每个传感器都有四路输入，更不
+推断板级接线。Kconfig 现在明确要求 AIC_USING_CAMERA，防止漏编 camera 服务。
+
+set_channel 返回 0 仅表示异步请求接受，-1 表示未打开、关闭中、越界或有待处理
+请求。get_channel_status 返回请求序号、请求值、驱动最后确认值及状态：NONE、
+PENDING、APPLIED、FAILED、CANCELLED。没有驱动确认时 get_channel 返回 UINT32_MAX，
+不会凭空报告通道 0。输入状态与采集状态变化共用 LV_EVENT_VALUE_CHANGED。
+
+worker 串行执行传感器切换和 VIN 操作，不持 mailbox 锁调用驱动。READY、RUNNING
+及 PAUSED 均可提交请求；SDK 取帧阻塞时请求需等待其返回（可能 60 秒）。关闭时
+取消尚未执行的请求，但已进入驱动的操作必须执行完才能回收；其结果仍可查询。
+失败可能意味着硬件被部分修改，因此原子发布 FAILED/FAULT、清除确认值并关闭
+采集，不继续发布带有不确定输入状态的帧。stop/start 重新打开设备后重放最后
+接受的输入选择；configure 更改设备配置时清除此选择。
+
+切换请求丢弃未发布的 READY 帧，并暂停新的 publication，直至驱动操作完成；已有
+image/GE/decoder 引用保持有效。APPLIED 仅表示驱动返回成功，既不证明物理接线
+也不保证下一个 dequeue 或当前显示帧已经来自新通道。SDK 没有提供逐帧输入标识。
+
+Host 24/24 PASS after adding real-worker tests for selector 2 with queue 0,
+READY selection, rejected invalid/busy requests, blocked control with responsive
+UI mailbox, in-flight close, cancellation during blocked dequeue, retained image
+readers across switching, and driver failure shutdown. Widget tests cover the
+SDK aliases, unknown/confirmed values, restart reapplication and deletion from
+an input-only status notification. SDK ioctl, sensor and DMA effects are mocked.
+Real SDK header/OSAL/D13x strict compilation also passes; camera-enabled link
+and hardware acceptance remain NOT_RUN. Final object SHA256 values:
+- capture: 9e136350aa9e180fb0367dfd4ea82798080240d267cbd8b80d7ff1111893fd2a
+- widget: eebb8cb1444e930ce5adea0397ba3288b6459daaef4a8a9d375fa4593bcfedec

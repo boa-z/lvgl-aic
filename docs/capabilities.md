@@ -30,7 +30,7 @@ See [swipe_v1](swipe-stage.md). Both widgets have a shared manual test page;
 the combined GE2D/fonts/GIF/widgets cross-build and linked-symbol checks pass.
 Physical display/input acceptance remains pending;
 SDK media parity remains incomplete; video-window and camera image composition
-are implemented separately, while player, sensor selection and video-plane
+are implemented separately, while player and video-plane
 ownership remain gaps.
 
 A [component BMP decoder](bmp-stage.md) now covers FILE/RAW uncompressed
@@ -100,7 +100,8 @@ buffer ownership and stop/close handling, plus a background worker and immutable
 frame publication with deferred queue-back. It has target compilation and
 concurrent host evidence. The camera image widget adds prepare/start, pause/
 resume, stop/reopen and deferred deletion, tested against the real worker and
-mocked SDK. Sensor input selection, video-plane ownership, barcode, camera-
+mocked SDK. Worker-side sensor input selection now reports driver acknowledgment separately
+from request acceptance. Video-plane ownership, barcode, camera-
 enabled image linking and board execution remain unverified or missing.
 
 This sequence supersedes the old instruction to stop after 3C5. It does not

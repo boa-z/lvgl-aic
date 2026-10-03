@@ -13,7 +13,7 @@ $component=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $lvgl=(Resolve-Path (Join-Path $component '../lvgl')).Path
 $includes=@('.', 'bsp/common/include', 'bsp/artinchip/sys/d13x/include',
     'bsp/artinchip/include/uapi', 'bsp/artinchip/hal/dvp/v1',
-    'packages/artinchip/mpp/include', 'kernel/rt-thread/include', 'kernel/common/include/osal',
+    'packages/artinchip/mpp/include', 'bsp/peripheral/camera', 'kernel/rt-thread/include', 'kernel/common/include/osal',
     'kernel/rt-thread/components/finsh', 'kernel/rt-thread/components/drivers/include',
     'kernel/rt-thread/components/utilities/ulog', 'bsp/artinchip/include',
     'kernel/rt-thread/components/libc/compilers/common/include')

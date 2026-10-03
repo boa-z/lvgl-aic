@@ -10,6 +10,21 @@ typedef enum {
     LV_AIC_CAPTURE_OPENING, LV_AIC_CAPTURE_READY, LV_AIC_CAPTURE_RUNNING, LV_AIC_CAPTURE_PAUSED,
     LV_AIC_CAPTURE_CLOSING, LV_AIC_CAPTURE_CLOSED, LV_AIC_CAPTURE_FAULT
 } lv_aic_capture_state_t;
+typedef enum {
+    LV_AIC_INPUT_NONE, LV_AIC_INPUT_PENDING, LV_AIC_INPUT_APPLIED,
+    LV_AIC_INPUT_FAILED, LV_AIC_INPUT_CANCELLED
+} lv_aic_camera_input_state_t;
+typedef struct {
+    lv_aic_camera_input_state_t state;
+    uint32_t sequence, requested, applied;
+} lv_aic_camera_input_status_t;
+/* Raw sensor selector (SDK range 0..3), never a VIN queue index. Only one
+ * request may be pending. true means accepted; inspect get_input for driver
+ * completion. applied is UINT32_MAX until acknowledged, or after failure.
+ * APPLIED is not a guarantee that the next dequeued frame is from that input.
+ * Close cancels a queued request; an already executing driver call completes. */
+bool lv_aic_camera_capture_select_input(lv_aic_camera_capture_t *capture,uint32_t input);
+lv_aic_camera_input_status_t lv_aic_camera_capture_get_input(lv_aic_camera_capture_t *capture);
 /* UI-owner API. Initialize the YUV decoder first. Device operations run on
  * an independent worker; exclusively reserve SDK VIN for this capture. */
 lv_aic_camera_capture_t *lv_aic_camera_capture_open(const char *camera, uint32_t channel,

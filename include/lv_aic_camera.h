@@ -15,6 +15,16 @@ typedef enum {
     LV_AIC_CAMERA_RUNNING, LV_AIC_CAMERA_PAUSED, LV_AIC_CAMERA_STOPPING,
     LV_AIC_CAMERA_STOPPED, LV_AIC_CAMERA_FAULT
 } lv_aic_camera_state_t;
+/* SDK aliases, not board wiring or VIN queue indices. */
+typedef enum { LV_AIC_CAMERA_CH_VIN1=0, LV_AIC_CAMERA_CH_VIN2=2 } lv_aic_camera_ch_t;
+/* 0 means asynchronous request accepted; -1 means invalid/busy/not opened.
+ * VALUE_CHANGED also reports input status changes. get_channel returns the
+ * last driver-acknowledged selector, or UINT32_MAX if unknown. It does not
+ * identify the source of a displayed frame. Restart reapplies the requested
+ * selector; configure resets that choice when changing device configuration. */
+int lv_aic_camera_set_channel(lv_obj_t *obj,uint32_t input);
+uint32_t lv_aic_camera_get_channel(lv_obj_t *obj);
+lv_aic_camera_input_status_t lv_aic_camera_get_channel_status(lv_obj_t *obj);
 /* LVGL owner only, outside draw callbacks. Initialize the YUV decoder before
  * opening. An LV_RESULT_OK means request accepted, not device completion.
  * LV_EVENT_VALUE_CHANGED reports state transitions; query get_state in the

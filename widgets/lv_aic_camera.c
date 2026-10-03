@@ -10,7 +10,9 @@ typedef struct {
     lv_aic_camera_capture_t *capture;
     lv_aic_yuv_image_t *image;
     char device[16];
-    uint32_t queue;
+    uint32_t queue, desired_input;
+    lv_aic_camera_input_status_t input_reported;
+    bool have_input;
     lv_aic_yuv_color_space_t space;
     lv_aic_camera_format format;
     lv_aic_camera_state_t state, reported;
@@ -75,7 +77,11 @@ static void tick(lv_timer_t *timer)
     }
     /* This must be the final action: event handlers may delete the object or
      * request a different transport state. The binding survives until next tick. */
-    if(b->obj && b->state!=b->reported) {
+    lv_aic_camera_input_status_t input=lv_aic_camera_capture_get_input(b->capture);
+    bool input_changed=input.state!=b->input_reported.state ||
+        input.sequence!=b->input_reported.sequence || input.applied!=b->input_reported.applied;
+    if(b->obj && (b->state!=b->reported || input_changed)) {
+        b->input_reported=input;
         b->reported=b->state;
         lv_obj_send_event(b->obj,LV_EVENT_VALUE_CHANGED,NULL);
     }
@@ -106,6 +112,7 @@ lv_obj_t *lv_aic_camera_create(lv_obj_t *parent)
     b->timer=lv_timer_create(tick,20,b);
     if(!b->timer) { lv_free(b); lv_obj_delete(obj); return NULL; }
     b->obj=obj; memcpy(b->device,"camera",7);
+    b->input_reported=lv_aic_camera_capture_get_input(NULL);
     ((camera_widget_t *)obj)->binding=b;
     lv_timer_pause(b->timer); return obj;
 }
@@ -117,7 +124,7 @@ lv_result_t lv_aic_camera_configure(lv_obj_t *obj,const char *device,
     if(b->capture || b->closing || !device || !device[0] || strlen(device)>=sizeof(b->device) ||
        space<LV_AIC_YUV_BT601_LIMITED || space>LV_AIC_YUV_BT709_FULL) return LV_RESULT_INVALID;
     memcpy(b->device,device,strlen(device)+1); b->queue=queue; b->space=space;
-    b->configured=true; return LV_RESULT_OK;
+    b->configured=true; b->have_input=false; return LV_RESULT_OK;
 }
 lv_result_t lv_aic_camera_set_format(lv_obj_t *obj,lv_aic_camera_format format)
 {
@@ -135,6 +142,11 @@ lv_result_t lv_aic_camera_open(lv_obj_t *obj)
         b->format==LV_AIC_CAMERA_FORMAT_NV12 ? LV_COLOR_FORMAT_NV12 : LV_COLOR_FORMAT_I400;
     b->capture=lv_aic_camera_capture_prepare(b->device,b->queue,format,b->space);
     if(!b->capture) return LV_RESULT_INVALID;
+    if(b->have_input && !lv_aic_camera_capture_select_input(b->capture,b->desired_input)) {
+        lv_aic_camera_capture_close(b->capture);
+        b->closing=true; b->stopped=false; b->state=LV_AIC_CAMERA_STOPPING;
+        lv_timer_resume(b->timer); return LV_RESULT_INVALID;
+    }
     b->state=LV_AIC_CAMERA_OPENING; b->stopped=false;
     lv_timer_resume(b->timer); return LV_RESULT_OK;
 }
@@ -145,6 +157,20 @@ lv_result_t lv_aic_camera_start(lv_obj_t *obj)
     if(b->state==LV_AIC_CAMERA_STOPPED && lv_aic_camera_open(obj)!=LV_RESULT_OK) return LV_RESULT_INVALID;
     return !b->closing && lv_aic_camera_capture_start(b->capture) ? LV_RESULT_OK : LV_RESULT_INVALID;
 }
+int lv_aic_camera_set_channel(lv_obj_t *obj,uint32_t input)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_camera_class,return -1);
+    camera_binding_t *b=((camera_widget_t *)obj)->binding;
+    if(b->closing || !lv_aic_camera_capture_select_input(b->capture,input)) return -1;
+    b->desired_input=input; b->have_input=true; return 0;
+}
+lv_aic_camera_input_status_t lv_aic_camera_get_channel_status(lv_obj_t *obj)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_camera_class,return lv_aic_camera_capture_get_input(NULL));
+    return lv_aic_camera_capture_get_input(((camera_widget_t *)obj)->binding->capture);
+}
+uint32_t lv_aic_camera_get_channel(lv_obj_t *obj)
+{ return lv_aic_camera_get_channel_status(obj).applied; }
 static lv_result_t close_request(lv_obj_t *obj,bool stopped)
 {
     LV_CHECK_OBJ(obj,&lv_aic_camera_class,return LV_RESULT_INVALID);

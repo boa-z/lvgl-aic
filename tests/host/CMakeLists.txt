@@ -260,6 +260,7 @@ if(AIC_SDK_ROOT)
         "${AIC_ROOT}/port/lv_aic_vin_frame.c" "${AIC_ROOT}/common/lv_aic_yuv.c"
         "${AIC_ROOT}/image/mpp/lv_aic_yuv_image.c")
     target_include_directories(lvgl_aic_camera_capture_contract PRIVATE
+        "${AIC_SDK_ROOT}/bsp/peripheral/camera"
         "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/vin_stubs"
         "${AIC_SDK_ROOT}/packages/artinchip/mpp/include" "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi"
         "${AIC_SDK_ROOT}/bsp/artinchip/hal/dvp/v1")

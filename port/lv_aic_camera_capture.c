@@ -3,6 +3,7 @@
 #include "lv_aic_camera_capture.h"
 #include "lv_aic_vin_frame.h"
 #include <aic_osal.h>
+#include <drv_camera.h>
 #include <string.h>
 
 typedef enum { EMPTY, READY, PUBLISHING, PUBLISHED, RETURN } slot_state_t;
@@ -20,6 +21,8 @@ struct lv_aic_camera_capture {
     enum mpp_pixel_format format;
     lv_aic_yuv_color_space_t space;
     lv_aic_capture_state_t state;
+    lv_aic_camera_input_status_t input;
+    bool input_inflight;
     bool closing, pause_requested, start_requested, finished;
 };
 /* UI-owned singleton; prevents competing worker threads entering SDK globals. */
@@ -27,7 +30,12 @@ static lv_aic_camera_capture_t *active;
 static void lock(lv_aic_camera_capture_t *c) { aicos_mutex_take(c->mutex,AICOS_WAIT_FOREVER); }
 static void unlock(lv_aic_camera_capture_t *c) { aicos_mutex_give(c->mutex); }
 static void fault(lv_aic_camera_capture_t *c)
-{ lock(c); c->closing=true; c->state=LV_AIC_CAPTURE_FAULT; unlock(c); }
+{
+    lock(c); c->closing=true; c->state=LV_AIC_CAPTURE_FAULT;
+    if(c->input.state==LV_AIC_INPUT_PENDING && !c->input_inflight)
+        c->input.state=LV_AIC_INPUT_CANCELLED;
+    unlock(c);
+}
 static bool retain_slot(void *context)
 {
     frame_slot_t *s=context;
@@ -85,6 +93,28 @@ static void worker(void *argument)
             }
             aicos_msleep(5); continue;
         }
+        /* Sensor control runs only on the VIN owner, serialized with dequeue
+         * and teardown. Do not hold the mailbox mutex across a driver call. */
+        lock(c);
+        bool select=!c->closing && c->input.state==LV_AIC_INPUT_PENDING;
+        uint32_t input=c->input.requested;
+        if(select) c->input_inflight=true;
+        unlock(c);
+        if(select) {
+            int result=camera_set_channel(c->vin.device.camera_dev,input);
+            lock(c);
+            c->input_inflight=false;
+            c->input.state=result<0 ? LV_AIC_INPUT_FAILED : LV_AIC_INPUT_APPLIED;
+            c->input.applied=result<0 ? UINT32_MAX : input;
+            /* Publish failure and close atomically: a UI request must not
+             * overwrite FAILED in the gap before shutdown becomes visible. */
+            if(result<0) { c->closing=true; c->state=LV_AIC_CAPTURE_FAULT; }
+            closing=c->closing;
+            unlock(c);
+            /* A failed driver call may have partially changed sensor state.
+             * Stop publishing; retain/return frames through normal shutdown. */
+            if(closing) continue;
+        }
         if(!c->vin.streaming) {
             if(!start) {
                 lock(c);
@@ -117,7 +147,7 @@ static void worker(void *argument)
         lock(c);
         /* Latest unpublished frame wins; published readers retain their slots. */
         for(unsigned i=0;i<VIN_MAX_BUF_NUM;i++) if(c->slots[i].state==READY) c->slots[i].state=RETURN;
-        s->state=c->closing ? RETURN : READY;
+        s->state=c->closing || c->input.state==LV_AIC_INPUT_PENDING ? RETURN : READY;
         unlock(c);
     }
 }
@@ -137,12 +167,31 @@ lv_aic_camera_capture_t *lv_aic_camera_capture_prepare(const char *camera,uint32
     if(!c->mutex) { lv_free(c); return NULL; }
     memcpy(c->camera,camera,strlen(camera)+1); c->channel=channel; c->format=mpp; c->space=space;
     c->state=LV_AIC_CAPTURE_OPENING;
+    c->input=lv_aic_camera_capture_get_input(NULL);
     for(unsigned i=0;i<VIN_MAX_BUF_NUM;i++) c->slots[i].owner=c;
     active=c;
     if(!aicos_thread_create("aic_capture",8192,20,worker,c)) {
         active=NULL; aicos_mutex_delete(c->mutex); lv_free(c); return NULL;
     }
     return c;
+}
+bool lv_aic_camera_capture_select_input(lv_aic_camera_capture_t *c,uint32_t input)
+{
+    if(!c || input>3) return false;
+    lock(c);
+    bool accepted=!c->closing && !c->finished && c->input.state!=LV_AIC_INPUT_PENDING;
+    if(accepted) {
+        c->input.sequence++; c->input.requested=input; c->input.state=LV_AIC_INPUT_PENDING;
+        for(unsigned i=0;i<VIN_MAX_BUF_NUM;i++)
+            if(c->slots[i].state==READY) c->slots[i].state=RETURN;
+    }
+    unlock(c); return accepted;
+}
+lv_aic_camera_input_status_t lv_aic_camera_capture_get_input(lv_aic_camera_capture_t *c)
+{
+    if(!c) return (lv_aic_camera_input_status_t){.state=LV_AIC_INPUT_NONE,
+        .requested=UINT32_MAX,.applied=UINT32_MAX};
+    lock(c); lv_aic_camera_input_status_t status=c->input; unlock(c); return status;
 }
 bool lv_aic_camera_capture_start(lv_aic_camera_capture_t *c)
 {
@@ -164,7 +213,7 @@ lv_aic_yuv_image_t *lv_aic_camera_capture_poll(lv_aic_camera_capture_t *c)
     if(!c) return NULL;
     frame_slot_t *s=NULL;
     lock(c);
-    if(!c->closing) for(unsigned i=0;i<VIN_MAX_BUF_NUM;i++) if(c->slots[i].state==READY) {
+    if(!c->closing && c->input.state!=LV_AIC_INPUT_PENDING) for(unsigned i=0;i<VIN_MAX_BUF_NUM;i++) if(c->slots[i].state==READY) {
         s=&c->slots[i]; s->state=PUBLISHING; break;
     }
     unlock(c);
@@ -183,6 +232,8 @@ lv_aic_capture_state_t lv_aic_camera_capture_state(lv_aic_camera_capture_t *c)
 void lv_aic_camera_capture_close(lv_aic_camera_capture_t *c)
 {
     if(c) { lock(c); c->closing=true;
+        if(c->input.state==LV_AIC_INPUT_PENDING && !c->input_inflight)
+            c->input.state=LV_AIC_INPUT_CANCELLED;
         if(!c->finished && c->state!=LV_AIC_CAPTURE_FAULT) c->state=LV_AIC_CAPTURE_CLOSING;
         unlock(c); }
 }

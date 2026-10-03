@@ -131,7 +131,7 @@ config AIC_LVGL_USE_VIDEO_WINDOW
 config AIC_LVGL_USE_VIN
     bool "Build application-owned VIN capture session support"
     default n
-    depends on AIC_LVGL_PORT && AIC_MPP_VIN && AIC_DVP_DRV
+    depends on AIC_LVGL_PORT && AIC_MPP_VIN && AIC_DVP_DRV && AIC_USING_CAMERA
     help
         Internal capture lifecycle and explicit frame leases. The application
         must exclusively own VIN; camera widget integration is a separate layer.
