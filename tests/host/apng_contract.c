@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_aic_apng.h"
+#include "lv_aic_apng_compose.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,14 +105,28 @@ static void contract(void)
 int main(int argc,char **argv)
 {
     if(argc==1) { contract();return 0; }
-    assert(argc==2 || argc==3);FILE *fp=fopen(argv[1],"rb");assert(fp);fseek(fp,0,SEEK_END);long n=ftell(fp);assert(n>0);rewind(fp);
+    assert(argc>=2 && argc<=4);FILE *fp=fopen(argv[1],"rb");assert(fp);fseek(fp,0,SEEK_END);long n=ftell(fp);assert(n>0);rewind(fp);
     uint8_t *bytes=malloc((size_t)n);assert(bytes && fread(bytes,1,(size_t)n,fp)==(size_t)n);fclose(fp);
     lv_aic_apng_t d;assert(lv_aic_apng_open(bytes,(size_t)n,&limits,&d));
     size_t cursor=0;lv_aic_apng_frame_t f;unsigned count=0;
+    lv_aic_apng_canvas_t canvas={0};uint8_t *pixels=NULL,*scratch=NULL;
+    size_t canvas_bytes=(size_t)d.width*d.height*4;
+    if(argc==4) {
+        pixels=malloc(canvas_bytes);scratch=malloc(canvas_bytes);assert(pixels && scratch);
+        assert(lv_aic_apng_canvas_init(&canvas,d.width,d.height,pixels,(size_t)d.width*4,canvas_bytes,scratch,canvas_bytes));
+    }
     while(lv_aic_apng_next(&d,&cursor,&f)) {
         uint8_t *png=malloc(f.png_bytes);assert(png && lv_aic_apng_extract(&d,&f,png,f.png_bytes));
-        if(argc==3) { char path[1024];snprintf(path,sizeof(path),"%s/%04u.png",argv[2],count);fp=fopen(path,"wb");assert(fp);assert(fwrite(png,1,f.png_bytes,fp)==f.png_bytes);fclose(fp); }
+        if(argc>=3) { char path[1024];snprintf(path,sizeof(path),"%s/%04u.png",argv[2],count);fp=fopen(path,"wb");assert(fp);assert(fwrite(png,1,f.png_bytes,fp)==f.png_bytes);fclose(fp); }
+        if(argc==4) {
+            char path[1024];size_t raw_bytes=(size_t)f.width*f.height*4;uint8_t *raw=malloc(raw_bytes);assert(raw);
+            snprintf(path,sizeof(path),"%s/%04u.rgba",argv[3],count);fp=fopen(path,"rb");assert(fp);
+            assert(fread(raw,1,raw_bytes,fp)==raw_bytes);fclose(fp);
+            assert(lv_aic_apng_compose(&canvas,&f,raw,(size_t)f.width*4,raw_bytes));free(raw);
+            snprintf(path,sizeof(path),"%s/%04u.canvas.rgba",argv[2],count);fp=fopen(path,"wb");assert(fp);
+            assert(fwrite(pixels,1,canvas_bytes,fp)==canvas_bytes);fclose(fp);
+        }
         free(png);count++;
     }
-    assert(count==d.frames);printf("PASS %s: %u frames %ux%u plays=%u\n",argv[1],count,d.width,d.height,d.plays);free(bytes);return 0;
+    assert(count==d.frames);printf("PASS %s: %u frames %ux%u plays=%u\n",argv[1],count,d.width,d.height,d.plays);free(pixels);free(scratch);free(bytes);return 0;
 }

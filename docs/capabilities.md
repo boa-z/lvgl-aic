@@ -154,4 +154,4 @@ SDK audio termination remains ambiguous, so this is not clean-EOF certification.
 The [APNG container foundation](apng-stage.md) now validates bounded PNG/APNG
 structure and extracts standalone frame PNGs without SDK/LVGL dependencies.
 All 100 frames in three existing SDK examples were extracted and host-decoded;
-this does not yet provide frame composition or APNG widget playback.
+straight-alpha SOURCE/OVER and NONE/BACKGROUND/PREVIOUS software composition now also matches all 100 reference frames exactly. APNG worker scheduling and widget playback are not yet integrated.

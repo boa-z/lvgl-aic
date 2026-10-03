@@ -3,7 +3,7 @@
 """Validate C frame extraction against Pillow using local SDK demo assets.
 
 SDK assets stay outside this repository. This checks decoded frame rectangles,
-not APNG composition, playback timing, GE, or hardware MPP decode.
+plus software composition, not playback timing, GE, or hardware MPP decode.
 """
 import argparse
 import json
@@ -11,7 +11,7 @@ import struct
 import subprocess
 import zlib
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageChops
 
 
 def chunks(data):
@@ -62,10 +62,30 @@ def main():
             with Image.open(png) as image:
                 image.load()
                 assert image.size == (expected['width'], expected['height'])
-                image.convert('RGBA').tobytes()  # Force palette/tRNS/PNG inflate path.
-        results.append(dict(asset=name, extracted_frames=len(frames), decoded='PASS'))
+                (output / ('%04d.rgba' % i)).write_bytes(image.convert('RGBA').tobytes())
+        subprocess.run([str(args.exe.resolve()), str(source.resolve()), str(output.resolve()), str(output.resolve())], check=True)
+        with Image.open(source) as original:
+            canvas = Image.new('RGBA', original.size)
+        maximum_error = 0
+        for i, frame in enumerate(frames):
+            before = canvas.copy()
+            box = (frame['x'], frame['y'], frame['x'] + frame['width'], frame['y'] + frame['height'])
+            with Image.open(output / ('%04d.png' % i)) as decoded:
+                patch = decoded.convert('RGBA')
+            if frame['blend']:
+                patch = Image.alpha_composite(canvas.crop(box), patch)
+            canvas.paste(patch, box[:2])
+            actual = Image.frombytes('RGBA', canvas.size, (output / ('%04d.canvas.rgba' % i)).read_bytes())
+            error = max(high for _, high in ImageChops.difference(canvas, actual).getextrema())
+            maximum_error = max(maximum_error, error)
+            assert error <= 1, (name, i, error)
+            if frame['dispose'] == 1:
+                canvas.paste((0, 0, 0, 0), box)
+            elif frame['dispose'] == 2:
+                canvas = before
+        results.append(dict(asset=name, extracted_frames=len(frames), decoded='PASS', composed='PASS', maximum_error=maximum_error))
     (args.output / 'result.json').write_text(json.dumps(results, indent=2) + '\n', encoding='utf-8')
-    print('PASS SDK APNG extraction and host Pillow rectangle decode:', sum(r['extracted_frames'] for r in results), 'frames')
+    print('PASS SDK APNG extraction and host Pillow rectangle decode/composition:', sum(r['extracted_frames'] for r in results), 'frames')
 
 
 if __name__ == '__main__':
