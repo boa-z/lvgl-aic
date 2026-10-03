@@ -375,3 +375,16 @@ of unseekable/out-of-range targets, seek failure and audio time reset. Widget
 contracts exercise image retirement and pending-seek rejection. Strict target
 compilation: **PASS**. Real demux seek accuracy, post-seek A/V sync, reprepare
 latency and DMA behavior remain **NOT_RUN** pending board validation.
+
+### Seek firmware evidence
+
+`build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -WithPlayer -Jobs 8`:
+boot/app/static/image/manifest **PASS**, including live widget and worker seek
+symbols. Clean sources: SDK `0026b35e`, component `cd92461`, LVGL `80ca777e`.
+
+- Evidence directory remains `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player`.
+- Image `images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img` SHA256:
+  `a8985b6b88dc6dccce8adae4528e595f1362ac118f87315ff26bdd76096f30fe`.
+- ELF SHA256: `7deae145681f4adc8f4c404e3ffb12398fb40f436242b900ecd94986f7652c02`.
+- This profile rebuild replaces the previous media image in that directory;
+  previous hashes above are historical. No flashing or hardware tests ran.
