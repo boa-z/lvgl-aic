@@ -612,3 +612,23 @@ normal/fault regressions pass. D13x compile/partial link PASS; combined SHA256:
 Logs: `output/spi-timing-tests.log`, `output/spi-timing-target.log`.
 Final image refresh and actual board performance measurements remain pending;
 hardware **NOT_RUN**.
+
+
+## Multiple LVGL display isolation
+
+A dedicated real-LVGL contract now creates two double-buffered SPI displays,
+renders distinct black/white content and holds both worker results outstanding.
+Completing and permanently claiming A for blit must not consume B's pending frame.
+A subsequent A transport fault and close must not stop B, contaminate its counters
+or reuse its source storage. B continues four more refreshes, then direct display
+deletion retains its final source until its own worker completion is consumed.
+
+**68/68 host PASS**. Logs `output/spi-multidisplay-build.log` and
+`output/spi-multidisplay-tests.log`. This contract uses independent modeled worker
+interfaces with real LVGL displays; the separate composed pipeline contract uses
+actual worker/session/panel layers with modeled hardware. It establishes display
+state isolation, not concurrent physical QSPI bus or IRQ behavior. Applications
+still need distinct exclusive sessions/buses and explicit budgets; the session
+registry rejects same-bus or overlapping transmit storage admission.
+Multi-display physical acceptance remains **NOT_RUN**. No production source
+changes were required by this regression.

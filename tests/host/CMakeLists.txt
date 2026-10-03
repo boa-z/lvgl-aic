@@ -1098,3 +1098,14 @@ endif()
 add_test(NAME lvgl_aic_ge2d_address_contract COMMAND lvgl_aic_ge2d_address_contract)
 
 endif()
+
+add_executable(lvgl_aic_spi_multidisplay_contract spi_multidisplay_contract.c "${AIC_ROOT}/port/lv_aic_spi_display.c")
+target_include_directories(lvgl_aic_spi_multidisplay_contract PRIVATE "${AIC_ROOT}/include"
+    "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/spi_stubs")
+target_compile_definitions(lvgl_aic_spi_multidisplay_contract PRIVATE AIC_LVGL_USE_SPI_SDK=1)
+target_link_libraries(lvgl_aic_spi_multidisplay_contract PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_spi_multidisplay_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_spi_multidisplay_contract COMMAND lvgl_aic_spi_multidisplay_contract)
+set_tests_properties(lvgl_aic_spi_multidisplay_contract PROPERTIES TIMEOUT 30)
