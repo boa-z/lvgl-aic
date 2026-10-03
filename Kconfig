@@ -148,12 +148,13 @@ config AIC_LVGL_USE_CAMERA
         Uses LVGL composition, not the SDK lower video plane or barcode backend.
 
 config AIC_LVGL_USE_APNG
-    bool "Build worker-side APNG PNG decoder foundation"
+    bool "Build worker-side APNG playback core"
     default n
     depends on AIC_LVGL_PORT && LPKG_MPP && AIC_VE_DRV
     help
-        Bounded standalone PNG decoding to RGBA for APNG composition.
-        Independent of SDK player/audio. This is an internal worker API;
+        Bounded APNG parsing, MPP PNG decode, RGBA composition and timing.
+        Independent of SDK player/audio. Pause, rational rate and replay are
+        available through the serialized stream API. This is an internal API;
         asynchronous playback and an APNG widget are not yet provided.
 
 config AIC_LVGL_USE_PLAYER_SESSION

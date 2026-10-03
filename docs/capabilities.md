@@ -167,3 +167,10 @@ It converts native ARGB to compositor RGBA, pins verified CMA allocations and
 retains failed frame returns for retry. Host **36/36 PASS** and strict E907
 compile **PASS**; APNG playback/publication/widget and board decoding remain
 unverified. See [stage details](apng-stage.md).
+
+The APNG serialized stream now integrates container extraction, MPP decode,
+RGBA composition and the rational timeline, including source-copy ownership,
+bounded stream CPU allocations, ordered late frames, finite/infinite loops,
+pause/rate/replay and retryable fault cleanup. Host **36/36 PASS** and strict
+E907 compile **PASS**. Its borrowed canvas is not an asynchronous image source:
+OSAL worker/mailbox, immutable publication and widget integration remain open.

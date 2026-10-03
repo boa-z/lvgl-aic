@@ -145,3 +145,42 @@ Strict E907 compilation **PASS**, `output/lvgl-apng-decoder.o` SHA256:
 This stage adds no new firmware image. File loading, background orchestration,
 immutable publication, widget/backend switching and physical playback remain
 open; the existing player backend is unchanged.
+
+## Integrated serialized stream (2026-10-03)
+
+`compat/lv_aic_apng_stream.h` / `port/lv_aic_apng_stream.c` connect the container,
+MPP decoder, compositor and timeline into a worker-owned playback core. Open
+copies the input bytes, validates limits and preallocates the maximum extracted
+PNG and decoded rectangle plus canvas/PREVIOUS storage. `cpu_budget` bounds
+those stream allocations and the stream context; malloc overhead and the
+separate decoder/allocator metadata are excluded. CMA output and SDK packet
+limits remain separate. Stream open does not decode or publish a frame.
+
+Each tick decodes/composes at most one due frame, never skips a disposal-dependent
+frame, and reads the monotonic clock again after blocking decode/composition.
+This starts the first frame's delay after it is ready and accounts for later
+decode cost without drifting the deadline. A default poster is excluded;
+each play resets canvas/history and finite completion retains the final frame.
+Pause/rational rate are supported; replay resets the timeline and play count
+while preserving requested pause/rate and monotonic publication sequence.
+
+The returned RGBA canvas is **borrowed, mutable worker storage**. It must be
+copied into immutable publication storage before any asynchronous UI/GE reader
+uses it. Non-frame tick results retain the last canvas, or NULL before the first
+frame. False leaves the result structure unchanged but latches stream fault;
+restart cannot clear it. Failed frame return keeps stream/decoder ownership
+alive across repeated close attempts. A worker must never force free it.
+
+Validation: host **36/36 PASS**, extending the real-MPP-ABI adapter test through
+the real stream/parser/extractor/allocator/compositor/timeline stack with mocked
+engine pixels and a controlled clock. Covers static PNG, excluded poster,
+finite/infinite loops, loop canvas reset, final hold, source-copy ownership,
+CPU/packet/minimum-delay limits, pre-start pause, 2x rate, restart preserving
+pause/rate, post-decode clock sampling, late ordered catch-up, clock reversal,
+decode fault latching and failed frame-return cleanup retries.
+Strict E907 compile **PASS**; `output/lvgl-apng-stream.o` SHA256:
+`8f9349133bef79c070c48d1f6a966fae014e718f8e1661d5ca6687e323dd11c4`.
+
+Remaining: file loading, OSAL worker/control mailbox, immutable frame publication,
+widget/backend selection and board PNG/playback validation. No new firmware
+image or physical-playback claim accompanies this core-only stage.

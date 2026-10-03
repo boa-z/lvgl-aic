@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_aic_apng_decoder.h"
+#include "lv_aic_apng_stream.h"
 #include <mpp_decoder.h>
 #include <frame_allocator.h>
 #include <aic_osal.h>
@@ -13,7 +14,8 @@
 #endif
 static int locked,mutex_live,allocated,live,creates,puts,invalidates;
 static int fail,corrupt;
-static bool put_fail;
+static bool put_fail,stream_mode;
+static uint64_t wall_us;
 static void *pixels;
 static size_t pixel_bytes;
 aicos_mutex_t aicos_mutex_create(void) { assert(!mutex_live);mutex_live=1;return &mutex_live; }
@@ -74,18 +76,21 @@ int mpp_decoder_put_packet(struct mpp_decoder *d,struct mpp_packet *p)
 int mpp_decoder_decode(struct mpp_decoder *d)
 {
     if(fail==6) return -1;
-    d->frame.buf.size.width=3;d->frame.buf.size.height=2;
-    if(d->allocator->ops->alloc_frame_buffer(d->allocator,&d->frame,16,2,MPP_FMT_ARGB_8888)) return -1;
+    unsigned width=packet_data[19],height=packet_data[23],stride=(width*4+7)&~7U;
+    d->frame.buf.size.width=width;d->frame.buf.size.height=height;
+    if(d->allocator->ops->alloc_frame_buffer(d->allocator,&d->frame,(int)stride,(int)height,MPP_FMT_ARGB_8888)) return -1;
     unsigned char *p=pixels;
-    for(unsigned y=0;y<2;y++) for(unsigned x=0;x<3;x++) {
-        p[y*16+x*4]=10+x;p[y*16+x*4+1]=20+y;p[y*16+x*4+2]=90+x;p[y*16+x*4+3]=x*100;
+    for(unsigned y=0;y<height;y++) for(unsigned x=0;x<width;x++) {
+        p[y*stride+x*4]=10+x;p[y*stride+x*4+1]=20+y;
+        p[y*stride+x*4+2]=90+x;p[y*stride+x*4+3]=stream_mode?255:x*100;
     }
+    if(stream_mode) wall_us+=7000;
     return 0;
 }
 int mpp_decoder_get_frame(struct mpp_decoder *d,struct mpp_frame *f)
 {
     if(fail==7) return -1;
-    *f=d->frame;d->held=true;f->buf.crop_en=1;f->buf.crop=(struct mpp_rect){0,0,3,2};
+    *f=d->frame;d->held=true;f->buf.crop_en=1;f->buf.crop=(struct mpp_rect){0,0,d->frame.buf.size.width,d->frame.buf.size.height};
     switch(corrupt) {
     case 1:f->flags=FRAME_FLAG_ERROR;break;
     case 2:f->buf.format=MPP_FMT_ABGR_8888;break;
@@ -105,7 +110,7 @@ void mpp_decoder_destory(struct mpp_decoder *d)
     if(d->allocator) assert(!d->allocator->ops->close_allocator(d->allocator));
     free(d);live=0;
 }
-static uint8_t png[128];static size_t length;
+static uint8_t png[512];static size_t length;
 static void be32(uint8_t *p,uint32_t v) { p[0]=v>>24;p[1]=v>>16;p[2]=v>>8;p[3]=v; }
 static void chunk(const char *type,const uint8_t *data,size_t n)
 {
@@ -117,6 +122,7 @@ static void chunk(const char *type,const uint8_t *data,size_t n)
     }
     be32(png+length+8+n,~crc);length+=n+12;
 }
+static void stream_contract(void);
 int main(void)
 {
     memcpy(png,"\211PNG\r\n\032\n",8);length=8;
@@ -171,5 +177,85 @@ int main(void)
     assert(!lv_aic_apng_decoder_decode(d,png,length,3,2,out,20,sizeof(out)) && !live && !allocated);
     assert(lv_aic_apng_decoder_destroy(d));
     assert(lv_aic_apng_decoder_destroy(NULL));
+    stream_contract();
     return 0;
+}
+
+static uint64_t now_us(void *context) { assert(context==&wall_us);return wall_us; }
+static void animation(unsigned plays)
+{
+    memcpy(png,"\211PNG\r\n\032\n",8);length=8;
+    const uint8_t header[13]={0,0,0,3,0,0,0,2,8,6,0,0,0},payload[1]={1};
+    chunk("IHDR",header,13);
+    uint8_t actl[8]={0};be32(actl,2);be32(actl+4,plays);chunk("acTL",actl,8);
+    chunk("IDAT",payload,1); /* Poster is excluded from animation. */
+    for(unsigned i=0;i<2;i++) {
+        uint8_t control[26]={0},data[5]={0};
+        be32(control,i*2);be32(control+4,1);be32(control+8,1);
+        be32(control+12,i*2);be32(control+16,i);
+        control[21]=1;control[23]=10;control[24]=i?2:0;
+        chunk("fcTL",control,26);be32(data,i*2+1);data[4]=1;chunk("fdAT",data,5);
+    }
+    chunk("IEND",NULL,0);
+}
+static void stream_contract(void)
+{
+    lv_aic_apng_stream_config_t c={.limits={512,256,6,2},.cpu_budget=4096,
+        .frame_budget=32,.packet_limit=256,.minimum_delay_us=1000,
+        .now_us=now_us,.clock_context=&wall_us};
+    stream_mode=true;wall_us=0;
+    /* Static PNG uses the existing fixture and ends after one publication. */
+    lv_aic_apng_stream_t *s=lv_aic_apng_stream_open(png,length,&c);assert(s);
+    lv_aic_apng_stream_view_t v;
+    assert(lv_aic_apng_stream_tick(s,&v) && v.step.action==LV_AIC_APNG_FRAME && v.sequence==1);
+    assert(v.width==3 && v.height==2 && v.stride==12 && v.bytes==24 && v.rgba[3]==255);
+    assert(lv_aic_apng_stream_tick(s,&v) && v.step.action==LV_AIC_APNG_ENDED && v.sequence==1);
+    assert(lv_aic_apng_stream_restart(s));
+    assert(lv_aic_apng_stream_tick(s,&v) && v.sequence==2);
+    assert(lv_aic_apng_stream_close(s) && !mutex_live);
+    animation(2);wall_us=0;
+    c.cpu_budget=1;assert(!lv_aic_apng_stream_open(png,length,&c) && !mutex_live);
+    c.cpu_budget=4096;c.packet_limit=255;assert(!lv_aic_apng_stream_open(png,length,&c));
+    c.packet_limit=256;c.minimum_delay_us=0;assert(!lv_aic_apng_stream_open(png,length,&c));
+    c.minimum_delay_us=1000;s=lv_aic_apng_stream_open(png,length,&c);assert(s);
+    memset(png,0,length); /* Stream owns a copy, including compressed data. */
+    assert(lv_aic_apng_stream_pause(s,true));assert(lv_aic_apng_stream_rate(s,2,1));
+    assert(!lv_aic_apng_stream_rate(s,11,1));
+    assert(lv_aic_apng_stream_tick(s,&v) && v.step.action==LV_AIC_APNG_PAUSED && !v.rgba);
+    assert(lv_aic_apng_stream_pause(s,false));
+    for(unsigned frame=0;frame<4;frame++) {
+        assert(lv_aic_apng_stream_tick(s,&v) && v.step.action==LV_AIC_APNG_FRAME);
+        assert(v.step.frame_index==frame%2 && v.step.completed_plays==frame/2 && v.sequence==frame+1);
+        assert(v.rgba[0]==90 && v.rgba[3]==255);
+        assert(v.rgba[23]==(frame%2?255:0)); /* Loop start clears last frame. */
+        assert(lv_aic_apng_stream_tick(s,&v) && v.step.action==LV_AIC_APNG_WAIT);
+        assert(v.step.wait_us==(frame==0?50000:43000)); /* Decode time is counted. */
+        wall_us+=v.step.wait_us;
+    }
+    assert(lv_aic_apng_stream_tick(s,&v) && v.step.action==LV_AIC_APNG_ENDED &&
+           v.step.completed_plays==2 && v.rgba[23]==255);
+    assert(lv_aic_apng_stream_pause(s,true));assert(lv_aic_apng_stream_restart(s));wall_us+=1000000;
+    assert(lv_aic_apng_stream_tick(s,&v) && v.step.action==LV_AIC_APNG_PAUSED && v.sequence==4);
+    assert(lv_aic_apng_stream_pause(s,false));
+    assert(lv_aic_apng_stream_tick(s,&v) && v.sequence==5 && !v.rgba[23]);
+    assert(lv_aic_apng_stream_tick(s,&v) && v.step.wait_us==50000);
+    wall_us--;lv_aic_apng_stream_view_t saved=v;
+    assert(!lv_aic_apng_stream_tick(s,&v) && !memcmp(&saved,&v,sizeof(v)));
+    assert(!lv_aic_apng_stream_restart(s));assert(lv_aic_apng_stream_close(s));
+    animation(0);wall_us=0;s=lv_aic_apng_stream_open(png,length,&c);assert(s);
+    for(unsigned frame=0;frame<8;frame++) {
+        wall_us+=1000000; /* Deliberately late: never skip disposal-dependent frames. */
+        assert(lv_aic_apng_stream_tick(s,&v) && v.step.action==LV_AIC_APNG_FRAME &&
+               v.step.frame_index==frame%2 && v.step.completed_plays==frame/2);
+    }
+    assert(lv_aic_apng_stream_close(s));
+    s=lv_aic_apng_stream_open(png,length,&c);assert(s);put_fail=true;
+    saved=v;assert(!lv_aic_apng_stream_tick(s,&v) && !memcmp(&saved,&v,sizeof(v)));
+    assert(live && allocated && !lv_aic_apng_stream_restart(s));
+    assert(!lv_aic_apng_stream_close(s) && live && allocated && mutex_live);
+    put_fail=false;assert(lv_aic_apng_stream_close(s) && !live && !allocated && !mutex_live);
+    s=lv_aic_apng_stream_open(png,length,&c);assert(s);fail=6;
+    assert(!lv_aic_apng_stream_tick(s,&v));fail=0;
+    assert(!lv_aic_apng_stream_tick(s,&v));assert(lv_aic_apng_stream_close(s));
+    assert(lv_aic_apng_stream_close(NULL));stream_mode=false;
 }

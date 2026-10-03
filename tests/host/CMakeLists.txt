@@ -702,6 +702,9 @@ set_tests_properties(lvgl_aic_apng_timeline_contract PROPERTIES TIMEOUT 15)
 
 if(AIC_SDK_ROOT)
     add_executable(lvgl_aic_apng_decoder_contract apng_decoder_contract.c
+        "${AIC_ROOT}/port/lv_aic_apng_stream.c"
+        "${AIC_ROOT}/common/lv_aic_apng_compose.c"
+        "${AIC_ROOT}/common/lv_aic_apng_timeline.c"
         "${AIC_ROOT}/port/lv_aic_apng_decoder.c"
         "${AIC_ROOT}/port/lv_aic_player_allocator.c"
         "${AIC_ROOT}/common/lv_aic_apng.c")
