@@ -35,7 +35,7 @@ static int submit(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame)
 #if defined(AIC_CHIP_D13X) || defined(AIC_CHIP_G73X)
     floor=0x40000000;
 #endif
-    if (!dst || !ge || d->tile || (scaled && d->rotation) ||
+    if (!dst || !ge || d->tile ||
         d->scale_x<16 || d->scale_x>4096 || d->scale_y<16 || d->scale_y>4096 ||
         d->rotation%900 || d->skew_x || d->skew_y || d->recolor_opa>LV_OPA_MIN ||
         d->bitmap_mask_src || d->clip_radius || d->colorkey || d->blend_mode!=LV_BLEND_MODE_NORMAL ||
@@ -77,13 +77,22 @@ static int submit(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame)
                        (int32_t)((int64_t)clip.y2-task->area.y1)};
     if (scaled) {
         lv_aic_ge2d_scale_axis_t x,y;
-        if (!lv_aic_ge2d_scale_axis(frame->width,local.x1,lv_area_get_width(&clip),
+        if (d->rotation) {
+            if (!lv_aic_ge2d_rotation_scale_crop(frame->width,frame->height,&local,&d->pivot,
+                    d->rotation,d->scale_x,d->scale_y,&crop,&flags,&x.phase_16,&y.phase_16)) return 0;
+            x.step_16=16777216/d->scale_x;
+            y.step_16=16777216/d->scale_y;
+        }
+        else {
+            if (!lv_aic_ge2d_scale_axis(frame->width,local.x1,lv_area_get_width(&clip),
                                      d->pivot.x,d->scale_x,&x) ||
-            !lv_aic_ge2d_scale_axis(frame->height,local.y1,lv_area_get_height(&clip),
-                                     d->pivot.y,d->scale_y,&y) ||
-            lv_aic_ge2d_scale_split_risk(x.step_16,lv_area_get_width(&clip))) return 0;
-        crop=(lv_area_t){x.crop,y.crop,x.crop+x.extent-1,y.crop+y.extent-1};
-        flags=MPP_ROTATION_0;
+                !lv_aic_ge2d_scale_axis(frame->height,local.y1,lv_area_get_height(&clip),
+                                     d->pivot.y,d->scale_y,&y)) return 0;
+            crop=(lv_area_t){x.crop,y.crop,x.crop+x.extent-1,y.crop+y.extent-1};
+            flags=MPP_ROTATION_0;
+        }
+        int32_t scaler_width=d->rotation%1800 ? lv_area_get_height(&clip) : lv_area_get_width(&clip);
+        if (lv_aic_ge2d_scale_split_risk(x.step_16,scaler_width)) return 0;
         blt.scale_phase.scale_phase_en=1;
         blt.scale_phase.scaler_en=1;
         blt.scale_phase.dx_16[0]=x.step_16;

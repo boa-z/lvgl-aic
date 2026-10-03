@@ -88,6 +88,84 @@ static int ge_probe(void)
         }
         AIC_TEST_I("PASS GE I420 rotation=%d pixels=512 max_error=%d guards=OK",angle*90,worst);
     }
+    /* Publish a new immutable frame: neutral chroma makes the expected output
+     * an analytic luma ramp, independent of the production RGB converter and
+     * scale geometry helper. Fractional clips test phase rather than only size. */
+    lv_aic_yuv_image_destroy(image); image=NULL;
+    memset(source+512,128,512);
+    image=lv_aic_yuv_image_create(&frame,retain_probe,release_probe,&refs);
+    if (!image) goto done;
+    d.src=lv_aic_yuv_image_source(image); d.rotation=0;
+    task.area=(lv_area_t){8,8,39,23};
+    const unsigned scales[]={128,384,512,384,384,384,384};
+    for (unsigned probe=0;probe<7;probe++) {
+        int scale=scales[probe], offset=probe==3 ? 4 : 0;
+        int width=probe==0 ? 16 : 24, height=probe==0 ? 8 : 12;
+        int x0=8+offset, y0=8+offset, worst=0, checked=0;
+        d.scale_x=d.scale_y=scale;
+        task.clip_area=(lv_area_t){x0,y0,x0+width-1,y0+height-1};
+        if (probe>=4) {
+            lv_point_t p[4]={{2,2},{26,2},{2,12},{26,12}};
+            d.rotation=(probe-3)*900; d.scale_y=512; d.pivot=(lv_point_t){16,8};
+            task.area=(lv_area_t){16,16,47,31};
+            lv_point_array_transform(p,4,d.rotation,d.scale_x,d.scale_y,&d.pivot,true);
+            task.clip_area=(lv_area_t){p[0].x,p[0].y,p[0].x,p[0].y};
+            for(unsigned i=1;i<4;i++) {
+                if(p[i].x<task.clip_area.x1) task.clip_area.x1=p[i].x;
+                if(p[i].x>task.clip_area.x2) task.clip_area.x2=p[i].x;
+                if(p[i].y<task.clip_area.y1) task.clip_area.y1=p[i].y;
+                if(p[i].y>task.clip_area.y2) task.clip_area.y2=p[i].y;
+            }
+            lv_area_move(&task.clip_area,16,16);
+            x0=task.clip_area.x1; y0=task.clip_area.y1;
+            width=lv_area_get_width(&task.clip_area); height=lv_area_get_height(&task.clip_area);
+        }
+        memset(output,0xa5,64*64*3);
+        aicos_dcache_clean_invalid_range((unsigned long *)output,64*64*3);
+        lv_draw_aic_ge2d_outcome_t outcome;
+        AIC_TEST_I("BEGIN GE I420 sx=%d sy=%d rotation=%d",scale,d.scale_y,d.rotation/10);
+        if (lv_draw_aic_ge2d_image(&task,&outcome)!=LV_RESULT_OK ||
+            outcome!=LV_DRAW_AIC_GE2D_OUTCOME_ENGINE) goto done;
+        aicos_dcache_invalid_range((unsigned long *)output,64*64*3);
+        for (int y=0;y<64;y++) {
+            for (int x=0;x<64;x++) {
+                bool inside=x>=x0 && x<x0+width && y>=y0 && y<y0+height;
+                /* BT.601 limited neutral chroma: RGB = (Y - 16) * 255/219.
+                 * Y is affine, so bilinear filtering has the same exact ramp. */
+                int expected=0;
+                if (inside) {
+                    int64_t numerator=(int64_t)(5*(x-8)+3*(y-8))*256*255;
+                    int denominator=scale*219;
+                    if(probe>=4) {
+                        int dx=x-32, dy=y-24;
+                        int u=d.rotation==900 ? dy : d.rotation==1800 ? -dx : -dy;
+                        int v=d.rotation==900 ? -dx : d.rotation==1800 ? -dy : dx;
+                        /* Inverse rotate, then source-axis scales 3/2 and 2.
+                         * Six times (5*sx + 3*sy) = 624 + 20*u + 9*v. */
+                        numerator=(int64_t)(624+20*u+9*v)*255;
+                        denominator=6*219;
+                    }
+                    expected=(int)((numerator+denominator/2)/denominator);
+                    if (expected>255) expected=255;
+                    checked++;
+                }
+                for (int c=0;c<3;c++) {
+                    int got=output[(y*64+x)*3+c];
+                    if (!inside) { if (got!=0xa5) goto done; }
+                    else {
+                        int error=got-expected;
+                        if (error<0) error=-error;
+                        if (error>worst) worst=error;
+                    }
+                }
+            }
+        }
+        if (checked!=width*height || worst>3) {
+            AIC_TEST_E("FAIL GE I420 scale=%d pixels=%d max_error=%d",scale,checked,worst);
+            goto done;
+        }
+        AIC_TEST_I("PASS GE I420 scale=%d pixels=%d max_error=%d guards=OK",scale,checked,worst);
+    }
     result=0;
 done:
     if (image) lv_aic_yuv_image_destroy(image);

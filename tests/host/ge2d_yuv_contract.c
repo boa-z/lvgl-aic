@@ -112,9 +112,28 @@ int main(void)
         /* 4 / 1.5 = 2 + 2/3: independent expected Q16 fractional phase. */
         assert(captured.scale_phase.h_phase_16[0]==43688);
         assert(captured.scale_phase.v_phase_16[0]==43688);
-        d.rotation=900; reset();
-        assert(lv_draw_aic_ge2d_yuv(&task)==0 && !calls && !src_caches);
-        d.rotation=0; d.scale_x=d.scale_y=256; task.clip_area=layer.buf_area;
+        d.scale_x=384; d.scale_y=512; d.pivot=(lv_point_t){16,8};
+        for (unsigned angle=1;angle<4;angle++) {
+            lv_point_t p[4]={{2,2},{26,2},{2,12},{26,12}};
+            d.rotation=angle*900;
+            lv_point_array_transform(p,4,d.rotation,d.scale_x,d.scale_y,&d.pivot,true);
+            lv_area_t clip={p[0].x,p[0].y,p[0].x,p[0].y};
+            for (unsigned i=1;i<4;i++) {
+                if(p[i].x<clip.x1) clip.x1=p[i].x;
+                if(p[i].x>clip.x2) clip.x2=p[i].x;
+                if(p[i].y<clip.y1) clip.y1=p[i].y;
+                if(p[i].y>clip.y2) clip.y2=p[i].y;
+            }
+            lv_area_move(&clip,64,64); task.clip_area=clip;
+            reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1);
+            assert(calls==1 && emits==1 && syncs==1);
+            assert(captured.ctrl.flags==rotations[angle]);
+            assert(captured.src_buf.crop.x==2 && captured.src_buf.crop.y==2);
+            assert(captured.scale_phase.dx_16[0]==43690 && captured.scale_phase.dy_16[0]==32768);
+            assert(captured.scale_phase.h_phase_16[0]==0 && captured.scale_phase.v_phase_16[0]==0);
+        }
+        d.rotation=0; d.pivot=(lv_point_t){0,0};
+        d.scale_x=d.scale_y=256; task.clip_area=layer.buf_area;
         lv_aic_yuv_image_destroy(image); assert(live==0);
     }
     frame.format=LV_COLOR_FORMAT_I420; d.rotation=0;
