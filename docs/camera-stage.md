@@ -102,8 +102,8 @@ contains existing signedness warnings. Worker object SHA256:
 d4fd9b7c62832763ef1866310ca813703eae48d4eba884917fa9b6b3cd861b68.
 Camera-enabled image linking and hardware execution remain NOT_RUN.
 
-Remaining work includes SDK camera widget binding, video-plane ownership and
-SDK player backends. The camera gap remains open.
+The widget binding added below supersedes the transport-only status above.
+Video-plane ownership and SDK player backends remain open.
 
 ## Prepared capture stage
 
@@ -118,4 +118,50 @@ Channel terminology matters: the transport parameter is a VIN queue index.
 The SDK widget's set_channel calls camera_set_channel(camera_dev, ch), a sensor
 input selector; its VIN1=0 and VIN2=2 constants are not queue indices. Sensor
 selection needs a separate worker-side operation and must not index vin_buf
-with those constants. Widget binding and sensor selection remain pending.
+with those constants. Sensor selection remains pending.
+
+## Camera image widget / 摄像头图像控件
+
+启用 AIC_LVGL_USE_CAMERA（依赖 VIN）后，include/lv_aic_camera.h 提供创建、格式、
+打开、开始、暂停、恢复、停止及关闭接口。它是 LVGL image 子类，借助现有 YUV
+发布器走 GE 或软件合成；尚未实现 SDK 独立视频层、传感器输入切换或 barcode。
+
+应用必须先初始化 YUV decoder，并通过 configure 明确设备名、VIN 队列索引和
+传感器色彩空间。不会默认猜测 BT.601/BT.709。格式默认 NV16，支持 NV12/YUV400。
+控件独占自己的 image source，请勿通过 lv_image_set_src 外部替换或共享该 source。
+所有操作需在 LVGL owner 上、绘制回调之外执行。
+
+与 SDK 同步 open 的差异：返回 LV_RESULT_OK 仅表示请求已接受；实际完成情况由
+get_state 和 LV_EVENT_VALUE_CHANGED 通知。准备完成为 READY，start 启动采集；
+stop 异步释放采集设备和帧，在全部读者退出后进入 STOPPED，再 start 将重新打开
+设备并启动。STOPPING 期间拒绝 start；close 完成进入 CLOSED，需重新 open。
+FAULT 保留为可观察状态，须显式 close/stop 清理后再打开。中间快速转换的状态可能
+在 20 ms UI 轮询之间被合并，回调应读取当前状态而非假设收到每个中间状态。
+
+删除控件只请求后台退出，独立 binding 与预分配 timer 继续管理帧引用。待全部
+显示的排队绘制任务清空后才释放 image owner，再等待 worker 退出。已打开的 GE/
+decoder 读者继续持有原始 VIN 缓冲区；GE quarantine 可使清理延后至重启。不会在
+UI 内等待 VIN 取帧或强杀 worker。关闭 LVGL 前须先删除所有 camera 控件，继续
+执行 timer handler，直到 lv_aic_camera_pending_cleanup() 为零，再释放 decoder。
+
+English contract: application-owned image widget; asynchronous request/status
+semantics, explicit colorimetry, complete device reopen on restart, and deferred
+orphan cleanup. The state event may delete the widget. Keep UI timers alive
+until deleted bindings drain. This is not binary/source compatibility for the
+SDK's public struct, synchronous return semantics, sensor-channel, video-plane,
+or optional barcode APIs.
+
+Evidence for this stage:
+- Host **24/24 PASS**. Real LVGL widget/decoder/software renderer checks 20
+  alternating black/white NV16 frames, pause/resume, stop/restart, a held reader
+  across stop, pending-task deferral, delayed worker completion, deletion inside
+  state notification, fault detachment, close-before-start and unopened deletion.
+- The concurrent capture test also binds the real widget to the real pthread
+  capture worker and mocked SDK VIN. Deletion returns while dequeue is blocked;
+  the orphan timer releases storage only after worker completion.
+- SDK E907 compile-only checks include the widget with -Wall -Wextra -Werror.
+  Widget object SHA256:
+  1b7ca2d18e78b25cbd07a5311d79ec9133c0f9085d876f0ac639c1347e23895d.
+- Camera-enabled image link, real sensor/DMA/cache, panel rendering and physical
+  camera acceptance are **NOT_RUN**. The older VIN-disabled regression image
+  above does not include or validate this widget.

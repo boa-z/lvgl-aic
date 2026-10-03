@@ -29,7 +29,9 @@ transitions, stable IDs, state-source cycling and lifecycle contracts.
 See [swipe_v1](swipe-stage.md). Both widgets have a shared manual test page;
 the combined GE2D/fonts/GIF/widgets cross-build and linked-symbol checks pass.
 Physical display/input acceptance remains pending;
-SDK media widgets remain missing.
+SDK media parity remains incomplete; video-window and camera image composition
+are implemented separately, while player, sensor selection and video-plane
+ownership remain gaps.
 
 A [component BMP decoder](bmp-stage.md) now covers FILE/RAW uncompressed
 24/32-bit images with full-buffer CMA/cache ownership and host pixel tests.
@@ -86,7 +88,8 @@ not from assumptions that every LVGL draw feature is hardware accelerated.
 | Screen rotation | SDK submits a synchronous rotated bitblt | Port implemented, 90-degree target build passes; board acceptance pending |
 | AICP / BMP | SDK codec / custom software BMP paths | Port implemented and target-built with resource probes; hardware results pending |
 
-The SDK [video-window widget](video-window-stage.md) API is implemented over the existing alpha-zero replacement path; board acceptance remains pending. Camera/player widgets remain genuine separate gaps. Their
+The SDK [video-window widget](video-window-stage.md) API is implemented over the existing alpha-zero replacement path; board acceptance remains pending. The camera image widget now binds asynchronous capture to LVGL composition;
+full camera/player parity remains open. Their
 device and frame lifetime contracts must be ported explicitly; enabling
 native LVGL widgets or accepting .fake strings does not supply those devices.
 The broad goal still includes GE extensions, but they must not be reported
@@ -95,7 +98,10 @@ as missing SDK functionality when the SDK itself declines them.
 The [camera capture session](camera-stage.md) now provides tested VIN setup,
 buffer ownership and stop/close handling, plus a background worker and immutable
 frame publication with deferred queue-back. It has target compilation and
-concurrent host evidence, but no camera-enabled image or widget integration yet.
+concurrent host evidence. The camera image widget adds prepare/start, pause/
+resume, stop/reopen and deferred deletion, tested against the real worker and
+mocked SDK. Sensor input selection, video-plane ownership, barcode, camera-
+enabled image linking and board execution remain unverified or missing.
 
 This sequence supersedes the old instruction to stop after 3C5. It does not
 waive hardware verification or authorize flashing.

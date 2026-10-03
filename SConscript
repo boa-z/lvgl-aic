@@ -53,6 +53,8 @@ if GetDepend('AIC_LVGL_USE_SWIPE_V1'):
     src += Glob('widgets/lv_swipe_v1.c')
 if GetDepend('AIC_LVGL_USE_VIDEO_WINDOW'):
     src += Glob('widgets/lv_aic_video_window.c')
+if GetDepend('AIC_LVGL_USE_CAMERA'):
+    src += Glob('widgets/lv_aic_camera.c')
 if GetDepend('AIC_LVGL_MANUAL_TEST'):
     src += Glob('tests/manual/*.c')
 includes += [os.path.join(cwd, 'common'), os.path.join(cwd, 'image', 'mpp'),

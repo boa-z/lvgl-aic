@@ -25,3 +25,9 @@ compressed memory inputs and cache lifetime, plus board parity/cache probes.
 Hardware acceptance for both new capabilities is still pending.
 See [capabilities](capabilities.md), [validation](validation.md) and
 [transform gates](phase3c-transform.md).
+
+Camera image widget private dependencies: lv_image_t subclass layout, display
+layer_head and lv_layer_t next/draw_task_head are accessed only through
+compat/lvgl_aic_private.h. The layer scan defers source retirement while queued
+tasks may still open it; it does not dispatch, cancel or synchronously wait for
+tasks. The camera contract covers this conservative gate and source lifetime.

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_aic_camera_capture.h"
+#include "lv_aic_camera.h"
 #include "lv_aic_vin_session.h"
 #include "lv_aic_yuv_image_private.h"
 #include <aic_osal.h>
@@ -174,5 +175,17 @@ int main(void)
     assert(lv_aic_camera_capture_state(capture)==LV_AIC_CAPTURE_CLOSED);
     assert(lv_aic_camera_capture_destroy(capture));
     assert(lv_aic_yuv_image_decoder_init());
+    /* Real widget + real worker: deletion must not wait for a blocked SDK DQ. */
+    lv_display_t *display=lv_display_create(16,16);
+    lv_obj_t *widget=lv_aic_camera_create(lv_screen_active()); assert(widget);
+    assert(lv_aic_camera_configure(widget,"camera",0,LV_AIC_YUV_BT601_LIMITED)==LV_RESULT_OK);
+    assert(lv_aic_camera_open(widget)==LV_RESULT_OK);
+    assert(lv_aic_camera_start(widget)==LV_RESULT_OK); wait_count(&blocked,1);
+    lv_obj_delete(widget); assert(lv_aic_camera_pending_cleanup()==1);
+    lv_tick_inc(25); lv_timer_handler();
+    assert(lv_aic_camera_pending_cleanup()==1 && !atomic_load(&done));
+    wake_worker(0,true); wait_count(&done,1); pthread_join(thread,NULL);
+    lv_tick_inc(25); lv_timer_handler();
+    assert(!lv_aic_camera_pending_cleanup()); lv_display_delete(display);
     assert(lv_aic_yuv_image_decoder_deinit()); lv_deinit(); return 0;
 }

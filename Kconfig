@@ -137,3 +137,12 @@ config AIC_LVGL_USE_VIN
         must exclusively own VIN; camera widget integration is a separate layer.
 
 endmenu
+
+config AIC_LVGL_USE_CAMERA
+    bool "Enable application-owned asynchronous camera image widget"
+    default n
+    depends on AIC_LVGL_USE_VIN
+    help
+        Camera control with worker-owned VIN capture and immutable YUV images.
+        Explicit application colorimetry and YUV decoder initialization required.
+        Uses LVGL composition, not the SDK lower video plane or barcode backend.

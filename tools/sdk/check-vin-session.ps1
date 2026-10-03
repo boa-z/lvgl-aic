@@ -18,7 +18,7 @@ $includes=@('.', 'bsp/common/include', 'bsp/artinchip/sys/d13x/include',
     'kernel/rt-thread/components/utilities/ulog', 'bsp/artinchip/include',
     'kernel/rt-thread/components/libc/compilers/common/include')
 $arguments=@('-std=gnu99','-Wall','-Wextra','-Werror',
-    '-march=rv32imafdcpzpsfoperand_xtheade','-mabi=ilp32d','-DAIC_LVGL_USE_VIN=1')
+    '-march=rv32imafdcpzpsfoperand_xtheade','-mabi=ilp32d','-DAIC_LVGL_USE_VIN=1','-DAIC_LVGL_USE_CAMERA=1')
 foreach ($path in $includes) { $arguments+=@('-isystem',(Join-Path $sdk $path)) }
 $arguments+=('-I'+(Join-Path $component 'compat'))
 foreach ($path in @($component,(Join-Path $component 'include'),$lvgl,(Join-Path $lvgl 'include'),(Join-Path $lvgl 'include/lvgl'))) {
@@ -33,4 +33,9 @@ foreach ($module in @('vin_session','vin_frame','camera_capture')) {
     if ($LASTEXITCODE -ne 0) { throw "VIN $module target compilation failed" }
     Get-FileHash $output -Algorithm SHA256
 }
-Write-Output 'PASS compile-only VIN session/frame/capture worker; no camera link or hardware execution'
+$output=Join-Path $sdk 'output/lvgl-camera-widget.o'
+$compileArgs=$arguments+@('-c',(Join-Path $component 'widgets/lv_aic_camera.c'),'-o',$output)
+& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
+if ($LASTEXITCODE -ne 0) { throw 'Camera widget target compilation failed' }
+Get-FileHash $output -Algorithm SHA256
+Write-Output 'PASS compile-only VIN session/frame/capture/widget; no camera link or hardware execution'
