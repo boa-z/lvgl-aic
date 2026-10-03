@@ -15,6 +15,12 @@ typedef struct lv_aic_spi_display lv_aic_spi_display_t;
 lv_aic_spi_display_t *lv_aic_spi_display_create(lv_aic_spi_session_t *session,
     uint32_t width,uint32_t height,unsigned degrees,size_t pixel_budget,
     uint32_t stack_bytes,uint32_t priority);
+/* Select one or two full draw buffers. Budget covers the sum of pixel spans.
+ * Two buffers let LVGL render the next frame while the worker reads the previous
+ * one. The transmit session still owns its separate serialized DMA buffer. */
+lv_aic_spi_display_t *lv_aic_spi_display_create_buffered(lv_aic_spi_session_t *session,
+    uint32_t width,uint32_t height,unsigned degrees,size_t pixel_budget,
+    unsigned buffer_count,uint32_t stack_bytes,uint32_t priority);
 lv_display_t *lv_aic_spi_display_get(lv_aic_spi_display_t *display);
 /* Transport status, not visual acceptance. Initial value OK; updated per frame. */
 lv_aic_spi_result_t lv_aic_spi_display_result(lv_aic_spi_display_t *display);

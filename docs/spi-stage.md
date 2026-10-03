@@ -415,3 +415,28 @@ Logs: `output/spi-display-tests.log`, `output/spi-display-target.log`.
 Enabled-device final linkage, target scheduling/cache behavior, panel setup/TE,
 direct-blit integration, statistics and multi-display board acceptance remain
 open. Hardware **NOT_RUN**.
+
+
+## Double-buffered LVGL drawing
+
+`lv_aic_spi_display_create_buffered(..., buffer_count, ...)` accepts one or two
+full RGB565 draw buffers; the existing create API remains a one-buffer wrapper.
+The pixel budget is checked against the sum of both stride*height spans before
+allocation. Both buffers are released on startup failure or successful close.
+Flush now reads LVGL's actual active draw buffer and verifies it is one of the
+owned buffers, rather than always submitting the first allocation.
+
+With two buffers LVGL can render the next frame while the worker reads/transmits
+the previous one. Flush completion still gates reuse and handoff remains bounded
+to one submitted job; the session's DMA buffer is separate and serialized. This
+adds overlapping LVGL rendering, not a claim of the SDK's two-tx-buffer GE/DMA
+pipeline throughput. No additional in-flight DMA or unbounded frame queue exists.
+
+Validation: **65/65 host PASS**, including six real LVGL black/white alternating
+frames, alternating source addresses, unchanged previous-frame pixels until
+completion, aggregate budget boundary and invalid buffer-count rejection.
+D13x compile/component partial link PASS; combined object SHA256:
+`3ff5a960dc55cb8111a260742bde973633f7525c0dead18b031a1d87d7705773`.
+Logs: `output/spi-double-tests.log`, `output/spi-double-target.log`.
+Target throughput, physical panel output and enabled-device final linkage remain
+unverified. Hardware **NOT_RUN**.
