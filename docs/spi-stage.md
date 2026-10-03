@@ -147,3 +147,37 @@ strict real-header D13x submit/completion compile and all four SDK references
 Logs: `output/spi-submit-tests.log`, `output/spi-submit-target.log`.
 Actual transport linkage, panel commands on hardware and DMA timing remain
 **NOT_RUN**. This stage does not claim a functioning SPI display yet.
+
+
+## Composed SDK session and cache ownership
+
+`lv_aic_spi_session_open/submit/drain/close` combine the frame packer, checked
+transfer core and SDK submit/completion bridge. Applications provide an already
+initialized `rt_qspi_device`, explicit frame geometry/framing/byte order and
+dedicated 64-byte-aligned DMA storage. Capacity must include the whole cache-line
+rounded packed frame. No pixel memory is allocated and no panel/bus/pins are
+initialized. The session cleans exactly that bounded tx region before submission.
+Successful close drains DMA before releasing metadata and component ownership.
+
+A nonblocking atomic registry reserves one session per bus and rejects overlapping
+cache-rounded tx regions even across different buses. Open rejects active/error
+hardware status. Registry locking never spans completion waits. A busy registry
+rejects open or requests close retry; each live session still requires a single
+owner worker. Unmanaged SDK users remain the application's responsibility. They
+must not access the reserved device/bus or mutate its configuration. Faults retain
+both the bus claim and borrowed tx region indefinitely. There is no force release.
+
+Host **61/61 PASS**, followed by focused active-bus admission regression PASS.
+Tests use real mapped low-address storage, real frame/transfer/session/SDK bridge
+code and mocked driver/cache calls: cache extent/order, non-square swapped pixels,
+wait-before-rewrite, duplicate bus, shared-buffer rejection, separate bus admission,
+normal reopen and timeout retention. Logs `output/spi-session-tests.log` and
+`output/spi-session-target.log`. D13x strict compile and partial link **PASS**;
+all component SPI references resolve within the combined object, while OS/driver
+functions remain unresolved for the final application link. Combined object SHA256
+`bad0ad4bb934790a09569282fd139f1e52daaaf3d6de54a3cf0709ab17746ff4`.
+
+Still open: owned CMA allocation convenience, real panel initialization/D-C setup,
+LVGL display/flush integration, SDK-shaped blit API, QSPI display mode and target
+runtime acceptance. A provided preconfigured panel can use this composed session,
+but no physical SPI transfer has been performed here. Hardware **NOT_RUN**.

@@ -943,3 +943,10 @@ input, explicit byte order, orthogonal rotation and nearest resize into bounded
 caller storage. Host **58/58 PASS**, strict D13x compile **PASS**. Device/session,
 DMA completion, panel configuration and LVGL multi-display integration are
 still missing; no SPI output or hardware acceptance is implied.
+
+
+SPI migration now includes a composed SDK session: component bus/tx claims,
+cache-bounded frame packing, exact-count submission and checked completion with
+sticky fault retention. Host **61/61 PASS**, D13x compile/partial link **PASS**.
+Panel initialization and LVGL SPI display integration remain open; see
+[SPI stage](spi-stage.md). This is not board acceptance.

@@ -1,0 +1,88 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#include "lvgl_aic_feature_config.h"
+#if defined(AIC_LVGL_USE_SPI_SDK) && AIC_LVGL_USE_SPI_SDK
+#include "lv_aic_spi_session.h"
+#include "lv_aic_spi_sdk.h"
+#include "lvgl.h"
+#include <rtdevice.h>
+#include <aic_osal.h>
+#include <hal_qspi.h>
+struct lv_aic_spi_session {
+    lv_aic_spi_session_config_t config;
+    struct rt_spi_bus *bus;
+    size_t cache_bytes;
+    lv_aic_spi_transfer_t *transfer;
+    struct lv_aic_spi_session *next;
+};
+static lv_aic_spi_session_t *sessions;
+static volatile unsigned registry_busy;
+static bool take_registry(void) { return !__sync_lock_test_and_set(&registry_busy,1); }
+static void release_registry(void) { __sync_lock_release(&registry_busy); }
+static bool start(void *context,const uint8_t *pixels,size_t bytes)
+{
+    lv_aic_spi_session_t *s=context;
+    if(s->config.device->parent.bus!=s->bus) return false;
+    aicos_dcache_clean_range((unsigned long *)s->config.tx,(unsigned long)s->cache_bytes);
+    return lv_aic_spi_sdk_submit_qspi(s->config.device,pixels,bytes,s->config.prefix,
+        s->config.prefix_bytes,s->config.prefix_lines,s->config.data_lines);
+}
+static bool wait_complete(void *context)
+{
+    lv_aic_spi_session_t *s=context;
+    return s->config.device->parent.bus==s->bus &&
+        lv_aic_spi_sdk_wait_complete(&s->config.device->parent);
+}
+static bool lines(unsigned value) { return value==1 || value==2 || value==4; }
+lv_aic_spi_session_t *lv_aic_spi_session_open(const lv_aic_spi_session_config_t *c)
+{
+    if(!c || !c->device || !c->tx || !c->width || !c->height || c->width>4096 || c->height>4096 ||
+       !lines(c->data_lines) || c->prefix_bytes>4 ||
+       (c->prefix_bytes ? !lines(c->prefix_lines) : c->prefix_lines!=0)) return NULL;
+    size_t span=((size_t)c->width*c->height*2+63)&~(size_t)63;
+    uintptr_t address=(uintptr_t)c->tx;
+    if((address&63) || span>c->capacity || address>UINT32_MAX ||
+       span>(uint64_t)UINT32_MAX+1-address) return NULL;
+#if defined(AIC_CHIP_D13X) || defined(AIC_CHIP_G73X)
+    if(address<0x40000000U) return NULL;
+#endif
+    struct rt_spi_bus *bus=c->device->parent.bus;
+    if(!bus || !bus->ops || !bus->ops->configure || !bus->ops->xfer ||
+       !bus->ops->nonblock || !bus->ops->wait_completion || !bus->ops->gstatus || !take_registry()) return NULL;
+    for(lv_aic_spi_session_t *p=sessions;p;p=p->next) {
+        uintptr_t previous=(uintptr_t)p->config.tx;
+        if(p->bus==bus || ((uint64_t)address<(uint64_t)previous+p->cache_bytes &&
+                          (uint64_t)previous<(uint64_t)address+span)) { release_registry();return NULL; }
+    }
+    rt_uint32_t status=rt_spi_get_transfer_status(&c->device->parent);
+    if(status!=HAL_QSPI_STATUS_OK && status!=HAL_QSPI_STATUS_TRAN_DONE) { release_registry();return NULL; }
+    lv_aic_spi_session_t *s=lv_malloc_zeroed(sizeof(*s));
+    if(s) {
+        s->config=*c;s->bus=bus;s->cache_bytes=span;
+        lv_aic_spi_transfer_ops_t ops={start,wait_complete,s};
+        s->transfer=lv_aic_spi_transfer_create(c->tx,c->capacity,c->width,c->height,c->swap_bytes,&ops);
+        if(!s->transfer) { lv_free(s);s=NULL; }
+        else { s->next=sessions;sessions=s; }
+    }
+    release_registry();return s;
+}
+lv_aic_spi_result_t lv_aic_spi_session_submit(lv_aic_spi_session_t *s,
+    const lv_aic_spi_rgb565_frame_t *source,unsigned degrees)
+{ return s ? lv_aic_spi_transfer_submit(s->transfer,source,degrees) : LV_AIC_SPI_INVALID; }
+lv_aic_spi_result_t lv_aic_spi_session_drain(lv_aic_spi_session_t *s)
+{ return s ? lv_aic_spi_transfer_drain(s->transfer) : LV_AIC_SPI_INVALID; }
+lv_aic_spi_result_t lv_aic_spi_session_close(lv_aic_spi_session_t *s)
+{
+    if(!s) return LV_AIC_SPI_INVALID;
+    if(s->transfer) {
+        lv_aic_spi_result_t result=lv_aic_spi_transfer_close(s->transfer);
+        if(result!=LV_AIC_SPI_OK) return result;
+        s->transfer=NULL;
+    }
+    /* Never hold the shared registry across driver completion waits. */
+    if(!take_registry()) return LV_AIC_SPI_BUSY;
+    lv_aic_spi_session_t **slot=&sessions;
+    while(*slot && *slot!=s) slot=&(*slot)->next;
+    if(*slot) *slot=s->next;
+    release_registry();lv_free(s);return LV_AIC_SPI_OK;
+}
+#endif

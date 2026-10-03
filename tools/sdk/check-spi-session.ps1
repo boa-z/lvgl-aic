@@ -40,3 +40,24 @@ if(-not ($symbols -cmatch '\bT\s+lv_aic_spi_sdk_wait_complete$')) { throw 'Missi
 if(-not ($symbols -cmatch '\bT\s+lv_aic_spi_sdk_submit_qspi$')) { throw 'Missing submit implementation' }
 Get-FileHash $output -Algorithm SHA256
 Write-Output 'PASS checked SPI submit/completion compile; no SDK transport link or hardware execution'
+
+$objects=@($output)
+foreach($source in @('port/lv_aic_spi_session.c','common/lv_aic_spi_transfer.c','common/lv_aic_spi_frame.c')) {
+    $object=Join-Path $sdk ('output/'+[IO.Path]::GetFileNameWithoutExtension($source)+'.o')
+    $compileArgs=$arguments+@('-c',(Join-Path $component $source),'-o',$object)
+    & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
+    if($LASTEXITCODE -ne 0) { throw "SPI target compile failed: $source" }
+    $objects+=$object
+}
+$combined=Join-Path $sdk 'output/lvgl-spi-session-linked.o'
+$linkArgs=@('-m','elf32lriscv','-r','-o',$combined)+$objects
+& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-ld.exe') @linkArgs
+if($LASTEXITCODE -ne 0) { throw 'SPI session partial link failed' }
+$symbols=& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-nm.exe') $combined
+if($LASTEXITCODE -ne 0) { throw 'SPI session nm failed' }
+foreach($api in @('open','submit','drain','close')) {
+    if(-not ($symbols -cmatch ('\bT\s+lv_aic_spi_session_'+$api+'$'))) { throw "Missing session API: $api" }
+}
+if($symbols -cmatch '\bU\s+lv_aic_spi_') { throw 'Unresolved component SPI dependency' }
+Get-FileHash $combined -Algorithm SHA256
+Write-Output 'PASS SPI session/frame/transfer/SDK bridge partial link; OS functions unresolved, no hardware execution'
