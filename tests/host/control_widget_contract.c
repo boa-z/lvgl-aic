@@ -15,6 +15,24 @@
 #include "lvgl/widgets/lv_spinbox.h"
 #include "lvgl/widgets/lv_switch.h"
 
+static unsigned ready_events,cancel_events;
+static void editing_event(lv_event_t *event)
+{
+    if(lv_event_get_code(event)==LV_EVENT_READY) ready_events++;
+    if(lv_event_get_code(event)==LV_EVENT_CANCEL) cancel_events++;
+}
+static void keyboard_key(lv_obj_t *keyboard,const char *text)
+{
+    for(unsigned i=0;i<64;i++) {
+        const char *label=lv_buttonmatrix_get_button_text(keyboard,i);
+        if(!label) break;
+        if(strcmp(label,text)) continue;
+        lv_buttonmatrix_set_selected_button(keyboard,i);
+        lv_obj_send_event(keyboard,LV_EVENT_VALUE_CHANGED,NULL);return;
+    }
+    assert(!"keyboard key absent");
+}
+
 int main(void)
 {
     lv_init();
@@ -51,6 +69,16 @@ int main(void)
     assert(lv_keyboard_get_textarea(keyboard) == textarea);
     assert(lv_keyboard_get_mode(keyboard) == LV_KEYBOARD_MODE_NUMBER);
     assert(lv_keyboard_get_popovers(keyboard));
+    lv_textarea_set_text(textarea,"");lv_textarea_set_max_length(textarea,3);
+    lv_obj_add_event_cb(textarea,editing_event,LV_EVENT_ALL,NULL);
+    keyboard_key(keyboard,"1");keyboard_key(keyboard,"2");keyboard_key(keyboard,"3");
+    keyboard_key(keyboard,"4");assert(strcmp(lv_textarea_get_text(textarea),"123")==0);
+    keyboard_key(keyboard,LV_SYMBOL_BACKSPACE);assert(strcmp(lv_textarea_get_text(textarea),"12")==0);
+    keyboard_key(keyboard,LV_SYMBOL_OK);assert(ready_events==1);
+    keyboard_key(keyboard,LV_SYMBOL_KEYBOARD);assert(cancel_events==1);
+    lv_keyboard_set_textarea(keyboard,NULL);
+    keyboard_key(keyboard,"9");assert(strcmp(lv_textarea_get_text(textarea),"12")==0);
+
 
     lv_obj_t * spinbox = lv_spinbox_create(screen);
     assert(spinbox != NULL);
@@ -63,6 +91,11 @@ int main(void)
     assert(lv_spinbox_get_step(spinbox) == 5);
     assert(lv_spinbox_get_value(spinbox) == 35);
     assert(lv_spinbox_get_rollover(spinbox));
+    lv_spinbox_set_value(spinbox,100);lv_spinbox_increment(spinbox);
+    assert(lv_spinbox_get_value(spinbox)==-100);
+    lv_spinbox_decrement(spinbox);assert(lv_spinbox_get_value(spinbox)==100);
+    lv_spinbox_set_rollover(spinbox,false);lv_spinbox_increment(spinbox);
+    assert(lv_spinbox_get_value(spinbox)==100);
 
     lv_obj_t * buttonmatrix = lv_buttonmatrix_create(screen);
     assert(buttonmatrix != NULL);

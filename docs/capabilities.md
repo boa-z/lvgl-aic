@@ -405,3 +405,10 @@ dependency. Rebuilt suite **50/50 PASS**, including arc, calendar, checkbox,
 keyboard, LED, line, message box, spinbox, switch and button controls. Earlier
 49/49 results remain valid for their narrower executed set. Runtime/firmware
 sources are unchanged; this expands verification, not hardware acceptance.
+
+Common-control interaction follow-up: keyboard VALUE_CHANGED events now exercise
+numeric entry, maximum length, backspace, READY/CANCEL notification and detached
+textarea behavior. Spinbox tests cover both endpoint rollover directions and
+clamping with rollover disabled. Focused control-widget test PASS. Events are
+dispatched through LVGL handlers; this is not pointer hit-testing or hardware
+keyboard/touch acceptance. Runtime sources and packaged image are unchanged.
