@@ -282,3 +282,13 @@ only checker changes were pending; no new firmware provenance is claimed.
 Strict E907 compilation now includes the real RT-Thread manual command source;
 compile PASS and nm confirms its registration/poll/deinit are present (not an
 empty disabled-feature object). These checks do not execute the shell or board.
+
+
+Media test entry now accepts a copied native absolute path (127-byte limit)
+through the existing UI mailbox. RGB/YUV decoder initialization is queried
+before use; the new YUV query has host lifecycle coverage. Explicit media policy
+is 4 MiB CMA, three extra frames and BT.601 limited, with an independent 4 MiB
+rotation budget. APNG limits stay unchanged. Host 49/49 PASS and strict E907
+including the actual command source PASS; this increment has not been packaged
+or run on hardware. URI parsing/RT mailbox runtime and actual media remain
+NOT_RUN; see manual README for use and codec applicability.

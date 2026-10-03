@@ -14,6 +14,8 @@ typedef void (*lv_aic_yuv_release_cb_t)(void *context);
  * owner thread. Deinit refuses while any image or decoder reader remains.
  * Destroy all images/close readers and deinit this decoder before lv_deinit. */
 bool lv_aic_yuv_image_decoder_init(void);
+/* Owner-thread query; does not acquire decoder ownership. */
+bool lv_aic_yuv_image_decoder_is_initialized(void);
 bool lv_aic_yuv_image_decoder_deinit(void);
 
 /* Immutable frame publication. Both callbacks are mandatory. Create copies

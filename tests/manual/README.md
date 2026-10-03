@@ -130,7 +130,7 @@ patch over opaque background, where straight-alpha OVER must remain 255.
 Use `lv_aic_plane_test show` after the manual UI starts, with other media tests
 closed. Requires ARGB8888, at least 240x240 logical resolution and the packaged
 `/data/mpp_test/apng-loop.png` fixture. The unified player uses APNG with explicit
-decode budgets and a separate 256 KiB plane rotation peak budget. No test opens
+decode budgets and a separate 4 MiB plane rotation peak budget. No test opens
 a plane automatically at boot.
 
 Commands: `pause`, `resume`, `rotate` (next 90 degrees), `pivot` (25%/25%),
@@ -142,5 +142,15 @@ close until cleanup is zero. A command result means acceptance, not hardware
 PASS; record serial state and observed pixels. A GE fault may intentionally
 retain resources until reboot. Do not run unmanaged plane/alpha writers.
 
-This entry currently exercises APNG RGB video-plane output, not YUV media,
-A/V timing or whole-display rotation. Hardware execution remains NOT_RUN.
+`lv_aic_plane_test show /absolute/path` selects a native SDK media URI (maximum
+127 bytes; no LVGL drive prefix). Close and wait for cleanup before choosing a
+new file. The mailbox copies the path before acknowledging it, and all decoder/
+widget calls remain on the UI owner thread. Media uses a 4 MiB CMA budget,
+three extra frames and explicit BT.601 limited-range colorimetry. Use a fixture
+with that colorimetry; this fixed test policy is not automatic color detection.
+APNG retains its smaller decode budgets. Start with small supported media;
+exceeding budgets or unavailable codecs should report FAULT, not be called a
+successful decode. D13x's V30 profile does not include the SDK V10 H.264 codec.
+
+The entry now permits RGB/YUV media testing, but neither codec output, A/V timing
+nor whole-display rotation has been accepted on hardware. Hardware NOT_RUN.

@@ -31,7 +31,9 @@ int main(void)
     memset(y,81,sizeof(y)); memset(u,90,sizeof(u)); memset(v,240,sizeof(v));
     lv_init();
     assert(!lv_aic_yuv_image_create(&frame,retain_frame,release_frame,&live));
+    assert(!lv_aic_yuv_image_decoder_is_initialized());
     assert(lv_aic_yuv_image_decoder_init());
+    assert(lv_aic_yuv_image_decoder_is_initialized());
     assert(!lv_aic_yuv_image_decoder_init());
     reject_retain=1;
     assert(!lv_aic_yuv_image_create(&frame,retain_frame,release_frame,&live));
@@ -65,7 +67,9 @@ int main(void)
     assert(b.decoded->data[2]==254);
     lv_image_decoder_close(&b); assert(live==0 && released==1);
     assert(lv_aic_yuv_image_decoder_deinit());
+    assert(!lv_aic_yuv_image_decoder_is_initialized());
     assert(lv_aic_yuv_image_decoder_init());
+    assert(lv_aic_yuv_image_decoder_is_initialized());
 
     /* Actual native image widget -> software draw -> framebuffer pixels.
      * Frame replacement must not reuse a previous source/cache entry. */
@@ -106,7 +110,9 @@ int main(void)
     lv_deinit();
     /* Repeat a complete LVGL lifetime: no stale decoder/registry state. */
     lv_init();
+    assert(!lv_aic_yuv_image_decoder_is_initialized());
     assert(lv_aic_yuv_image_decoder_init());
+    assert(lv_aic_yuv_image_decoder_is_initialized());
     assert(lv_aic_yuv_image_decoder_deinit());
     lv_deinit();
     return 0;

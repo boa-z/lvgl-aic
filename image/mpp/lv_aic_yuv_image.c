@@ -86,6 +86,8 @@ static void image_close(lv_image_decoder_t *dec, lv_image_decoder_dsc_t *dsc)
     dsc->decoded=NULL; dsc->user_data=NULL;
     lv_aic_yuv_image_release_lease(image);
 }
+bool lv_aic_yuv_image_decoder_is_initialized(void) { return decoder != NULL; }
+
 bool lv_aic_yuv_image_decoder_init(void)
 {
     if (decoder) return false;
