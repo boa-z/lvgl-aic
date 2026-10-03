@@ -210,3 +210,18 @@ target the real SDK entry, and no direct bypass from other linked functions.
 Media remains single-instance until its independent session, callback, allocator
 and shared-audio lifecycle are verified. Runtime and hardware mixing are not
 inferred from this prerequisite. Physical contention/codec acceptance **NOT_RUN**.
+
+Arbitration stage: host **42/42 PASS**, strict E907 compilation **PASS**;
+clean combined firmware boot/app/static/image/manifest **PASS**. Sources:
+
+- sdk: `1ceadb6db4cf05ce94c19a55ece68326293f1443`.
+- lvgl-aic: `0cb4072651f59c1ae4d1a65c30c3eeaaf9259afb`.
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+
+Latest image at the same profile path: SHA256 `460d7afe2ae7e8bf409fabd025ae661d330786b39dba7f9a574f3019501e2d55`.
+ELF SHA256: `013f285e81e4ec20635078b8e698b7612eff713bfad16b16276a264c8780fea6`.
+
+The new verifier rejected the previous unwrapped image at `ve_decode_jpeg`.
+Final ELF checks passed for `png_hardware_decode` and `ve_decode_jpeg`.
+H.264 was not linked into this profile, so its final call path is **NOT_RUN**
+for this build. Physical arbitration/decode execution also remains **NOT_RUN**.
