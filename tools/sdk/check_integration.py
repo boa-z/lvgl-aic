@@ -145,6 +145,7 @@ def main():
     parser.add_argument("--with-fonts", action="store_true")
     parser.add_argument("--with-gif", action="store_true")
     parser.add_argument("--with-widgets", action="store_true")
+    parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
                         help="Development builds only; preserve the component diff with evidence")
@@ -176,6 +177,14 @@ def main():
     config = (root / ".config").read_text(encoding="utf-8")
     header = (root / "rtconfig.h").read_text(encoding="utf-8")
     turns = args.rotation // 90
+    if args.with_aicp:
+        if "CONFIG_AIC_MPP_AICP_DEC_ENABLE=y" not in config or not re.search(
+                r"^#define AIC_MPP_AICP_DEC_ENABLE(?:\s|$)", header, re.MULTILINE):
+            fail("AICP codec profile mismatch")
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        if not re.search(r"^\s+0x[0-9a-f]+\s+create_aicp_decoder\s*$", text, re.MULTILINE):
+            fail("SDK AICP codec live symbol absent")
+        print("SDK AICP codec live symbol: PASS")
     for text, pattern in (
         (config, r"^CONFIG_AIC_LVGL_DISPLAY_ROTATION=%d$" % turns),
         (header, r"^#define AIC_LVGL_DISPLAY_ROTATION\s+%d\s*$" % turns),

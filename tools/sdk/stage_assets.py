@@ -10,6 +10,7 @@ from sdk_paths import sdk_root, component_root, lvgl_root
 parser = argparse.ArgumentParser()
 parser.add_argument("--fonts", action="store_true")
 parser.add_argument("--gif", action="store_true")
+parser.add_argument("--aicp", action="store_true")
 args = parser.parse_args()
 root = sdk_root()
 source = component_root() / "tests/data/mpp"
@@ -34,6 +35,9 @@ if args.gif:
         "bulb.gif": upstream / "examples/libs/gif/bulb.gif",
         "LVGL-LICENCE.txt": upstream / "LICENCE.txt",
     })
+if args.aicp:
+    vendor = root / "packages/artinchip/lvgl-ui/aic_demo/aic_widget_demo/img_usage_demo/assets/image"
+    files.update({name: vendor / name for name in ("bird.aicp", "flower.aicp")})
 # Remove only previously inventoried generated assets absent from this profile.
 previous = stage / "SHA256.json"
 if previous.exists():

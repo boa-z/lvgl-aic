@@ -25,4 +25,8 @@ Both platform contracts pass; the V31 host configuration passes 14/14 tests.
 Fixtures are read from the external SDK without copying vendor assets.
 
 Remaining: enabled-codec target link and board pixel parity.
+Target build entry: `tools/sdk/build.ps1 -Phase ge2d -WithAicp`.
+It enables the SDK codec, stages bird/flower with SHA256 inventory, and checks
+the live create_aicp_decoder symbol. This profile is not yet build-validated.
+The four-component fixture remains unsupported on non-V31 targets.
 Do not enable the codec in a release solely on the basis of these host tests.
