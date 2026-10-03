@@ -35,5 +35,18 @@ GE commands are mocked; CPU pixels and LVGL decoder/filesystem code are real.
 
 Board probes are integrated into the fill suite: encoded alpha 0/128/255,
 90 replacement pixels each, all outside pixels and row padding checked.
-Target build and physical board execution: pending for this stage.
+Target build: PASS for the full ge2d-fonts-gif-widgets-aicp profile:
+
+- Command: tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -Jobs 8.
+- SDK source: 56babd13; component source: 54bfb26; LVGL: 80ca777e.
+- Boot/app compilation, static/image checks and manifest: PASS.
+- Live target map contains lv_aic_fake_image_parse, lv_aic_fake_fs_install,
+  lv_draw_aic_ge2d_fill_replace and fake_probe in allocated text sections.
+- SDK evidence: output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp.
+- Image: images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
+- SHA256: 203ad926359ef9523a1401dee2f880ee1d46a8e5a466e0a1936e19820fad683c.
+- Manifest records clean sources. Later documentation commits are excluded
+  from this artifact; subsequent builds replace this profile directory.
+
+Physical board execution: NOT_RUN.
 This feature does not implement YUV/media-frame ownership or media widgets.
