@@ -4,6 +4,7 @@
 #include "lvgl_aic_private.h"
 #if defined(AIC_LVGL_USE_PLAYER) && AIC_LVGL_USE_PLAYER
 #include <string.h>
+#include <limits.h>
 #if !LV_USE_IMAGE
 #error "The AIC player widget requires LV_USE_IMAGE"
 #endif
@@ -16,6 +17,12 @@ struct player_binding {
     lv_obj_t *obj;
     lv_timer_t *timer;
     lv_aic_player_playback_t *playback;
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    lv_aic_apng_playback_t *apng;
+    lv_aic_apng_playback_options_t apng_options;
+    bool apng_configured;
+    uint32_t rate_num,rate_den;
+#endif
     player_frame_t *frame;
     slave_binding_t *slaves;
     lv_aic_playback_options_t options;
@@ -130,15 +137,127 @@ lv_obj_t *lv_aic_slave_player_get_master(lv_obj_t *obj)
     slave_binding_t *s=((slave_widget_t *)obj)->binding;
     return s->master?s->master->obj:NULL;
 }
+/* Match the SDK's case-sensitive native-path suffix selection. */
+static bool png_source(const char *uri)
+{
+    size_t n=strlen(uri);
+    return (n>=4 && !strcmp(uri+n-4,".png")) || (n>=5 && !strcmp(uri+n-5,".apng"));
+}
+static bool backend_active(player_binding_t *b)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) return true;
+#endif
+    return b->playback!=NULL;
+}
+static bool source_configured(player_binding_t *b,const char *uri)
+{
+    if(!png_source(uri)) return b->configured;
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    return b->apng_configured;
+#else
+    return false;
+#endif
+}
+static void backend_close(player_binding_t *b)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) { lv_aic_apng_playback_close(b->apng); return; }
+#endif
+    lv_aic_player_playback_close(b->playback);
+}
+static bool backend_destroy(player_binding_t *b)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) {
+        if(!lv_aic_apng_playback_destroy(b->apng)) return false;
+        b->apng=NULL; return true;
+    }
+#endif
+    if(!lv_aic_player_playback_destroy(b->playback)) return false;
+    b->playback=NULL; return true;
+}
+static lv_aic_playback_status_t backend_status(player_binding_t *b)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) {
+        lv_aic_apng_playback_status_t a=lv_aic_apng_playback_status(b->apng);
+        static const lv_aic_playback_state_t states[]={
+            LV_AIC_PLAYBACK_OPENING,LV_AIC_PLAYBACK_READY,LV_AIC_PLAYBACK_PLAYING,
+            LV_AIC_PLAYBACK_PAUSED,LV_AIC_PLAYBACK_TERMINAL,LV_AIC_PLAYBACK_CLOSING,
+            LV_AIC_PLAYBACK_CLOSED,LV_AIC_PLAYBACK_FAULT};
+        lv_aic_playback_status_t s={.state=states[a.state],.finished=a.finished,.volume=-1,
+            .has_video=true,.width=a.width,.height=a.height,.seek_pending=a.restart_pending,
+            .seeks_completed=a.restarts,.video_eos=a.state==LV_AIC_APNG_TERMINAL,
+            .frames_received=a.composed>UINT32_MAX?UINT32_MAX:(uint32_t)a.composed,
+            .frames_queued=a.published>UINT32_MAX?UINT32_MAX:(uint32_t)a.published};
+        if(a.restart_pending) s.state=LV_AIC_PLAYBACK_SEEKING;
+        if(!a.restart_pending && a.state>=LV_AIC_APNG_READY && a.state<=LV_AIC_APNG_TERMINAL &&
+           a.width && a.height && a.width<=INT32_MAX && a.height<=INT32_MAX && a.file_bytes<=INT64_MAX) {
+            s.media_info_valid=true;
+            s.media_info=(lv_aic_media_info_t){.file_size=(int64_t)a.file_bytes,.has_video=1,
+                .video_stream={(int32_t)a.width,(int32_t)a.height}};
+        }
+        return s;
+    }
+#endif
+    return lv_aic_player_playback_status(b->playback);
+}
+static bool backend_start(player_binding_t *b)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) return lv_aic_apng_playback_start(b->apng);
+#endif
+    return lv_aic_player_playback_start(b->playback);
+}
+static bool backend_pause(player_binding_t *b,bool paused)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) return lv_aic_apng_playback_pause(b->apng,paused);
+#endif
+    return lv_aic_player_playback_pause(b->playback,paused);
+}
+static bool backend_seek(player_binding_t *b,uint64_t position_us)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) return !position_us && lv_aic_apng_playback_restart(b->apng);
+#endif
+    return lv_aic_player_playback_seek(b->playback,position_us);
+}
+static bool backend_poll(player_binding_t *b,lv_aic_player_image_t *out)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) { uint64_t sequence; return lv_aic_apng_playback_poll(b->apng,&out->rgb,&sequence); }
+#endif
+    return lv_aic_player_playback_poll(b->playback,out);
+}
+static bool can_repeat(player_binding_t *b)
+{
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) return b->status.video_eos && b->status.frames_queued!=b->repeat_frames;
+#endif
+    return b->status.seekable &&
+       ((b->status.has_video && b->status.video_eos && b->status.frames_queued!=b->repeat_frames) ||
+        (!b->status.has_video && b->status.has_audio && b->status.position_valid));
+}
 static bool prepare(player_binding_t *b)
 {
-    b->playback=lv_aic_player_playback_prepare(b->uri,&b->options);
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(png_source(b->uri)) b->apng=lv_aic_apng_playback_prepare(b->uri,&b->apng_options);
+    else
+#endif
+        b->playback=lv_aic_player_playback_prepare(b->uri,&b->options);
     b->status=lv_aic_player_playback_status(NULL);
-    if(!b->playback) { b->state=LV_AIC_PLAYER_FAULT; return false; }
+    if(!backend_active(b)) { b->state=LV_AIC_PLAYER_FAULT; return false; }
     b->state=LV_AIC_PLAYER_OPENING; b->stopped=false; b->repeat_frames=0;
-    if((b->volume>=0 && !lv_aic_player_playback_volume(b->playback,b->volume)) ||
-       (b->start_requested && !lv_aic_player_playback_start(b->playback))) {
-        lv_aic_player_playback_close(b->playback); b->state=LV_AIC_PLAYER_FAULT; return false;
+    bool setup=true;
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) setup=lv_aic_apng_playback_rate(b->apng,b->rate_num,b->rate_den);
+    else
+#endif
+        if(b->volume>=0) setup=lv_aic_player_playback_volume(b->playback,b->volume);
+    if(!setup || (b->start_requested && !backend_start(b))) {
+        backend_close(b); b->state=LV_AIC_PLAYER_FAULT; return false;
     }
     return true;
 }
@@ -148,15 +267,15 @@ static void tick(lv_timer_t *timer)
     if(!draws_idle()) return;
     if(!b->obj || b->closing) {
         retire(b);
-        if(b->playback) b->status=lv_aic_player_playback_status(b->playback);
-        if(!lv_aic_player_playback_destroy(b->playback)) return;
+        if(backend_active(b)) b->status=backend_status(b);
+        if(!backend_destroy(b)) return;
         b->playback=NULL; b->closing=false;
         if(!b->obj) { orphans--; lv_timer_delete(timer); lv_free(b); return; }
         if(b->reopen) { b->reopen=false; (void)prepare(b); }
         else { b->state=b->stopped?LV_AIC_PLAYER_STOPPED:LV_AIC_PLAYER_CLOSED; lv_timer_pause(timer); }
     }
-    else if(b->playback) {
-        b->status=lv_aic_player_playback_status(b->playback);
+    else if(backend_active(b)) {
+        b->status=backend_status(b);
         if(b->status.seek_pending) retire(b);
         switch(b->status.state) {
         case LV_AIC_PLAYBACK_OPENING: b->state=LV_AIC_PLAYER_OPENING; break;
@@ -171,7 +290,7 @@ static void tick(lv_timer_t *timer)
         if(b->state==LV_AIC_PLAYER_FAULT) retire(b);
         else if(b->state==LV_AIC_PLAYER_PLAYING || b->state==LV_AIC_PLAYER_TERMINAL) {
             lv_aic_player_image_t next={0};
-            if(lv_aic_player_playback_poll(b->playback,&next)) {
+            if(backend_poll(b,&next)) {
                 player_frame_t *frame=lv_malloc(sizeof(*frame));
                 if(frame) {
                     *frame=(player_frame_t){.image=next,.owners=1};
@@ -187,10 +306,8 @@ static void tick(lv_timer_t *timer)
      * repeat, replace source, stop or delete without post-event object access. */
     if(b->obj && !b->closing && b->state==LV_AIC_PLAYER_TERMINAL &&
        b->reported==LV_AIC_PLAYER_TERMINAL && b->auto_restart &&
-       b->status.seekable && b->auto_restarts<UINT64_MAX &&
-       ((b->status.has_video && b->status.video_eos && b->status.frames_queued!=b->repeat_frames) ||
-        (!b->status.has_video && b->status.has_audio && b->status.position_valid))) {
-        if(lv_aic_player_playback_seek(b->playback,0)) {
+       b->auto_restarts<UINT64_MAX && can_repeat(b)) {
+        if(backend_seek(b,0)) {
             b->repeat_frames=b->status.frames_queued; b->auto_restarts++;
             b->state=LV_AIC_PLAYER_SEEKING; retire(b);
         }
@@ -211,7 +328,7 @@ static void destructor(const lv_obj_class_t *class_p,lv_obj_t *obj)
         slave_binding_t *s=b->slaves; unlink_slave(s); lv_timer_resume(s->timer);
     }
     b->obj=NULL; b->reopen=false; orphans++;
-    lv_aic_player_playback_close(b->playback); lv_timer_resume(b->timer);
+    backend_close(b); lv_timer_resume(b->timer);
 }
 const lv_obj_class_t lv_aic_player_class={
     .base_class=&lv_image_class,.instance_size=sizeof(player_widget_t),.destructor_cb=destructor,
@@ -225,6 +342,9 @@ lv_obj_t *lv_aic_player_create(lv_obj_t *parent)
     if(!b) { lv_obj_delete(obj); return NULL; }
     b->timer=lv_timer_create(tick,20,b);
     if(!b->timer) { lv_free(b); lv_obj_delete(obj); return NULL; }
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    b->rate_num=b->rate_den=1;
+#endif
     b->obj=obj; b->volume=b->reported_volume=-1; b->status=lv_aic_player_playback_status(NULL);
     ((player_widget_t *)obj)->binding=b; lv_timer_pause(b->timer); return obj;
 }
@@ -232,20 +352,64 @@ lv_result_t lv_aic_player_configure(lv_obj_t *obj,const lv_aic_playback_options_
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
-    if(b->playback || b->closing || !options || !options->cma_budget || options->extra_frames<2 || options->extra_frames>8 ||
+    if(backend_active(b) || b->closing || !options || !options->cma_budget || options->extra_frames<2 || options->extra_frames>8 ||
        options->color_space<LV_AIC_YUV_BT601_LIMITED || options->color_space>LV_AIC_YUV_BT709_FULL) return LV_RESULT_INVALID;
     b->options=*options; b->configured=true; return LV_RESULT_OK;
+}
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+lv_result_t lv_aic_player_configure_apng(lv_obj_t *obj,const lv_aic_apng_playback_options_t *o)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    if(backend_active(b) || b->closing || !o || !o->limits.file_bytes || o->limits.file_bytes>LONG_MAX ||
+       !o->limits.frame_png_bytes || !o->limits.canvas_pixels || !o->limits.frames ||
+       !o->stream_budget || !o->snapshot_budget || !o->cma_budget || o->packet_limit<256 ||
+       o->packet_limit>INT_MAX-255U || o->snapshots<2 || o->snapshots>8 ||
+       !o->minimum_delay_us || o->minimum_delay_us>1000000) return LV_RESULT_INVALID;
+    b->apng_options=*o; b->apng_configured=true; return LV_RESULT_OK;
+}
+#endif
+lv_result_t lv_aic_player_set_rate(lv_obj_t *obj,uint32_t numerator,uint32_t denominator)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    if(!b->closing && b->apng && lv_aic_apng_playback_rate(b->apng,numerator,denominator)) {
+        b->rate_num=numerator; b->rate_den=denominator; return LV_RESULT_OK;
+    }
+#else
+    (void)numerator; (void)denominator;
+#endif
+    return LV_RESULT_INVALID;
+}
+lv_result_t lv_aic_player_get_rate(lv_obj_t *obj,uint32_t *numerator,uint32_t *denominator)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    if(!numerator || !denominator || b->closing || !backend_active(b)) return LV_RESULT_INVALID;
+    lv_aic_playback_status_t s=backend_status(b);
+    if(s.seek_pending || (s.state!=LV_AIC_PLAYBACK_READY && s.state!=LV_AIC_PLAYBACK_PLAYING &&
+       s.state!=LV_AIC_PLAYBACK_PAUSED && s.state!=LV_AIC_PLAYBACK_TERMINAL)) return LV_RESULT_INVALID;
+    uint32_t n=1,d=1;
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng) {
+        lv_aic_apng_playback_status_t a=lv_aic_apng_playback_status(b->apng);
+        n=a.rate_num; d=a.rate_den;
+        if(!n || !d) return LV_RESULT_INVALID;
+    }
+#endif
+    *numerator=n; *denominator=d; return LV_RESULT_OK;
 }
 lv_result_t lv_aic_player_set_src(lv_obj_t *obj,const char *uri)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
-    if(!b->configured || !uri || !uri[0] || strlen(uri)>=sizeof(b->uri)) return LV_RESULT_INVALID;
+    if(!uri || !uri[0] || strlen(uri)>=sizeof(b->uri) || !source_configured(b,uri)) return LV_RESULT_INVALID;
     memcpy(b->uri,uri,strlen(uri)+1); b->start_requested=false;
     lv_timer_resume(b->timer);
-    if(b->playback || b->closing) {
+    if(backend_active(b) || b->closing) {
         b->closing=b->reopen=true; b->state=LV_AIC_PLAYER_STOPPING;
-        lv_aic_player_playback_close(b->playback); return LV_RESULT_OK;
+        backend_close(b); return LV_RESULT_OK;
     }
     return prepare(b)?LV_RESULT_OK:LV_RESULT_INVALID;
 }
@@ -253,21 +417,21 @@ lv_result_t lv_aic_player_start(lv_obj_t *obj)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
-    if(!b->configured || !b->uri[0] || b->state==LV_AIC_PLAYER_FAULT) return LV_RESULT_INVALID;
+    if(!b->uri[0] || !source_configured(b,b->uri) || b->state==LV_AIC_PLAYER_FAULT) return LV_RESULT_INVALID;
     b->start_requested=true; lv_timer_resume(b->timer);
     if(b->closing || b->state==LV_AIC_PLAYER_TERMINAL) {
         b->closing=b->reopen=true; b->state=LV_AIC_PLAYER_STOPPING;
-        lv_aic_player_playback_close(b->playback); return LV_RESULT_OK;
+        backend_close(b); return LV_RESULT_OK;
     }
-    if(!b->playback) return prepare(b)?LV_RESULT_OK:LV_RESULT_INVALID;
-    return lv_aic_player_playback_start(b->playback)?LV_RESULT_OK:LV_RESULT_INVALID;
+    if(!backend_active(b)) return prepare(b)?LV_RESULT_OK:LV_RESULT_INVALID;
+    return backend_start(b)?LV_RESULT_OK:LV_RESULT_INVALID;
 }
 static lv_result_t request_close(lv_obj_t *obj,bool stopped)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
     b->reopen=b->start_requested=false; b->stopped=stopped; b->closing=true; b->state=LV_AIC_PLAYER_STOPPING;
-    lv_aic_player_playback_close(b->playback); lv_timer_resume(b->timer); return LV_RESULT_OK;
+    backend_close(b); lv_timer_resume(b->timer); return LV_RESULT_OK;
 }
 lv_result_t lv_aic_player_stop(lv_obj_t *obj) { return request_close(obj,true); }
 lv_result_t lv_aic_player_close(lv_obj_t *obj) { return request_close(obj,false); }
@@ -275,7 +439,7 @@ static lv_result_t request_pause(lv_obj_t *obj,bool paused)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
-    return !b->closing && lv_aic_player_playback_pause(b->playback,paused)?LV_RESULT_OK:LV_RESULT_INVALID;
+    return !b->closing && backend_pause(b,paused)?LV_RESULT_OK:LV_RESULT_INVALID;
 }
 lv_result_t lv_aic_player_pause(lv_obj_t *obj) { return request_pause(obj,true); }
 lv_result_t lv_aic_player_resume(lv_obj_t *obj) { return request_pause(obj,false); }
@@ -283,8 +447,8 @@ lv_result_t lv_aic_player_seek(lv_obj_t *obj,uint64_t position_us)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
-    if(b->closing || !lv_aic_player_playback_seek(b->playback,position_us)) return LV_RESULT_INVALID;
-    b->repeat_frames=lv_aic_player_playback_status(b->playback).frames_queued;
+    if(b->closing || !backend_seek(b,position_us)) return LV_RESULT_INVALID;
+    b->repeat_frames=backend_status(b).frames_queued;
     b->state=LV_AIC_PLAYER_SEEKING; lv_timer_resume(b->timer); return LV_RESULT_OK;
 }
 lv_result_t lv_aic_player_set_auto_restart(lv_obj_t *obj,bool enabled)
@@ -307,6 +471,9 @@ lv_result_t lv_aic_player_set_volume(lv_obj_t *obj,int volume)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    if(b->apng || (b->uri[0] && png_source(b->uri))) return LV_RESULT_INVALID;
+#endif
     if(volume<0 || volume>100) return LV_RESULT_INVALID;
     if(b->playback && !b->closing && !lv_aic_player_playback_volume(b->playback,volume)) return LV_RESULT_INVALID;
     b->volume=volume; return LV_RESULT_OK;
@@ -320,7 +487,7 @@ lv_aic_playback_status_t lv_aic_player_get_status(lv_obj_t *obj)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return lv_aic_player_playback_status(NULL));
     player_binding_t *b=((player_widget_t *)obj)->binding;
-    return b->playback?lv_aic_player_playback_status(b->playback):b->status;
+    return backend_active(b)?backend_status(b):b->status;
 }
 unsigned lv_aic_player_pending_cleanup(void) { return orphans; }
 #endif

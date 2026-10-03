@@ -107,9 +107,19 @@ lv_result_t lv_aic_player_control(lv_obj_t *obj,lv_aic_player_cmd_t cmd,void *da
         }
         case LV_AIC_PLAYER_CMD_ATTACH_SLAVE:
             return data?lv_aic_slave_player_set_master(data,obj):LV_RESULT_INVALID;
-        case LV_AIC_PLAYER_CMD_GET_PLAYBACK_RATE:
+        case LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE: {
             if(!data) return LV_RESULT_INVALID;
-            *(float *)data=1.0f;return LV_RESULT_OK;
+            float rate=*(float *)data;
+            if(!(rate>=0.1f && rate<=10.0f)) return LV_RESULT_INVALID;
+            uint32_t n=(uint32_t)(rate*100000.0f+0.5f),d=100000,a=n,b=d;
+            while(b) { uint32_t r=a%b;a=b;b=r; }
+            return lv_aic_player_set_rate(obj,n/a,d/a);
+        }
+        case LV_AIC_PLAYER_CMD_GET_PLAYBACK_RATE: {
+            uint32_t n,d;
+            if(!data || lv_aic_player_get_rate(obj,&n,&d)!=LV_RESULT_OK) return LV_RESULT_INVALID;
+            *(float *)data=(float)n/d;return LV_RESULT_OK;
+        }
         default:return LV_RESULT_INVALID;
         }
     }

@@ -62,6 +62,56 @@ bool lv_aic_player_playback_seek(lv_aic_player_playback_t *p,uint64_t target)
     if(!p || p->closing || p->status.seek_pending || target>1000000) return false;
     p->status.seek_pending=true; p->status.seek_target_us=target; p->status.state=LV_AIC_PLAYBACK_SEEKING; return true;
 }
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+struct lv_aic_apng_playback { lv_aic_apng_playback_status_t status; unsigned readers; bool closing; };
+static lv_aic_apng_playback_t *png;
+static unsigned png_created,png_freed,png_frames;
+typedef struct { lv_aic_apng_playback_t *p; uint32_t pixels[16]; } png_frame_t;
+lv_aic_apng_playback_t *lv_aic_apng_playback_prepare(const char *path,const lv_aic_apng_playback_options_t *o)
+{
+    assert(!active && !png && o->snapshots==2); strcpy(last_uri,path);
+    png=calloc(1,sizeof(*png)); assert(png); png_created++;
+    png->status=(lv_aic_apng_playback_status_t){.state=LV_AIC_APNG_OPENING,.width=4,.height=4,
+        .file_bytes=1234,.rate_num=1,.rate_den=1}; return png;
+}
+bool lv_aic_apng_playback_start(lv_aic_apng_playback_t *p)
+{ if(!p || p->closing) return false; p->status.state=LV_AIC_APNG_PLAYING; return true; }
+bool lv_aic_apng_playback_pause(lv_aic_apng_playback_t *p,bool paused)
+{ if(!p || p->closing) return false; p->status.state=paused?LV_AIC_APNG_PLAYBACK_PAUSED:LV_AIC_APNG_PLAYING;return true; }
+bool lv_aic_apng_playback_rate(lv_aic_apng_playback_t *p,uint32_t n,uint32_t d)
+{
+    if(!p || p->closing || !n || !d || (uint64_t)n*10<d || n>(uint64_t)d*10) return false;
+    p->status.rate_num=n;p->status.rate_den=d;return true;
+}
+bool lv_aic_apng_playback_restart(lv_aic_apng_playback_t *p)
+{
+    if(!p || p->closing || p->status.restart_pending || p->status.state==LV_AIC_APNG_OPENING) return false;
+    p->status.restart_pending=true;return true;
+}
+lv_aic_apng_playback_status_t lv_aic_apng_playback_status(lv_aic_apng_playback_t *p)
+{ return p?p->status:(lv_aic_apng_playback_status_t){.state=LV_AIC_APNG_CLOSED}; }
+void lv_aic_apng_playback_close(lv_aic_apng_playback_t *p)
+{ if(p) { p->closing=true;p->status.state=LV_AIC_APNG_CLOSING; } }
+bool lv_aic_apng_playback_destroy(lv_aic_apng_playback_t *p)
+{
+    if(!p) return true;
+    if(!p->closing || p->readers || !allow_exit) return false;
+    assert(p==png); png=NULL; free(p); png_freed++;return true;
+}
+static bool png_retain(void *ctx) { png_frame_t *f=ctx;f->p->readers++;return true; }
+static void png_release(void *ctx) { png_frame_t *f=ctx;assert(f->p->readers);f->p->readers--;free(f); }
+bool lv_aic_apng_playback_poll(lv_aic_apng_playback_t *p,lv_aic_rgb_image_t **out,uint64_t *seq)
+{
+    if(!png_frames || p->closing || p->status.restart_pending) return false;
+    png_frames--;p->status.composed++;p->status.published++;
+    png_frame_t *f=calloc(1,sizeof(*f));assert(f);f->p=p;
+    for(unsigned i=0;i<16;i++) f->pixels[i]=0xff00ff00;
+    lv_aic_rgb_frame_t desc={.width=4,.height=4,.stride=16,.format=LV_COLOR_FORMAT_ARGB8888,
+        .data=(const uint8_t *)f->pixels,.capacity=sizeof(f->pixels)};
+    *out=lv_aic_rgb_image_create(&desc,png_retain,png_release,f);assert(*out);
+    *seq=p->status.published;return true;
+}
+#endif
 const lv_image_dsc_t *lv_aic_player_image_source(const lv_aic_player_image_t *p)
 { return p->rgb?lv_aic_rgb_image_source(p->rgb):lv_aic_yuv_image_source(p->yuv); }
 void lv_aic_player_image_destroy(lv_aic_player_image_t *p)
@@ -99,7 +149,10 @@ int main(void)
     lv_obj_t *screen=lv_screen_active();
     lv_obj_set_style_bg_color(screen,lv_color_black(),0);
     lv_obj_set_style_bg_opa(screen,LV_OPA_COVER,0);
-    lv_obj_t *o=make(); fail_prepare=true;
+    lv_obj_t *o=make();
+    /* Disabled or unconfigured PNG must not reach the SDK video backend. */
+    assert(lv_aic_player_set_src(o,"unsupported.png")==LV_RESULT_INVALID && !active);
+    fail_prepare=true;
     assert(lv_aic_player_set_src(o,"one.mp4")==LV_RESULT_INVALID); tick();
     assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT); fail_prepare=false;
     assert(lv_aic_player_set_volume(o,37)==LV_RESULT_OK);
@@ -272,6 +325,68 @@ int main(void)
     active->status.state=LV_AIC_PLAYBACK_TERMINAL; active->status.video_eos=true; frames=1;
     lv_obj_add_event_cb(o,delete_on_event,LV_EVENT_VALUE_CHANGED,NULL); tick(); tick();
     assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+    /* One image object and slave survive video -> PNG -> video, with readers
+     * deliberately held across both hand-offs and pending replacement updates. */
+    o=make(); s1=lv_aic_slave_player_create(screen);
+    lv_aic_apng_playback_options_t po={.limits={4096,4096,64,8},.stream_budget=8192,
+        .snapshot_budget=4096,.cma_budget=4096,.packet_limit=4096,.snapshots=2,.minimum_delay_us=1000};
+    assert(lv_aic_player_configure_apng(o,&po)==LV_RESULT_OK);
+    assert(lv_aic_slave_player_set_master(s1,o)==LV_RESULT_OK);
+    lv_image_set_scale(o,128);lv_image_set_rotation(s1,900);
+    assert(lv_aic_player_set_src(o,"switch.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);rgb=false;frames=1;tick();
+    reader=lv_aic_yuv_image_acquire(lv_image_get_src(o),&view);assert(reader);
+    assert(lv_aic_player_set_src(o,"first.png")==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"latest.apng")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);tick();
+    assert(active && !png && !lv_image_get_src(s1));
+    lv_aic_yuv_image_release_lease(reader);tick();tick();
+    assert(!active && png && !strcmp(last_uri,"latest.apng"));
+    assert(lv_aic_slave_player_get_master(s1)==o);
+    assert(lv_image_get_scale_x(o)==128 && lv_image_get_rotation(s1)==900);
+    png_frames=1;tick();tick();
+    assert(lv_image_get_src(o) && lv_image_get_src(o)==lv_image_get_src(s1));
+    assert(lv_aic_player_get_media_info(o,&info)==LV_RESULT_OK);
+    assert(info.file_size==1234 && info.has_video && !info.has_audio && !info.seek_able && info.video_stream.width==4);
+    assert(lv_aic_player_set_volume(o,50)==LV_RESULT_INVALID);
+    queried_volume=77;
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_VOLUME,&queried_volume)==LV_RESULT_INVALID && queried_volume==77);
+    rate=2.5f;
+    assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate)==LV_RESULT_OK);
+    rate=0;assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_PLAYBACK_RATE,&rate)==LV_RESULT_OK && rate==2.5f);
+    assert(lv_aic_player_set_rate(o,0,1)==LV_RESULT_INVALID);
+    assert(lv_aic_player_seek(o,1)==LV_RESULT_INVALID);
+    assert(lv_aic_player_pause(o)==LV_RESULT_OK);tick();
+    assert(lv_aic_player_seek(o,0)==LV_RESULT_OK);tick();
+    assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_SEEKING && !lv_image_get_src(s1));
+    assert(lv_aic_player_get_media_info(o,&info)==LV_RESULT_INVALID);
+    png->status.restart_pending=false;png->status.restarts++;tick();
+    assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
+    assert(lv_aic_player_resume(o)==LV_RESULT_OK);png_frames=1;tick();
+    assert(lv_aic_player_set_auto_restart(o,true)==LV_RESULT_OK);
+    png->status.state=LV_AIC_APNG_TERMINAL;tick();tick();
+    assert(png->status.restart_pending && lv_aic_player_get_auto_restart_count(o)==1);
+    png->status.restart_pending=false;png->status.restarts++;png->status.state=LV_AIC_APNG_PLAYING;
+    png_frames=1;tick();tick();
+    rgb_reader=lv_aic_rgb_image_acquire(lv_image_get_src(s1),&rgb_view);assert(rgb_reader);
+    assert(lv_aic_player_set_src(o,"return.mp4")==LV_RESULT_OK);
+    rate=9;assert(lv_aic_player_control(o,LV_AIC_PLAYER_CMD_GET_PLAYBACK_RATE,&rate)==LV_RESULT_INVALID && rate==9);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);tick();
+    assert(png && !active && rgb_view->data[1]==255);
+    lv_aic_rgb_image_release_lease(rgb_reader);tick();tick();
+    assert(active && !png && !strcmp(last_uri,"return.mp4"));
+    rgb=true;frames=1;tick();tick();assert(lv_image_get_src(o)==lv_image_get_src(s1));
+    lv_obj_delete(o);lv_obj_delete(s1);tick();tick();
+    /* APNG can be configured without media budgets; deletion waits native readers. */
+    o=lv_aic_player_create(screen);assert(lv_aic_player_configure_apng(o,&po)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"static.png")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);png_frames=1;tick();
+    rgb_reader=lv_aic_rgb_image_acquire(lv_image_get_src(o),&rgb_view);assert(rgb_reader);
+    lv_obj_delete(o);tick();assert(png && lv_aic_player_pending_cleanup());
+    lv_aic_rgb_image_release_lease(rgb_reader);tick();
+    assert(png_created==png_freed && created==freed && retained==released && !lv_aic_player_pending_cleanup());
+#endif
     lv_display_delete(d); assert(lv_aic_yuv_image_decoder_deinit()); assert(lv_aic_rgb_image_decoder_deinit()); lv_deinit();
     return 0;
 }

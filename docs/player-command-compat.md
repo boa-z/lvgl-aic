@@ -28,10 +28,9 @@ remain available for exact rational requests. Existing native state/lifecycle
 rules apply: restart/seek may wait for old readers, faults remain observable,
 and media terminal does not prove clean EOF (SDK PLAY_END also covers failures).
 For APNG, pause/rate intent survives zero-time replay, and static PNG may replay
-as an extension. Media source selection and APNG source selection still use
-their distinct widgets; automatic suffix-based backend switching is not supplied
-by this command adapter. Groups and cross-backend slave binding remain
-explicit gaps rather than partially populated outputs.
+as an extension. The unified player now selects its backend by source suffix;
+its existing slave bindings survive backend switches. The standalone APNG widget
+remains available without the SDK media/audio dependency. Groups remain unsupported.
 
 ## Corrected SDK seek comparison
 
@@ -73,8 +72,8 @@ media duration or advertise arbitrary seek.
 Queries are accepted only for prepared/playing/paused/terminal sources. Closing,
 replacement, seek transition, fault and missing metadata reject without writes.
 Volume/time command queries now use the same source-state gate, fixing stale
-old-source values during replacement/close. Fixed media rate 1x remains a
-backend capability query. APNG applied-rate queries reject inactive states.
+old-source values during replacement/close. Rate queries also reject inactive sources; a prepared media backend reports
+fixed 1x, and APNG reports its applied rate.
 
 Host full suite **39/39 PASS**, with updated focused playback/widget checks also
 passing after source-state gating. Coverage includes a 6,000,000,000-byte media
@@ -83,3 +82,32 @@ length, missing metadata and untouched outputs on source replacement. Strict
 E907 compile **PASS**, including SDK ABI layout assertions. Command adapter
 object SHA256: `cfa4d795f8ff80978178fd03e2468d9b7928374067f0a6933152eabb919f3cdf`.
 No new full firmware image or board claim is made by this stage.
+
+
+## Unified image player backend selection (2026-10-03)
+
+The existing `lv_aic_player` image subclass now chooses PNG/APNG for the exact,
+case-sensitive `.png` / `.apng` suffixes, matching SDK routing. Other suffixes
+(including uppercase PNG) use media. Configure media with
+`lv_aic_player_configure`, PNG with `lv_aic_player_configure_apng`, both before
+opening a source; each needs its own explicit budgets. PNG needs
+`AIC_LVGL_USE_APNG`, not `AIC_LVGL_USE_APNG_WIDGET`. Disabled/unconfigured
+PNG is rejected without changing the old source or attempting video decode.
+
+Replacing a source drains the old worker and all native readers before opening
+the latest requested path. Master/slave objects, scale/rotation and bindings stay
+intact. Existing media slaves share APNG snapshots without another decoder or
+pixel copy. Standalone APNG slave objects still belong to standalone APNG masters.
+
+PNG routes pause, start, zero-time replay, metadata and 0.1..10x rate to APNG.
+Volume/audio timestamp and nonzero seek remain unsupported. General seek_able
+stays zero. Automatic repeat accepts finite completion only after fresh frame
+publication; terminal callbacks run before repeat. Saved APNG rate survives
+reopening and source replacement; video reports 1x and cannot change rate.
+Rate queries during replacement, replay, inactive/faulted states preserve output.
+
+Validation: **40/40 host PASS**, including media-only, standalone APNG and unified
+player builds. The unified test holds native readers through video-to-APNG and
+APNG-to-video switches, checks latest-source wins, shared slave/transform survival,
+replay/pause/rate/metadata and delayed deletion. Strict combined-feature E907
+compile **PASS**. Firmware linkage and physical playback are separate gates.

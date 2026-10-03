@@ -297,12 +297,15 @@ def main():
         text = map_path.read_text(encoding="utf-8", errors="replace")
         for symbol in ("lv_aic_player_create", "lv_aic_player_set_src", "lv_aic_player_start",
                        "lv_aic_player_seek", "lv_aic_player_playback_seek",
+                       "lv_aic_player_set_rate", "lv_aic_player_get_rate",
                        "lv_aic_player_set_auto_restart", "lv_aic_player_get_auto_restart_count",
                        "lv_aic_slave_player_create", "lv_aic_slave_player_set_master",
                        "lv_aic_player_playback_prepare", "lv_aic_player_frames_poll_image",
                        "lv_aic_player_allocator_create", "aic_player_create", "aic_player_get_frame"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("player live symbol absent: " + symbol)
+        if args.with_apng and not re.search(r"^\s+0x[0-9a-f]+\s+lv_aic_player_configure_apng\s*$", text, re.MULTILINE):
+            fail("unified player APNG configuration symbol absent")
         print("player link closure: PASS (no media playback execution)")
     print(args.phase + " static checks: PASS (not board validation)")
 

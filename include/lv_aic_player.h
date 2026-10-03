@@ -2,6 +2,9 @@
 #ifndef LV_AIC_PLAYER_H
 #define LV_AIC_PLAYER_H
 #include "lv_aic_player_playback.h"
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+#include "lv_aic_apng_playback.h"
+#endif
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,8 +32,19 @@ typedef enum {
  * LV_RESULT_OK means request accepted, not media/device completion. */
 lv_obj_t *lv_aic_player_create(lv_obj_t *parent);
 lv_result_t lv_aic_player_configure(lv_obj_t *obj,const lv_aic_playback_options_t *options);
+#if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
+/* Configure PNG budgets independently, while no backend/replacement is live. */
+lv_result_t lv_aic_player_configure_apng(lv_obj_t *obj,const lv_aic_apng_playback_options_t *options);
+#endif
+/* Rate changes are APNG-only; media reports fixed 1/1. Queries are transactional
+ * and reject inactive/replacing/seeking/faulted sources. */
+lv_result_t lv_aic_player_set_rate(lv_obj_t *obj,uint32_t numerator,uint32_t denominator);
+lv_result_t lv_aic_player_get_rate(lv_obj_t *obj,uint32_t *numerator,uint32_t *denominator);
 /* Native SDK URI (<=127 bytes). Replacing a live source closes it safely first;
- * latest queued source wins. New source is prepared but not auto-started.
+ * latest queued source wins. Case-sensitive .png/.apng uses the APNG backend,
+ * requiring AIC_LVGL_USE_APNG and configure_apng; other suffixes use media.
+ * Unsupported/unconfigured source requests preserve the current source.
+ * The image object, transforms and attached slaves survive backend switches. New source is prepared but not auto-started.
  * start during replacement requests play once the new source is ready. */
 lv_result_t lv_aic_player_set_src(lv_obj_t *obj,const char *uri);
 lv_result_t lv_aic_player_start(lv_obj_t *obj);
@@ -39,6 +53,7 @@ lv_result_t lv_aic_player_close(lv_obj_t *obj);
 lv_result_t lv_aic_player_pause(lv_obj_t *obj);
 lv_result_t lv_aic_player_resume(lv_obj_t *obj);
 /* One asynchronous seek at a time; old image is retired on an idle draw pass.
+ * PNG/APNG accepts zero-time replay only; general seekability remains false.
  * Keeps playback/pause intent; see playback_seek for decoder-reset semantics. */
 lv_result_t lv_aic_player_seek(lv_obj_t *obj,uint64_t position_us);
 /* Opt-in repeat, default false. Terminal VALUE_CHANGED is emitted first; the
@@ -47,7 +62,8 @@ lv_result_t lv_aic_player_seek(lv_obj_t *obj,uint64_t position_us);
  * without that progress remains stopped. SDK notifications still cannot prove
  * clean audio completion. Reuses seek teardown; pause intent is preserved.
  * Disabling prevents future repeats; it does not cancel an accepted seek.
- * Counter is lifetime accepted automatic seek requests, not completed loops. */
+ * PNG/APNG repeats finite completion after fresh publication, using replay.
+ * Counter is lifetime accepted automatic seek/replay requests, not completed loops. */
 lv_result_t lv_aic_player_set_auto_restart(lv_obj_t *obj,bool enabled);
 bool lv_aic_player_get_auto_restart(lv_obj_t *obj);
 uint64_t lv_aic_player_get_auto_restart_count(lv_obj_t *obj);

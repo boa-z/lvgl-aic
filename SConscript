@@ -73,7 +73,7 @@ group += DefineGroup('Application-LVGL-AIC', src, depend=['AIC_LVGL_PORT'], CPPP
 if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_PLAYER'):
     for api in ('create', 'configure', 'set_src', 'start', 'stop', 'close',
                 'pause', 'resume', 'seek', 'set_auto_restart', 'get_auto_restart',
-                'get_auto_restart_count', 'set_volume', 'get_state', 'get_status', 'pending_cleanup'):
+                'get_auto_restart_count', 'set_rate', 'get_rate', 'set_volume', 'get_state', 'get_status', 'pending_cleanup'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_player_' + api])
 
     for api in ('create', 'set_master', 'get_master'):
@@ -81,6 +81,9 @@ if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_PLAYER'):
 
 if GetDepend('AIC_LVGL_SMOKE_APP') and (GetDepend('AIC_LVGL_USE_PLAYER') or GetDepend('AIC_LVGL_USE_APNG_WIDGET')):
     Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_player_control', '-Wl,-u,lv_aic_player_get_media_info'])
+
+if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_PLAYER') and GetDepend('AIC_LVGL_USE_APNG'):
+    Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_player_configure_apng'])
 
 # Keep all APNG widget roots live in the opt-in smoke profile. No autoplay.
 if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_APNG_WIDGET'):
