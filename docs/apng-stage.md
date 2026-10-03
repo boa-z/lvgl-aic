@@ -184,3 +184,32 @@ Strict E907 compile **PASS**; `output/lvgl-apng-stream.o` SHA256:
 Remaining: file loading, OSAL worker/control mailbox, immutable frame publication,
 widget/backend selection and board PNG/playback validation. No new firmware
 image or physical-playback claim accompanies this core-only stage.
+
+## Immutable frame publication (2026-10-03)
+
+`compat/lv_aic_apng_frames.h` / `port/lv_aic_apng_frames.c` bridge the worker's
+borrowed RGBA canvas into native ARGB snapshots. The pool preallocates 2..8
+frames under an explicit metadata+pixel budget (malloc overhead and LVGL
+image/decoded caches excluded). One serialized producer copies/converts outside
+the mutex; one LVGL owner polls and creates an RGB image on its own thread.
+Only unconsumed READY storage may be replaced by newer frames. Sequence numbers
+increase after successful publication; invalid spans, pool-backed input aliases,
+closed publication and all-slots-retained backpressure reject publication.
+The stream must still compose every frame when publication is dropped.
+
+Image creation retains a slot until the image owner and all decoder/native/GE
+readers release it. Close discards unconsumed frames but never frees readers or
+an in-flight copy/poll. Destroy is permitted only after producer/poll calls have
+stopped and returns false until those slots are released. An uncertain GE DMA
+lease therefore keeps the pool alive rather than allowing overwrite/free.
+
+Validation: **37/37 host contracts PASS**, including real LVGL RGB image leases,
+channel/alpha conversion, producer source mutation after copy, latest-frame
+replacement, initialization failure, invalid capacity/stride/sequence/alias,
+reader backpressure, close/discard and delayed release. A pthread producer runs
+1000 publications concurrently with owner polling and pixel validation.
+Strict E907 compile **PASS**; `output/lvgl-apng-frames.o` SHA256:
+`f805c3b8cb6ee3a89edb302c652ac81a70564512622cb396367f4062568c7d90`.
+
+OSAL background orchestration, file loading and widget/backend selection still
+remain. This standalone bridge has no worker integration or board acceptance yet.

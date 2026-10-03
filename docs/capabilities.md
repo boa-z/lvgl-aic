@@ -174,3 +174,9 @@ bounded stream CPU allocations, ordered late frames, finite/infinite loops,
 pause/rate/replay and retryable fault cleanup. Host **36/36 PASS** and strict
 E907 compile **PASS**. Its borrowed canvas is not an asynchronous image source:
 OSAL worker/mailbox, immutable publication and widget integration remain open.
+
+APNG immutable publication now has a bounded snapshot pool with worker RGBA to
+native ARGB conversion, latest unconsumed frame replacement, owner-thread LVGL
+image creation and delayed native/GE reader release. Host **37/37 PASS**, strict
+E907 compile **PASS**. Worker/file/widget integration and board acceptance remain
+open; see the [APNG stage record](apng-stage.md).
