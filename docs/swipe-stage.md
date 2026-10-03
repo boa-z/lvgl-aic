@@ -40,5 +40,10 @@ The shared manual UI has an optional SDK widgets page for both widgets;
 host pointer tests navigate to it and activate its Next icon button.
 Build it with `tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets`.
 The profile checks both feature settings and live linked widget symbols.
-Target cross-build and physical display/input acceptance remain pending. Host PASS
+Target cross-build passed at component `e5843b0`, SDK `faebbbc5`:
+boot/app build, static/live-symbol checks, image check and manifest all PASS.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets`.
+Image SHA256:
+`cfab814c0a890f0ddb8d686248655dc69979ea863c495f0c7685e07650f4ebd9`.
+Physical display/input acceptance remains NOT_RUN. Host PASS
 does not establish hardware rendering, DMA/cache behavior or performance.

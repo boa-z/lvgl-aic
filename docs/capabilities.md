@@ -26,7 +26,9 @@ carousel, looping, direction, zoom and active selection. Host lifecycle/layout
 contracts pass; board acceptance is pending. See [image roller](image-roller-stage.md).
 SDK swipe_v1 is optional via AIC_LVGL_USE_SWIPE_V1, with four-position
 transitions, stable IDs, state-source cycling and lifecycle contracts.
-See [swipe_v1](swipe-stage.md). Target/manual acceptance is pending;
+See [swipe_v1](swipe-stage.md). Both widgets have a shared manual test page;
+the combined GE2D/fonts/GIF/widgets cross-build and linked-symbol checks pass.
+Physical display/input acceptance remains pending;
 SDK media widgets remain missing.
 
 Declined drawing normally stays with software. Unsupported compressed resources
