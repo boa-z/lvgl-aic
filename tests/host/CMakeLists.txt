@@ -253,6 +253,23 @@ if(AIC_SDK_ROOT)
     endif()
     add_test(NAME lvgl_aic_vin_session_contract COMMAND lvgl_aic_vin_session_contract)
     target_link_libraries(lvgl_aic_vin_session_contract PRIVATE lvgl)
+    find_package(Threads REQUIRED)
+    add_executable(lvgl_aic_camera_capture_contract camera_capture_contract.c
+        "${AIC_ROOT}/port/lv_aic_camera_capture.c" "${AIC_ROOT}/port/lv_aic_vin_session.c"
+        "${AIC_ROOT}/port/lv_aic_vin_frame.c" "${AIC_ROOT}/common/lv_aic_yuv.c"
+        "${AIC_ROOT}/image/mpp/lv_aic_yuv_image.c")
+    target_include_directories(lvgl_aic_camera_capture_contract PRIVATE
+        "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/vin_stubs"
+        "${AIC_SDK_ROOT}/packages/artinchip/mpp/include" "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi"
+        "${AIC_SDK_ROOT}/bsp/artinchip/hal/dvp/v1")
+    target_compile_definitions(lvgl_aic_camera_capture_contract PRIVATE AIC_LVGL_USE_VIN=1
+        AIC_IOCTL_HEADER="${AIC_SDK_ROOT}/kernel/rt-thread/components/libc/compilers/common/include/sys/ioctl.h")
+    target_link_libraries(lvgl_aic_camera_capture_contract PRIVATE lvgl Threads::Threads)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_camera_capture_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_camera_capture_contract COMMAND lvgl_aic_camera_capture_contract)
+    set_tests_properties(lvgl_aic_camera_capture_contract PROPERTIES TIMEOUT 15)
     add_executable(lvgl_aic_ge2d_yuv_contract ge2d_yuv_contract.c
         "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_scale.c"
         "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/common/lv_aic_yuv_mpp.c"

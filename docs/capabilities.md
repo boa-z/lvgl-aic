@@ -93,8 +93,9 @@ The broad goal still includes GE extensions, but they must not be reported
 as missing SDK functionality when the SDK itself declines them.
 
 The [camera capture session](camera-stage.md) now provides tested VIN setup,
-buffer ownership and stop/close handling. It has strict target compilation
-evidence, but no camera-enabled image or widget integration yet.
+buffer ownership and stop/close handling, plus a background worker and immutable
+frame publication with deferred queue-back. It has target compilation and
+concurrent host evidence, but no camera-enabled image or widget integration yet.
 
 This sequence supersedes the old instruction to stop after 3C5. It does not
 waive hardware verification or authorize flashing.

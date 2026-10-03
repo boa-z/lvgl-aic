@@ -24,13 +24,9 @@ Failed STREAM_OFF retains the complete session and allocations for retry.
 Do not free its storage on a false close result. After a transport fault,
 release held frames and close/reopen; start/resume will not silently recover.
 
-Acquisition can block for 60000 ms in the SDK's vin_vb_dq_buf path. A future camera worker must handle transport
-outside the LVGL UI thread, marshal publication back to the LVGL owner and
-perform source-cache invalidation before CPU access. This adapter does not
-provide that worker, convert colorspace, attach a video plane, return held GE
-frames early, or reset uncertain hardware.
-Widget deletion must request asynchronous shutdown and retain the independent
-capture context until the worker returns and all published frame readers finish.
+Acquisition can block for 60000 ms in the SDK's vin_vb_dq_buf path. The worker
+below handles transport outside the LVGL UI thread. The session layer itself
+does not attach a video plane, return held GE frames early or reset hardware.
 
 ## Evidence
 
@@ -64,5 +60,42 @@ output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp; image SHA256:
 b80a887afc58eb866823976379a9211ee74170900a6e7456d1faa304c7d2ec12.
 This regression image is not evidence of a linked or running VIN device.
 
-Remaining work includes capture-to-publication ownership callbacks, camera widget/worker integration,
-video-plane ownership and SDK player backends. The camera gap remains open.
+## Background capture and publication
+
+include/lv_aic_camera_capture.h now provides a UI-owner API backed by an SDK
+OSAL worker (8 KiB stack, priority 20). Open starts capture asynchronously;
+state reports OPENING/RUNNING/PAUSED/CLOSING/CLOSED/FAULT. This is an internal
+transport API, not yet the SDK camera widget's open/start contract.
+
+The worker exclusively performs VIN operations and invalidates completed DMA
+planes before publishing their metadata. Poll creates immutable YUV images
+on the LVGL owner thread. Only the latest unpublished frame is retained;
+published images retain their buffer index until the image owner AND all
+decoder/GE readers release it. The release callback only marks a pending
+return under the mailbox mutex; the worker performs Q_BUF. No LVGL allocation
+or registry API runs in the worker. A single active capture prevents competing
+workers from entering SDK global DVP state.
+
+Close is a nonblocking request. Destroy returns false until every published
+image is released and the worker successfully closes VIN. Failure to return a
+frame or stop capture retains the entire context and retries on the worker.
+The application must retain the handle and retry destroy; killing the worker
+or freeing the context during a 60-second dequeue wait is unsupported. A GE
+quarantine can intentionally keep this context alive until reboot.
+
+Host: 23/23 PASS. The capture test runs a real pthread worker against SDK-ABI
+mocks, with controlled blocking dequeue, pause/resume, latest-frame dropping,
+delayed image readers, thread/device startup failures, failed publication,
+queue-back failure and repeated STREAM_OFF failures. It asserts all VIN/cache
+calls occur on the worker and buffers are never freed while held. Cache calls
+and physical frame addresses are mocked; this is not real DMA evidence.
+
+The compile-only script covers session, frame adapter and capture worker with
+real SDK headers/OSAL and D13x double-float ABI. Component code uses
+-Wall -Wextra -Werror; vendor headers are system includes because SDK OSAL
+contains existing signedness warnings. Worker object SHA256:
+d4fd9b7c62832763ef1866310ca813703eae48d4eba884917fa9b6b3cd861b68.
+Camera-enabled image linking and hardware execution remain NOT_RUN.
+
+Remaining work includes SDK camera widget binding, video-plane ownership and
+SDK player backends. The camera gap remains open.
