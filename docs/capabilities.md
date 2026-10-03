@@ -876,3 +876,13 @@ outside-crop writes and uncertain-DMA retention. Physical GE execution remains
 **NOT_RUN**. Subsampled YUV gradients need phase-aware characterization; YUV
 blend/round-trip checks remain open. This does not enable ordinary LVGL gradient
 draw-task acceleration; it validates the existing native fill helper.
+
+
+YUV-gradient firmware evidence: full GE/fonts/GIF/widgets/AICP/player/APNG/
+barcode boot/app/static/image/manifest **PASS**. Clean component
+`65a3e115b9d5a6e47b3dd23ea310c7f95f433158`, SDK
+`e742006b3b3bdd62429dac0028ee84b3092b8cb6`. Image SHA256
+`bf75eb960d4662c2a2c731e0fe41304f490054a8723770909575cebde2b15d89`.
+Evidence directory: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
+The new probe is built into this candidate; no physical execution or flashing
+was performed. Camera capture remains disabled in this profile.
