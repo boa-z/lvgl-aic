@@ -440,16 +440,34 @@ static bool present_plane(player_binding_t *b)
         ox=lv_display_get_physical_horizontal_resolution(display)-ox;
         oy=lv_display_get_physical_vertical_resolution(display)-oy;
     }
-    unsigned degrees=(360U-(unsigned)rotation*90U)%360U;
+    unsigned image_angle=lv_image_get_rotation(obj);
+    if(image_angle%900U) return false;
+    unsigned degrees=(image_angle/10U+360U-(unsigned)rotation*90U)%360U;
     if(degrees && !b->plane_rotation_budget) return false;
     if(display!=lv_display_get_default() || ox || oy ||
        lv_display_get_color_format(display)!=LV_COLOR_FORMAT_ARGB8888 ||
-       lv_image_get_rotation(obj) || lv_image_get_scale_x(obj)!=LV_SCALE_NONE ||
+       lv_image_get_scale_x(obj)!=LV_SCALE_NONE ||
        lv_image_get_scale_y(obj)!=LV_SCALE_NONE || lv_image_get_offset_x(obj) || lv_image_get_offset_y(obj) ||
        lv_obj_get_style_image_opa(obj,LV_PART_MAIN)!=LV_OPA_COVER ||
        lv_obj_get_style_image_recolor_opa(obj,LV_PART_MAIN)>LV_OPA_MIN ||
        lv_image_get_blend_mode(obj)!=LV_BLEND_MODE_NORMAL) return false;
     lv_obj_update_layout(obj);lv_area_t area;lv_obj_get_coords(obj,&area);
+    int32_t width=lv_area_get_width(&area),height=lv_area_get_height(&area);
+    if(width<1 || height<1 || width>4096 || height>4096 || (uint64_t)width*height>8U*1024U*1024U) return false;
+    const void *source=lv_aic_player_image_source(&b->frame->image);
+    char window[64];snprintf(window,sizeof(window),"L:/%ux%u_0_00000000.fake",(unsigned)width,(unsigned)height);
+    const void *current=lv_image_get_src(obj);
+    if(!current || lv_image_src_get_type(current)!=LV_IMAGE_SRC_FILE || strcmp(current,window)) lv_image_set_src(obj,window);
+    current=lv_image_get_src(obj);
+    if(!current || lv_image_src_get_type(current)!=LV_IMAGE_SRC_FILE || strcmp(current,window)) return false;
+    if(lv_image_get_rotation(obj)!=image_angle || lv_image_get_scale_x(obj)!=LV_SCALE_NONE ||
+       lv_image_get_scale_y(obj)!=LV_SCALE_NONE) return false;
+    lv_point_t pivot;lv_image_get_pivot(obj,&pivot);
+    if(pivot.x < -4096 || pivot.x > 4096 || pivot.y < -4096 || pivot.y > 4096) return false;
+    lv_area_t transformed;
+    lv_image_buf_get_transformed_area(&transformed,width,height,image_angle,
+        LV_SCALE_NONE,LV_SCALE_NONE,&pivot);
+    lv_area_move(&transformed,area.x1,area.y1);area=transformed;
     for(lv_obj_t *a=obj;a;a=lv_obj_get_parent(a)) {
         if(lv_obj_get_style_transform_width(a,LV_PART_MAIN) || lv_obj_get_style_transform_height(a,LV_PART_MAIN) ||
            lv_obj_get_style_blend_mode(a,LV_PART_MAIN)!=LV_BLEND_MODE_NORMAL ||
@@ -464,14 +482,6 @@ static bool present_plane(player_binding_t *b)
             if(area.x1<clip.x1 || area.y1<clip.y1 || area.x2>clip.x2 || area.y2>clip.y2) return false;
         }
     }
-    int32_t width=lv_area_get_width(&area),height=lv_area_get_height(&area);
-    if(width<1 || height<1 || width>4096 || height>4096 || (uint64_t)width*height>8U*1024U*1024U) return false;
-    const void *source=lv_aic_player_image_source(&b->frame->image);
-    char window[64];snprintf(window,sizeof(window),"L:/%ux%u_0_00000000.fake",(unsigned)width,(unsigned)height);
-    const void *current=lv_image_get_src(obj);
-    if(!current || lv_image_src_get_type(current)!=LV_IMAGE_SRC_FILE || strcmp(current,window)) lv_image_set_src(obj,window);
-    current=lv_image_get_src(obj);
-    if(!current || lv_image_src_get_type(current)!=LV_IMAGE_SRC_FILE || strcmp(current,window)) return false;
     if(!b->plane) b->plane=lv_aic_video_plane_open();
     if(!b->plane || !lv_aic_video_plane_enable_ui_alpha(b->plane)) return false;
     lv_display_rotate_area(display,&area);

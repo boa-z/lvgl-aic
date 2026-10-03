@@ -221,3 +221,19 @@ all three angles; nine missing-budget/X-offset/Y-offset cases verify failure
 without alpha mutation and balanced cleanup. Full host **49/49 PASS**, strict
 E907 **PASS**. This follow-up has no new firmware image; the previous manifest
 remains the last packaged build. Physical rotated-window acceptance is NOT_RUN.
+
+## Player image rotation and pivot (2026-10-04)
+
+Plane players now accept image right-angle rotation with bounded pivots. The
+transparent fake source keeps the logical object dimensions; its transformed
+rectangle and plane geometry share `lv_image_buf_get_transformed_area`. Pivot
+resolution happens after window source update, so percentage pivots use current
+window dimensions. The final clockwise GE angle is image angle minus display
+angle, matching the SDK convention. Ancestor clipping is checked against the
+transformed rectangle, and auto-alignment changes to image rotation/scale are
+rejected. Image scale, arbitrary angles and partial clipping remain unsupported.
+
+Host **49/49 PASS**, strict E907 **PASS**. Explicit expected rectangles cover a
+non-central pivot at all three angles and combined image/display cancellation.
+These are geometry/lifecycle tests; actual rotated alpha pixels and DMA remain
+**NOT_RUN**. No new combined firmware image has been built for this increment.

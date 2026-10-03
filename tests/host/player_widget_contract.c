@@ -552,6 +552,21 @@ int main(void)
     assert(lv_aic_player_pause(o)==LV_RESULT_OK);tick();lv_obj_set_size(o,6,5);tick();
     assert(plane_w==6 && plane_h==5 && lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
     assert(lv_aic_player_set_video_plane_rotation_budget(o,16384)==LV_RESULT_INVALID);
+    /* Pixel pivot (2,1), non-square 6x5 image at (3,4): clockwise bounds. */
+    lv_image_set_pivot(o,2,1);
+    static const int32_t image_bounds[3][4]={{2,3,5,6},{2,2,6,5},{4,2,5,6}};
+    for(unsigned angle=1;angle<=3;angle++) {
+        lv_image_set_rotation(o,angle*900);tick();
+        assert(plane_degrees==angle*90);
+        assert(plane_x==image_bounds[angle-1][0] && plane_y==image_bounds[angle-1][1]);
+        assert(plane_w==(uint32_t)image_bounds[angle-1][2] && plane_h==(uint32_t)image_bounds[angle-1][3]);
+        assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
+    }
+    lv_image_set_rotation(o,900);lv_display_set_rotation(d,LV_DISPLAY_ROTATION_90);
+    lv_timer_pause(lv_display_get_refr_timer(d));tick();
+    assert(plane_degrees==0 && plane_x==3 && plane_y==9 && plane_w==6 && plane_h==5);
+    lv_display_set_rotation(d,LV_DISPLAY_ROTATION_0);lv_timer_pause(lv_display_get_refr_timer(d));
+    lv_image_set_rotation(o,0);tick();
     lv_display_set_resolution(d,16,12);lv_timer_pause(lv_display_get_refr_timer(d));
     for(unsigned rotation=1;rotation<=3;rotation++) {
         lv_display_set_rotation(d,(lv_display_rotation_t)rotation);lv_timer_pause(lv_display_get_refr_timer(d));tick();

@@ -51,8 +51,9 @@ lv_obj_t *lv_aic_player_create(lv_obj_t *parent);
  * Requires VIDEO_PLANE plus MPP .fake decoder/GE replacement support and an
  * ARGB8888 UI display. Saves/applies/restores SDK UI pixel alpha while the
  * plane is owned; no concurrent unmanaged alpha writers. Display rotation is
- * supported with an explicit rotation budget; objects must remain unrotated,
- * fully visible rectangular objects only; native/style transforms, partial
+ * supported with an explicit rotation budget. Right-angle image rotation and
+ * bounded pixel/percentage pivots are supported; objects must remain
+ * fully visible rectangles; image scale, style transforms, partial
  * ancestor clipping, rounded ancestors and opacity are rejected at runtime.
  * Object position/size drives physical scanout and a transparent fake window.
  * Hidden ancestors stop scanout; slaves continue normal image composition.

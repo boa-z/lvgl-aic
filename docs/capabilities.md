@@ -300,3 +300,9 @@ budget and logical-to-physical window mapping (host 49/49, strict E907 PASS).
 Native image rotation/pivot and transformed style geometry remain gaps; the
 player's own image must remain unrotated. Firmware/board validation for this
 increment is pending; see the latest video-plane stage record.
+
+Player image right-angle rotation and bounded pixel/percentage pivot mapping
+are now implemented using the same transformed rectangle as the fake window.
+Combined image/display orientation follows the SDK subtraction rule. Host
+49/49 and strict E907 pass; image scaling, arbitrary angles and partial clipping
+remain unsupported. Latest stage firmware/pixel/board validation is pending.
