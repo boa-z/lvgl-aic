@@ -3,7 +3,7 @@
  * @brief ArtInChip GE2D draw unit: registration, evaluation and dispatch.
  *
  * Scope is deliberately narrow. FILL: solid, unrounded, non-gradient tasks.
- * IMAGE: rotated, untiled, unrecolored RGB copies/scales -
+ * IMAGE: rotated or native-size tiled, unrecolored RGB copies/scales -
  * the blit blends, so a partial opacity is supported rather than declined.
  * LAYER: the same blit, fed from a child layer's buffer instead of a decoded
  * image, including bounded scaling, right-angle rotation and unscaled
@@ -31,6 +31,7 @@
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_draw_aic_ge2d.h"
 #include "lv_draw_aic_ge2d_utils.h"
+#include "lv_aic_fake_image.h"
 
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 
@@ -284,10 +285,9 @@ void lv_draw_aic_ge2d_init(void)
     g_ge2d_stats.ready = g_ge2d_ready;
 
     if (!g_ge2d_ready) {
-        /* The unit is still registered: it declines every task, so the software
-         * renderer keeps the display working instead of the unit dispatching
-         * into a NULL device. */
-        LV_LOG_ERROR("GE2D device unavailable; the GE2D unit will decline every task");
+        /* Ordinary tasks stay with SW. SDK pseudo-images retain this unit's
+         * software fill handler so replacement semantics remain available. */
+        LV_LOG_ERROR("GE2D device unavailable; using software rendering");
     }
 
     if (g_ge2d_registered) {
@@ -351,10 +351,14 @@ void lv_draw_aic_ge2d_stats_reset(void)
 static int32_t lv_draw_aic_ge2d_evaluate(lv_draw_unit_t *unit, lv_draw_task_t *task)
 {
     bool accepted;
+    lv_aic_fake_image_t fake;
+    const lv_draw_image_dsc_t *image = task->type == LV_DRAW_TASK_TYPE_IMAGE ? task->draw_dsc : NULL;
+    bool is_fake = image && image->src && lv_image_src_get_type(image->src) == LV_IMAGE_SRC_FILE &&
+                   lv_aic_fake_image_parse(image->src, &fake);
 
     LV_UNUSED(unit);
 
-    if (!g_ge2d_ready) {
+    if (!g_ge2d_ready && !is_fake) {
         return 0;
     }
 
@@ -367,7 +371,9 @@ static int32_t lv_draw_aic_ge2d_evaluate(lv_draw_unit_t *unit, lv_draw_task_t *t
         accepted = lv_draw_aic_ge2d_accepts_fill(task);
         break;
     case LV_DRAW_TASK_TYPE_IMAGE:
-        accepted = lv_draw_aic_ge2d_accepts_image(task);
+        /* SDK pseudo-images need our fill semantics even if GE is unavailable.
+         * The executor can perform the same replacement/blend on the CPU. */
+        accepted = is_fake || lv_draw_aic_ge2d_accepts_image(task);
         break;
     case LV_DRAW_TASK_TYPE_LAYER:
         accepted = lv_draw_aic_ge2d_accepts_layer(task);

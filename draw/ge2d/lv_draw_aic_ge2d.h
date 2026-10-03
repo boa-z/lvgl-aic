@@ -85,8 +85,8 @@ typedef struct {
  * @brief Open GE2D and register the draw unit.
  *
  * Call once per LVGL initialisation, after lv_init(). If mpp_ge_open() fails
- * the unit is still created but refuses every task, so the software renderer
- * keeps drawing instead of the unit dispatching into a NULL device.
+ * the unit is still created but refuses ordinary tasks. SDK pseudo-images
+ * use its CPU fill handler, preserving their replacement semantics.
  */
 void lv_draw_aic_ge2d_init(void);
 

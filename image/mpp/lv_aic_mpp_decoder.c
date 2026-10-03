@@ -15,6 +15,8 @@
 #include "lv_aic_mpp_decoder.h"
 #include "lv_aic_mpp_format.h"
 #include "lv_aic_bmp_header.h"
+#include "lv_aic_fake_image.h"
+#include "lv_aic_fake_fs.h"
 /* Component-local software codec tag, never passed to mpp_decoder_create. */
 #define LV_AIC_CODEC_BMP ((enum mpp_codec_type)-1)
 #include "lv_aic_mpp_stream.h"
@@ -828,6 +830,19 @@ static lv_result_t lv_aic_mpp_info_cb(lv_image_decoder_t *decoder,
     int width = 0, height = 0, components = 0;
     lv_result_t result;
     (void)decoder;
+    /* SDK pseudo-images carry only metadata. The GE unit owns their fill
+     * semantics, including CPU fallback; never open them as filesystem data. */
+#if AIC_LVGL_USE_GE2D
+    lv_aic_fake_image_t fake;
+    if (dsc && header && dsc->src && lv_image_src_get_type(dsc->src) == LV_IMAGE_SRC_FILE &&
+        lv_aic_fake_image_parse(dsc->src, &fake)) {
+        memset(header, 0, sizeof(*header));
+        header->magic = LV_IMAGE_HEADER_MAGIC;
+        header->w = fake.width; header->h = fake.height;
+        header->cf = LV_COLOR_FORMAT_RAW;
+        return LV_RESULT_OK;
+    }
+#endif
     if (!dsc || !header ||
         lv_aic_mpp_source_open(dsc->src,&stream,&codec) != LV_RESULT_OK)
         return LV_RESULT_INVALID;
@@ -930,6 +945,11 @@ int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
     if (g_aic_mpp_decoder == NULL) {
         return LV_AIC_ERR_NO_MEMORY;
     }
+#if AIC_LVGL_USE_GE2D
+    if (!lv_aic_fake_fs_install()) {
+        LV_LOG_WARN("SDK .fake paths require the application's L filesystem drive");
+    }
+#endif
 
     g_aic_mpp_decoder->name = "AIC MPP";
     lv_image_decoder_set_info_cb(g_aic_mpp_decoder, lv_aic_mpp_info_cb);
@@ -942,7 +962,14 @@ int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
     return LV_AIC_OK;
 }
 
-bool lv_aic_mpp_decoder_can_deinit(void) { return g_open_sessions == 0; }
+bool lv_aic_mpp_decoder_can_deinit(void)
+{
+    return g_open_sessions == 0
+#if AIC_LVGL_USE_GE2D
+           && lv_aic_fake_fs_idle()
+#endif
+           ;
+}
 
 void lv_aic_mpp_decoder_deinit(lv_image_decoder_t *decoder)
 {
@@ -950,12 +977,15 @@ void lv_aic_mpp_decoder_deinit(lv_image_decoder_t *decoder)
         return;
     }
     if (!lv_aic_mpp_decoder_can_deinit()) {
-        LV_LOG_ERROR("Close all MPP image descriptors before decoder deinit");
+        LV_LOG_ERROR("Close all MPP image descriptors and pseudo-files before decoder deinit");
         return;
     }
     lv_aic_mpp_cache_drop(NULL);
     lv_image_decoder_delete(decoder);
     g_aic_mpp_decoder = NULL;
+#if AIC_LVGL_USE_GE2D
+    lv_aic_fake_fs_restore();
+#endif
 }
 
 const lv_aic_mpp_decode_stats_t *lv_aic_mpp_decoder_last_stats(void)

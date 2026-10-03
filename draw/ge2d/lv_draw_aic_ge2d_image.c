@@ -52,6 +52,7 @@
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_draw_aic_ge2d.h"
 #include "lv_draw_aic_ge2d_utils.h"
+#include "lv_aic_fake_image.h"
 #include "lv_aic_pixel_format.h"
 #include "lv_draw_aic_ge2d_scale.h"
 #include "lv_draw_aic_ge2d_rotate.h"
@@ -539,6 +540,86 @@ static int lv_draw_aic_ge2d_tiles(lv_draw_task_t *task, const lv_draw_image_dsc_
     return 1;
 }
 
+/* SDK .fake draws the transformed bounding rectangle, not rotated pixels.
+ * blend=0 replaces even transparent ARGB; blend=1 uses the encoded alpha.
+ * As in the SDK, image opacity/recolor/tile do not alter this pseudo-fill. */
+static lv_result_t fake_image_draw(lv_draw_task_t *task, const lv_aic_fake_image_t *fake,
+                                  lv_draw_aic_ge2d_outcome_t *outcome)
+{
+    const lv_draw_image_dsc_t *image = task->draw_dsc;
+    lv_layer_t *layer = task->target_layer;
+    lv_draw_buf_t *dst = layer ? layer->draw_buf : NULL;
+    lv_area_t area, clip;
+    int64_t width = (int64_t)task->area.x2 - task->area.x1 + 1;
+    int64_t height = (int64_t)task->area.y2 - task->area.y1 + 1;
+    if (!dst || !dst->data || width < 1 || width > 4096 || height < 1 || height > 4096 ||
+        image->scale_x < 16 || image->scale_x > 4096 ||
+        image->scale_y < 16 || image->scale_y > 4096 ||
+        image->skew_x || image->skew_y ||
+        image->pivot.x < -4096 || image->pivot.x > 4096 ||
+        image->pivot.y < -4096 || image->pivot.y > 4096) return LV_RESULT_INVALID;
+    lv_color_format_t cf = dst->header.cf;
+    if (layer->color_format != cf || !lv_draw_aic_ge2d_dst_format_supported(cf)) return LV_RESULT_INVALID;
+    uint32_t bpp = lv_color_format_get_size(cf);
+    int64_t lw = (int64_t)layer->buf_area.x2 - layer->buf_area.x1 + 1;
+    int64_t lh = (int64_t)layer->buf_area.y2 - layer->buf_area.y1 + 1;
+    if (lw < 1 || lh < 1 || lw > dst->header.w || lh > dst->header.h ||
+        (uint64_t)lw * bpp > dst->header.stride ||
+        (uint64_t)dst->header.stride * lh > dst->data_size) return LV_RESULT_INVALID;
+    lv_image_buf_get_transformed_area(&area, (int32_t)width, (int32_t)height,
+                                     image->rotation, image->scale_x, image->scale_y, &image->pivot);
+    if ((int64_t)area.x1 + task->area.x1 < INT32_MIN ||
+        (int64_t)area.y1 + task->area.y1 < INT32_MIN ||
+        (int64_t)area.x2 + task->area.x1 > INT32_MAX ||
+        (int64_t)area.y2 + task->area.y1 > INT32_MAX) return LV_RESULT_INVALID;
+    lv_area_move(&area, task->area.x1, task->area.y1);
+    if (!lv_area_intersect(&clip, &area, &task->clip_area) ||
+        !lv_area_intersect(&clip, &clip, &layer->buf_area)) return LV_RESULT_OK;
+    lv_draw_fill_dsc_t fill;
+    lv_draw_fill_dsc_init(&fill);
+    fill.color = lv_color_hex(fake->argb);
+    fill.opa = fake->argb >> 24;
+    if (fake->blend && fill.opa <= LV_OPA_MIN) return LV_RESULT_OK;
+    lv_draw_task_t fill_task = *task;
+    fill_task.type = LV_DRAW_TASK_TYPE_FILL;
+    fill_task.draw_dsc = &fill;
+    fill_task.area = area;
+    fill_task.clip_area = clip;
+    if (lv_draw_aic_ge2d_device() && lv_draw_aic_ge2d_buf_address_valid(dst) &&
+        (!fake->blend || fill.opa >= LV_OPA_MAX || cf != LV_COLOR_FORMAT_ARGB8888)) {
+        lv_result_t result = fake->blend ? lv_draw_aic_ge2d_fill(&fill_task) :
+                                          lv_draw_aic_ge2d_fill_replace(&fill_task, fake->argb);
+        if (result == LV_RESULT_OK && outcome) *outcome = LV_DRAW_AIC_GE2D_OUTCOME_ENGINE;
+        return result; /* Never replay a failed hardware operation. */
+    }
+    if (fake->blend) {
+        lv_draw_sw_fill(&fill_task, &fill, &area);
+    }
+    else {
+        /* No blending on blend=0: preserve all 32 bits on ARGB, including
+         * zero alpha. Byte stores also allow unaligned/padded RGB888 rows. */
+        uint16_t rgb565 = (uint16_t)(((fake->argb >> 8) & 0xf800) |
+                                   ((fake->argb >> 5) & 0x07e0) |
+                                   ((fake->argb >> 3) & 0x001f));
+        int32_t x0 = clip.x1 - layer->buf_area.x1, y0 = clip.y1 - layer->buf_area.y1;
+        int32_t cw = lv_area_get_width(&clip), ch = lv_area_get_height(&clip);
+        for (int32_t y = 0; y < ch; y++) {
+            uint8_t *p = dst->data + (uint32_t)(y0 + y) * dst->header.stride + (uint32_t)x0 * bpp;
+            for (int32_t x = 0; x < cw; x++, p += bpp) {
+                if (cf == LV_COLOR_FORMAT_RGB565) {
+                    p[0] = rgb565 & 255; p[1] = rgb565 >> 8;
+                }
+                else {
+                    p[0] = fake->argb; p[1] = fake->argb >> 8; p[2] = fake->argb >> 16;
+                    if (bpp == 4) p[3] = fake->argb >> 24;
+                }
+            }
+        }
+    }
+    if (outcome) *outcome = LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE;
+    return LV_RESULT_OK;
+}
+
 lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
                                    lv_draw_aic_ge2d_outcome_t *outcome)
 {
@@ -567,6 +648,9 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
     if (dsc == NULL || dsc->src == NULL) {
         return LV_RESULT_INVALID;
     }
+    lv_aic_fake_image_t fake;
+    if (task->type == LV_DRAW_TASK_TYPE_IMAGE && lv_image_src_get_type(dsc->src) == LV_IMAGE_SRC_FILE &&
+        lv_aic_fake_image_parse(dsc->src, &fake)) return fake_image_draw(task, &fake, outcome);
 
     /* A LAYER task's source is the child layer, and the layer's buffer is what
      * actually gets blitted. Wrapping it in an image descriptor lets the code

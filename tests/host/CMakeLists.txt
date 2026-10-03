@@ -250,6 +250,7 @@ if(AIC_SDK_ROOT)
     endif()
     add_test(NAME lvgl_aic_ge2d_display_contract COMMAND lvgl_aic_ge2d_display_contract)
     add_executable(lvgl_aic_ge2d_fill_contract ge2d_fill_contract.c
+        "${AIC_ROOT}/common/lv_aic_fake_image.c"
         "${AIC_ROOT}/common/lv_aic_pixel_format.c")
     target_include_directories(lvgl_aic_ge2d_fill_contract PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs" "${AIC_ROOT}/include"
@@ -265,6 +266,7 @@ if(AIC_SDK_ROOT)
     endif()
     add_test(NAME lvgl_aic_ge2d_fill_contract COMMAND lvgl_aic_ge2d_fill_contract)
     add_executable(lvgl_aic_ge2d_scale_contract ge2d_scale_contract.c
+        "${AIC_ROOT}/common/lv_aic_fake_image.c"
         "${AIC_ROOT}/common/lv_aic_pixel_format.c"
         "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_scale.c"
         "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_rotate.c")
@@ -282,6 +284,8 @@ if(AIC_SDK_ROOT)
     endif()
     add_test(NAME lvgl_aic_ge2d_scale_contract COMMAND lvgl_aic_ge2d_scale_contract)
     add_executable(lvgl_aic_mpp_contract mpp_contract.c
+        "${AIC_ROOT}/image/mpp/lv_aic_fake_fs.c"
+        "${AIC_ROOT}/common/lv_aic_fake_image.c"
         "${AIC_ROOT}/image/mpp/lv_aic_bmp_header.c"
         "${AIC_ROOT}/common/lv_aic_pixel_format.c"
         "${AIC_ROOT}/image/mpp/lv_aic_mpp_format.c"
@@ -292,7 +296,7 @@ if(AIC_SDK_ROOT)
         "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
         "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
     target_compile_definitions(lvgl_aic_mpp_contract PRIVATE
-        AIC_LVGL_USE_MPP_DEC=1 AIC_LVGL_BSP_MPP=1 AIC_LVGL_BSP_RTTHREAD=0)
+        AIC_LVGL_USE_GE2D=1 AIC_LVGL_USE_MPP_DEC=1 AIC_LVGL_BSP_MPP=1 AIC_LVGL_BSP_RTTHREAD=0)
     target_link_libraries(lvgl_aic_mpp_contract PRIVATE lvgl)
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(lvgl_aic_mpp_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)

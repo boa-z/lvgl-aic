@@ -8,9 +8,12 @@
 #define ulong uintptr_t
 #include "../../draw/ge2d/lv_draw_aic_ge2d.c"
 #include "../../draw/ge2d/lv_draw_aic_ge2d_image.c"
+#include "../../draw/ge2d/lv_draw_aic_ge2d_fill.c"
 
 static struct ge_bitblt captured;
 static struct ge_rotation captured_rotation;
+static struct ge_fillrect captured_fill;
+static int fills;
 static int submits, rotate_submits, fail_at, rotate_fail;
 static int fail_submission;
 static const void *allowed_src, *allowed_dst;
@@ -30,7 +33,8 @@ void lv_draw_aic_ge2d_prepare_src_cache(const lv_draw_buf_t *b, const lv_area_t 
 { (void)b; (void)a; }
 void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *b, const lv_area_t *a)
 { (void)b; (void)a; }
-lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *t) { (void)t; return LV_RESULT_OK; }
+int mpp_ge_fillrect(struct mpp_ge *ge, struct ge_fillrect *fill)
+{ (void)ge; captured_fill = *fill; fills++; return fail_at == 1 ? -1 : 0; }
 
 int main(void)
 {
@@ -369,6 +373,75 @@ int main(void)
         assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
         assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_ENGINE && submits == before + 1);
         lv_image_cache_drop(&src);
+    }
+    {
+        lv_draw_aic_ge2d_outcome_t outcome;
+        lv_draw_image_dsc_init(&d);
+        d.src = "L:/8x8_0_00123456.fake";
+        layer.color_format = LV_COLOR_FORMAT_ARGB8888;
+        d.opa = 0; /* SDK uses encoded alpha, not image opacity. */
+        task.area = (lv_area_t){110,210,117,217};
+        task.clip_area = (lv_area_t){112,212,115,215};
+        task.draw_dsc = &d; task.type = LV_DRAW_TASK_TYPE_IMAGE;
+        task.target_layer = &layer;
+        assert(lv_draw_buf_init(&dst,128,128,LV_COLOR_FORMAT_ARGB8888,512,
+                                output,sizeof(output)) == LV_RESULT_OK);
+        allowed_dst = output;
+        int before = fills;
+        assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+        assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_ENGINE && fills == before + 1);
+        assert(captured_fill.start_color == 0x00123456 && captured_fill.ctrl.alpha_en == 0);
+        assert(captured_fill.dst_buf.crop.x == 22 && captured_fill.dst_buf.crop.y == 22);
+        assert(captured_fill.dst_buf.crop.width == 4 && captured_fill.dst_buf.crop.height == 4);
+        memset(output, 0xa5, sizeof(output));
+        for (fail_at = 1; fail_at <= 3; fail_at++) {
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_INVALID);
+            assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING);
+            for (unsigned i = 0; i < sizeof(output); i++) assert(output[i] == 0xa5);
+        }
+        fail_at = 0;
+        d.rotation = 900; task.clip_area = layer.buf_area;
+        assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+        assert(captured_fill.dst_buf.crop.x == 13 && captured_fill.dst_buf.crop.y == 20);
+        assert(captured_fill.dst_buf.crop.width == 8 && captured_fill.dst_buf.crop.height == 8);
+        d.rotation = 0;
+        task.clip_area = (lv_area_t){112,212,115,215};
+        g_ge2d_dev = NULL; g_ge2d_ready = false;
+        task.preference_score = 100;
+        assert(lv_draw_aic_ge2d_evaluate(NULL, &task) == 1);
+        assert(task.preferred_draw_unit_id == AIC_GE2D_DRAW_UNIT_ID);
+        for (unsigned f = 0; f < sizeof(formats)/sizeof(formats[0]); f++) {
+            unsigned bpp = lv_color_format_get_size(formats[f]);
+            layer.color_format = formats[f];
+            assert(lv_draw_buf_init(&dst,128,128,formats[f],512,output,sizeof(output)) == LV_RESULT_OK);
+            memset(output, 0xa5, sizeof(output));
+            assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+            assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+            for (unsigned y = 0; y < 128; y++) {
+                for (unsigned byte = 0; byte < 512; byte++) {
+                    unsigned x = byte / bpp, c = byte % bpp;
+                    uint8_t expected = 0xa5;
+                    if (y >= 22 && y <= 25 && x >= 22 && x <= 25) {
+                        const uint8_t argb[] = {0x56,0x34,0x12,0x00};
+                        const uint8_t rgb565[] = {0xaa,0x11};
+                        expected = bpp == 2 ? rgb565[c] : argb[c];
+                    }
+                    assert(output[y*512 + byte] == expected);
+                }
+            }
+        }
+        assert(lv_draw_buf_init(&dst,128,128,LV_COLOR_FORMAT_ARGB8888,512,
+                                output,sizeof(output)) == LV_RESULT_OK);
+        memset(output, 0, sizeof(output));
+        d.src = "L:/8x8_1_80123456.fake";
+        layer.color_format = LV_COLOR_FORMAT_ARGB8888;
+        assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+        assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+        const uint8_t *p = output + 22*512 + 22*4;
+        assert(p[0] == 0x56 && p[1] == 0x34 && p[2] == 0x12 && p[3] == 0x80);
+        task.clip_area = (lv_area_t){0,0,1,1};
+        assert(lv_draw_aic_ge2d_image(&task, &outcome) == LV_RESULT_OK);
+        assert(outcome == LV_DRAW_AIC_GE2D_OUTCOME_NOTHING);
     }
     lv_deinit();
     return 0;

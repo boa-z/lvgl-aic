@@ -406,6 +406,49 @@ int main(int argc, char **argv) {
     jpeg_header_boundaries();
     assert(argc == 2 || argc == 3);
     lv_init();
+    {
+        lv_image_decoder_dsc_t dsc = {0};
+        lv_image_header_t header = {0};
+        dsc.src = "L:/320x240_0_00123456.fake";
+        assert(lv_aic_mpp_info_cb(NULL, &dsc, &header) == LV_RESULT_OK);
+        assert(header.w == 320 && header.h == 240 && header.cf == LV_COLOR_FORMAT_RAW);
+        assert(live_cma == 0 && decodes == 0);
+        dsc.header = header;
+        assert(lv_aic_mpp_open_cb(NULL, &dsc) == LV_RESULT_INVALID);
+        assert(live_cma == 0 && decodes == 0);
+        lv_image_decoder_t *registered = NULL;
+        lv_fs_drv_t *drive = lv_fs_get_drv('L');
+        assert(drive);
+        lv_fs_drv_t saved_drive = *drive;
+        assert(lv_aic_mpp_decoder_init(&registered) == LV_AIC_OK);
+        assert(lv_image_decoder_get_info(dsc.src, &header) == LV_RESULT_OK);
+        assert(header.w == 320 && header.h == 240 && header.cf == LV_COLOR_FORMAT_RAW);
+        lv_fs_file_t first, second, real;
+        assert(lv_fs_open(&first, dsc.src, LV_FS_MODE_RD) == LV_FS_RES_OK);
+        assert(lv_fs_open(&second, dsc.src, LV_FS_MODE_RD) == LV_FS_RES_OK);
+        assert(!lv_aic_mpp_decoder_can_deinit());
+        lv_aic_mpp_decoder_deinit(registered);
+        assert(g_aic_mpp_decoder == registered);
+        char bytes[4];
+        uint32_t read = 99, position = 99;
+        assert(lv_fs_read(&first, bytes, sizeof(bytes), &read) == LV_FS_RES_OK && read == 0);
+        assert(lv_fs_seek(&first, 0, LV_FS_SEEK_END) == LV_FS_RES_OK);
+        assert(lv_fs_tell(&first, &position) == LV_FS_RES_OK && position == 0);
+        assert(lv_fs_write(&first, bytes, sizeof(bytes), &read) == LV_FS_RES_DENIED);
+        assert(lv_fs_close(&first) == LV_FS_RES_OK && !lv_aic_mpp_decoder_can_deinit());
+        assert(lv_fs_close(&second) == LV_FS_RES_OK && lv_aic_mpp_decoder_can_deinit());
+        /* An ordinary real file still uses the original driver's ABI. */
+        assert(lv_fs_open(&real, "L:" __FILE__, LV_FS_MODE_RD) == LV_FS_RES_OK);
+        assert(lv_fs_read(&real, bytes, sizeof(bytes), &read) == LV_FS_RES_OK && read == 4);
+        assert(memcmp(bytes, "/* E", 4) == 0);
+        assert(lv_fs_tell(&real, &position) == LV_FS_RES_OK && position == 4);
+        assert(lv_fs_seek(&real, 0, LV_FS_SEEK_SET) == LV_FS_RES_OK);
+        assert(lv_fs_close(&real) == LV_FS_RES_OK);
+        lv_aic_mpp_decoder_deinit(registered);
+        assert(drive->open_cb == saved_drive.open_cb && drive->close_cb == saved_drive.close_cb);
+        assert(drive->read_cb == saved_drive.read_cb && drive->write_cb == saved_drive.write_cb);
+        assert(drive->seek_cb == saved_drive.seek_cb && drive->tell_cb == saved_drive.tell_cb);
+    }
     aicp_header_contract();
     if (argc == 3 && strcmp(argv[2], "--bmp") == 0) {
         bmp_pixel_contract();
