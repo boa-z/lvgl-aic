@@ -216,9 +216,9 @@ config AIC_LVGL_USE_BARCODE
         this alone does not configure/start a camera or register a callback.
 
 config AIC_LVGL_USE_SPI_SDK
-    bool "Enable checked SDK SPI completion bridge"
+    bool "Enable checked SDK SPI transfer bridge"
     default n
     depends on AIC_LVGL_PORT && AIC_QSPI_DRV && RT_USING_SPI
     help
-        Worker-only completion callback preserving driver timeout and HAL
-        status errors. Does not initialize a panel or enable SPI displays.
+        Worker-only checked submission and completion preserving short writes,
+        driver timeouts and HAL status errors. Does not initialize a panel or enable SPI displays.

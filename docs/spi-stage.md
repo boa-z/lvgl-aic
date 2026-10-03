@@ -113,3 +113,37 @@ logs `output/spi-sdk-tests.log`, `output/spi-sdk-target.log`.
 No runtime SDK link/transfer, SPI panel initialization or board execution is
 claimed. Checked submission, device ownership and display integration remain
 next stages; hardware **NOT_RUN**.
+
+
+## Checked SDK QSPI submission
+
+`lv_aic_spi_sdk_submit_qspi` now checks exact acceptance from
+`rt_qspi_transfer_message`, instead of treating a nonnegative high-level panel
+flush result as success. It accepts an explicitly supplied 0..4-byte MSB-first
+prefix, prefix lane count and pixel lane count. A zero-prefix transfer requires
+zero prefix lanes; active lanes must be 1/2/4. It builds a fully zeroed extended
+message, with no dummy/alternate stages or receive buffer. This is deliberate:
+D13x `drv_qspi_send` reads QSPI extension fields even for one-lane transfers.
+
+The borrowed device must be an actual configured `rt_qspi_device`; no object
+casts from a smaller SPI device are required. The function verifies configure,
+xfer, nonblock, wait and status operations, requires an idle/terminal status,
+and checks the nonblocking-mode return before submission. Null/zero/oversized
+payloads, 32-bit DMA-address overflow, malformed prefix/lane counts and partial
+acceptance are rejected. A false submission may already have started hardware,
+so the owner must preserve storage (the transfer core's sticky fault policy).
+
+This is a checked low-level adapter, not panel initialization. Application code
+must exclusively own the bus, provide panel-specific framing/D-C setup, clean
+CPU cache before calling, and retain pixel storage until checked completion.
+Special QSPI display mode and its void-return submission API are not connected.
+The device claim manager and complete panel-to-transfer callback binding remain
+open. No hardcoded SDK sample pins, panel choice or default byte order is used.
+
+Validation: **60/60 host PASS**, plus focused missing-driver-op regression PASS;
+strict real-header D13x submit/completion compile and all four SDK references
+**PASS**. Target object SHA256
+`b8138504a0f77f7862adb82a31d5cfbba498cfba18330f3d0d49465e0f6d1055`.
+Logs: `output/spi-submit-tests.log`, `output/spi-submit-target.log`.
+Actual transport linkage, panel commands on hardware and DMA timing remain
+**NOT_RUN**. This stage does not claim a functioning SPI display yet.

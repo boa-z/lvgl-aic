@@ -33,9 +33,10 @@ $compileArgs=$arguments+@('-c',(Join-Path $component 'port/lv_aic_spi_sdk.c'),'-
 if($LASTEXITCODE -ne 0) { throw 'SPI completion target compilation failed' }
 $symbols=& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-nm.exe') $output
 if($LASTEXITCODE -ne 0) { throw 'SPI completion nm failed' }
-foreach($symbol in @('rt_spi_wait_completion','rt_spi_get_transfer_status')) {
+foreach($symbol in @('rt_spi_wait_completion','rt_spi_get_transfer_status','rt_spi_nonblock_set','rt_qspi_transfer_message')) {
     if(-not ($symbols -cmatch ('\bU\s+'+$symbol+'$'))) { throw "Missing SDK reference: $symbol" }
 }
 if(-not ($symbols -cmatch '\bT\s+lv_aic_spi_sdk_wait_complete$')) { throw 'Missing completion implementation' }
+if(-not ($symbols -cmatch '\bT\s+lv_aic_spi_sdk_submit_qspi$')) { throw 'Missing submit implementation' }
 Get-FileHash $output -Algorithm SHA256
-Write-Output 'PASS checked SPI completion compile; no SDK transport link or hardware execution'
+Write-Output 'PASS checked SPI submit/completion compile; no SDK transport link or hardware execution'
