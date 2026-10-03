@@ -107,6 +107,7 @@ static void close_image(lv_image_decoder_t *dec,lv_image_decoder_dsc_t *dsc)
     dsc->decoded=NULL; dsc->user_data=NULL;
     lv_aic_rgb_image_release_lease(image);
 }
+bool lv_aic_rgb_image_decoder_is_initialized(void) { return decoder!=NULL; }
 bool lv_aic_rgb_image_decoder_init(void)
 {
     if(decoder) return false;

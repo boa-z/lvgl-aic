@@ -750,6 +750,7 @@ add_test(NAME lvgl_aic_apng_playback_contract COMMAND lvgl_aic_apng_playback_con
 set_tests_properties(lvgl_aic_apng_playback_contract PROPERTIES TIMEOUT 15)
 
 add_executable(lvgl_aic_apng_widget_contract apng_widget_contract.c
+    "${AIC_ROOT}/tests/manual/lv_aic_apng_test.c"
     "${AIC_ROOT}/widgets/lv_aic_apng_widget.c" "${AIC_ROOT}/image/mpp/lv_aic_rgb_image.c")
 target_include_directories(lvgl_aic_apng_widget_contract PRIVATE
     "${AIC_ROOT}/compat" "${AIC_ROOT}/common" "${AIC_ROOT}/include")

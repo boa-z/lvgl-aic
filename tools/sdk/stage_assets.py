@@ -8,10 +8,12 @@ from pathlib import Path
 
 from sdk_paths import sdk_root, component_root, lvgl_root
 from bmp_fixtures import fixtures
+from apng_fixtures import fixtures as apng_fixtures
 parser = argparse.ArgumentParser()
 parser.add_argument("--fonts", action="store_true")
 parser.add_argument("--gif", action="store_true")
 parser.add_argument("--aicp", action="store_true")
+parser.add_argument("--apng", action="store_true")
 args = parser.parse_args()
 root = sdk_root()
 source = component_root() / "tests/data/mpp"
@@ -41,6 +43,8 @@ if args.aicp:
     files.update({name: vendor / name for name in ("bird.aicp", "flower.aicp")})
 # Remove only previously inventoried generated assets absent from this profile.
 generated = fixtures()
+if args.apng:
+    generated.update(apng_fixtures())
 previous = stage / "SHA256.json"
 if previous.exists():
     for name in json.loads(previous.read_text(encoding="utf-8")):

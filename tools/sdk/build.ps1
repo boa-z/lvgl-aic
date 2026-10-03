@@ -59,6 +59,7 @@ $assetArgs=@("$PSScriptRoot/stage_assets.py")
 if ($WithFonts) { $assetArgs += '--fonts' }
 if ($WithGif) { $assetArgs += '--gif' }
 if ($WithAicp) { $assetArgs += '--aicp' }
+if ($WithApng) { $assetArgs += '--apng' }
 $def='d13x_d50t-2-lite_rt-thread_lvgl-aic-smoke_defconfig'
 if ($Phase -eq 'mpp') {
     Run-Step 'assets' $assetArgs

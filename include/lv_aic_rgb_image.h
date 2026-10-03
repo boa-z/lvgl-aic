@@ -15,6 +15,8 @@ typedef struct lv_aic_rgb_image lv_aic_rgb_image_t;
 /* Native RGB565/RGB888/XRGB8888/straight ARGB8888 only. Borrowed immutable
  * CPU-coherent storage; dimensions 1..4096, <=8M pixels, explicit capacity. */
 bool lv_aic_rgb_frame_validate(const lv_aic_rgb_frame_t *frame);
+/* LVGL owner only; query allows independent UI clients to share initialization. */
+bool lv_aic_rgb_image_decoder_is_initialized(void);
 bool lv_aic_rgb_image_decoder_init(void);
 bool lv_aic_rgb_image_decoder_deinit(void);
 /* LVGL owner-thread API. Retain once; release after owner and all decoder/GE

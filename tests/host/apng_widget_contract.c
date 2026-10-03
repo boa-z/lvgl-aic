@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_aic_apng_widget.h"
+#include "../../tests/manual/lv_aic_apng_test.h"
 #include "lv_aic_rgb_image_private.h"
 #include "lvgl_aic_private.h"
 #include <assert.h>
@@ -14,7 +15,7 @@ static char last_path[128];
 typedef struct { lv_aic_apng_playback_t *p;uint32_t pixel; } owner_t;
 lv_aic_apng_playback_t *lv_aic_apng_playback_prepare(const char *path,const lv_aic_apng_playback_options_t *o)
 {
-    assert(o->snapshots==2);if(active || fail_prepare) return NULL;
+    assert(o->snapshots==2 || o->snapshots==3);if(active || fail_prepare) return NULL;
     active=calloc(1,sizeof(*active));assert(active);created++;strcpy(last_path,path);
     active->status.state=LV_AIC_APNG_READY;return active;
 }
@@ -97,5 +98,22 @@ int main(void)
     assert(lv_aic_apng_get_status(obj).state==LV_AIC_APNG_FAULT);
     assert(lv_aic_apng_close(obj)==LV_RESULT_OK);tick();lv_obj_delete(obj);tick();
     assert(!active && !lv_aic_apng_pending_cleanup() && created==freed && retained==released);
+    assert(lv_aic_rgb_image_decoder_deinit());
+    lv_display_set_resolution(d,800,480);
+    static uint8_t panel_pixels[800*480*4];
+    lv_display_set_buffers(d,panel_pixels,NULL,sizeof(panel_pixels),LV_DISPLAY_RENDER_MODE_DIRECT);
+    assert(lv_aic_apng_test_show()==LV_AIC_OK);tick();assert(active);
+    assert(lv_aic_apng_test_show()==LV_AIC_ERR_INVALID_STATE);
+    lv_aic_apng_test_poll();
+    lv_obj_t *panel=lv_obj_get_child(lv_layer_top(),-1);assert(panel);
+    lv_obj_send_event(lv_obj_get_child(panel,8),LV_EVENT_CLICKED,NULL);tick();
+    assert(!strcmp(last_path,"/data/mpp_test/apng-loop.png"));
+    lv_obj_send_event(lv_obj_get_child(panel,2),LV_EVENT_CLICKED,NULL);tick();
+    assert(active->status.state==LV_AIC_APNG_PLAYBACK_PAUSED);
+    lv_obj_send_event(lv_obj_get_child(panel,6),LV_EVENT_CLICKED,NULL);tick();
+    assert(active->status.rate_num==2);
+    lv_obj_send_event(lv_obj_get_child(panel,9),LV_EVENT_CLICKED,NULL);tick();assert(!active);
+    assert(lv_aic_apng_test_show()==LV_AIC_OK);tick();lv_aic_apng_test_deinit();tick();
+    assert(!active && !lv_aic_apng_pending_cleanup());
     lv_display_delete(d);assert(lv_aic_rgb_image_decoder_deinit());lv_deinit();return 0;
 }

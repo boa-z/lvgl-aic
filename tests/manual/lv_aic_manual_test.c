@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include "lv_aic_font_test.h"
 #include "lv_aic_gif_test.h"
+#include "lv_aic_apng_test.h"
 #include "lv_img_roller.h"
 #include "lv_swipe_v1.h"
 
@@ -127,6 +128,9 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
 
     (void)timer;
     lv_aic_manual_page_poll();
+#if defined(AIC_LVGL_USE_APNG_WIDGET) && AIC_LVGL_USE_APNG_WIDGET
+    lv_aic_apng_test_poll();
+#endif
 #if LV_USE_GIF && AIC_LVGL_BSP_RTTHREAD
     lv_aic_gif_test_poll();
 #endif
@@ -727,6 +731,9 @@ const char *lv_aic_manual_test_status_text(void)
 
 void lv_aic_manual_test_deinit(void)
 {
+#if defined(AIC_LVGL_USE_APNG_WIDGET) && AIC_LVGL_USE_APNG_WIDGET
+    lv_aic_apng_test_deinit();
+#endif
 #if LV_AIC_WIDGET_TEST
     if (lv_aic_widget_root) lv_obj_delete(lv_aic_widget_root);
     lv_aic_widget_root = NULL;

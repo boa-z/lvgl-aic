@@ -90,3 +90,36 @@ NOT_RUN on board. Finite manual logs now drain the async queue after each
 record and split long lines; refresh timing uses seconds plus microseconds
 instead of unsupported 64-bit formatting. The next board log must confirm
 complete records and no probe-generated async overflow.
+
+## APNG acceptance overlay
+
+Build with `tools/sdk/build.ps1 -Phase ge2d -WithApng` (other profile switches
+can be combined). This stages three original generated fixtures under
+`/data/mpp_test/`; no external SDK artwork is needed. No auto-play occurs.
+On the board, queue `lv_aic_apng_test show` through FinSH. All LVGL operations
+are executed by the existing UI timer, never the shell thread.
+
+The overlay has Pause, Resume, 0.5x, 1x, 2x, Replay, Next source and Close.
+Equivalent commands: `lv_aic_apng_test pause|resume|slow|normal|fast|replay|next|status|close`.
+It cycles finite disposal animation (two plays), infinite loop and static PNG.
+Each animated frame holds 500 ms at 1x:
+
+1. Opaque red canvas.
+2. Translucent green rectangle over red; resulting overlap stays opaque.
+3. Green is restored to red (PREVIOUS), with a blue rectangle at lower right.
+4. Blue is cleared to transparent (BACKGROUND, showing gray viewport), with a
+   yellow rectangle near lower left. Finite playback holds this final frame.
+
+Verify pause freezes frame and rate changes pacing, replay clears prior canvas,
+Next source replaces safely, and Close returns to the existing smoke UI.
+Repeated `show/close` must eventually report cleanup=0 before the next show;
+worker/GE leases may delay this. Status counters are mailbox work, not panel
+scanout proof. State 7 is a fault; retain raw logs and image SHA256. This overlay
+does not automatically certify pixel accuracy, memory balance, timing or GE.
+
+Host reference command (system Python with Pillow):
+`python tests/host/apng_fixture_probe.py --exe output/lvgl-host-ge/lvgl_aic_apng_contract.exe --output output/apng-generated-probe`.
+It checks the C extractor/compositor against independently decoded rectangles
+and explicit alpha composition. Pillow's full animated-PNG seek path is not
+the alpha oracle: with Pillow 12.3.0 it produced alpha 191 for this half-alpha
+patch over opaque background, where straight-alpha OVER must remain 255.
