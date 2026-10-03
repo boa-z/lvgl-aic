@@ -206,3 +206,11 @@ Raw session tests separately enforce memory budgets and GE failure lifetime.
 Native image rotation/pivots, style transforms and partial clipping remain
 unsupported. This stage does not establish rotated alpha pixels or physical
 scanout acceptance; firmware validation is pending and board is **NOT_RUN**.
+
+Player display-rotation firmware boot/app/static/image/manifest PASS.
+The rotation-budget API is live in the final ELF. Board NOT_RUN.
+sdk: 956bd27fe3c14b22632167cdced7dae2079b9790
+lvgl-aic: db07e82e39a3a0970954915fc0a60386aad0ee83
+lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
+images/d13x.elf SHA256: 906cc2bb7bbe8107724fbd24dfe9b7533f36cabf3324bc32f15a0eaa37327e81
+images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: d79c0024ca065124738d316b20e0da274df24836a2f481df42419b89ca2d7262
