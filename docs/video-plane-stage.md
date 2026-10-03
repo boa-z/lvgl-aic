@@ -314,3 +314,12 @@ opening the video layer or changing UI alpha. The single DE rectangle and fake
 window cannot implement arbitrary mask coverage; accepting it silently was
 incorrect. New bitmap-mask and tile+offset rejection tests verify no submission,
 no alpha acquisition and balanced cleanup. Host 49/49 and strict E907 PASS.
+
+Offset/mask combined firmware boot/app/static/image/manifest **PASS**.
+This image includes media-path commands, image offsets and bitmap-mask rejection.
+Board **NOT_RUN**. Clean build identities:
+- sdk: 5bc9a2b906f80c5124ff1dd6907fdc8fe5a3c6e2
+- lvgl-aic: 6724e038a3ea4bc8100ddd8fb38e230a8598bc2e
+- lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
+- images/d13x.elf SHA256: fccaaae6ebd812a412f4926368e7464563a6348618adaa2671f5f95c432ad81b
+- images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: 50ab8441a431ca44584b65fb97da4aed206ce8f4d687025c9fc8da865ef5f8c5
