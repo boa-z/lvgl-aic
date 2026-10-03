@@ -933,3 +933,13 @@ barcode boot/app/static/image/manifest **PASS**. Clean component
 `4b4967497378ecc0df36e443a5c4dc72f25b2a6132a3e39d2b614811f5d0737c`.
 Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode`.
 Board execution remains **NOT_RUN**; no flashing performed.
+
+
+### SPI display foundation
+
+SDK SPI display parity remains open. The new [SPI stage](spi-stage.md) starts
+with application-owned RGB565 transmit-frame preparation: padded immutable
+input, explicit byte order, orthogonal rotation and nearest resize into bounded
+caller storage. Host **58/58 PASS**, strict D13x compile **PASS**. Device/session,
+DMA completion, panel configuration and LVGL multi-display integration are
+still missing; no SPI output or hardware acceptance is implied.
