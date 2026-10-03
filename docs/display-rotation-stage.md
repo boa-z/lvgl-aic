@@ -82,6 +82,27 @@ Strict real-header D13x compilation PASS for both modified modules:
 
 Objects are under SDK output. Host logs are component
 `output/ge-rotate-quarantine-build.log` and `output/ge-rotate-quarantine-tests.log`.
-Full rotated firmware refresh and hardware fault acceptance remain pending.
+Full rotated firmware refresh PASS at `c257ec7` / SDK `4ee81ce2`; see
+[validation.md](validation.md) for the clean manifest and image SHA256.
+Hardware fault acceptance remains pending.
 Hardware **NOT_RUN**. This fix is also a prerequisite for any future SPI GE
 conversion, which must additionally preserve its source lifetime on GE failure.
+
+## Shared draw fault teardown protection
+
+A draw-unit GE fault may occur before display flush, leaving the display's local
+rotation quarantine flag clear while DMA still references its target layer.
+Display deinit now also checks shared GE fault state before deleting LVGL objects,
+freeing rotation storage or closing the framebuffer. It invalidates snapshot state
+and retains all display resources until reboot. This deliberately retains other
+displays sharing the failed engine because per-display DMA ownership is not tracked.
+
+Validation: **68/68 host PASS**, including two initialized displays, a shared fault,
+retained driver contexts/CMA/framebuffer handles and invalidated snapshot state.
+Normal teardown remains covered. D13x real-header compilation PASS; SDK object
+`output/shared-teardown-lv_aic_display.o` SHA256:
+`098e054e85f615e333bc2a7b636524939fce507c58230ecd4ddefdaaa0177c25`.
+Host logs: `output/ge-shared-teardown-build.log`,
+`output/ge-shared-teardown-tests.log`. SPI target compilation/partial link also
+PASS as preparation for the target compiler check. This follow-up has no refreshed
+full firmware or physical-board evidence yet; hardware **NOT_RUN**.

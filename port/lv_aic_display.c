@@ -445,7 +445,13 @@ void lv_aic_display_deinit(lv_display_t *display)
         return;
     }
 
+    /* Draw-unit faults can precede flush and still reference this display's
+     * target layer. The local rotation flag alone cannot prove DMA quiescence. */
+#if AIC_LVGL_USE_GE2D
+    if (lv_draw_aic_ge2d_faulted()) ctx->dma_quarantined = true;
+#endif
     if (ctx->dma_quarantined) {
+        ctx->last_presented_valid = false;
         LV_LOG_ERROR("GE display DMA fault; deinit requires reboot");
         return;
     }

@@ -10,11 +10,11 @@
 
 static uint8_t framebuffer[64 * 32 * 4 * 2];
 static int ge_result, pans, syncs, cleans, allocations;
-static int failed_ioctl;
+static int failed_ioctl, closes;
 static bool ge_quarantined;
 bool lv_draw_aic_ge2d_faulted(void) { return ge_quarantined; }
 struct mpp_fb *mpp_fb_open(void) { return (struct mpp_fb *)(uintptr_t)1; }
-void mpp_fb_close(struct mpp_fb *fb) { assert(fb); }
+void mpp_fb_close(struct mpp_fb *fb) { assert(fb); closes++; }
 int mpp_fb_ioctl(struct mpp_fb *fb, int cmd, void *args)
 {
     assert(fb);
@@ -89,16 +89,28 @@ int main(void)
     assert(allocations == 0);
     /* A fresh display proves DMA fault never releases or retries its buffers. */
     assert(lv_aic_display_init(&d)==LV_AIC_OK);ctx=lv_display_get_driver_data(d);
+    lv_display_t *other = NULL;
+    assert(lv_aic_display_init(&other) == LV_AIC_OK);
+    lv_aic_display_ctx_t *other_ctx = lv_display_get_driver_data(other);
+    ge_result = 1; flush(other);
+    assert(other_ctx->last_presented_valid && !other_ctx->dma_quarantined);
     unsigned count=lv_aic_display_flush_count_get();int before_pans=pans,before_cleans=cleans;
     ge_result=-1;flush(d);
     assert(ctx->dma_quarantined && !ctx->last_presented_valid && d->flushing);
     assert(lv_aic_display_snapshot(d,&copy,&frame)==LV_AIC_ERR_DISPLAY);
     ge_result=0;flush(d); /* No software replay even if GE subsequently declines. */
     assert(pans==before_pans && cleans==before_cleans && lv_aic_display_flush_count_get()==count);
+    /* Shared draw-unit quarantine also protects a display which never saw a
+     * failed rotation/flush of its own. No framebuffer close or CMA release. */
+    int before_closes = closes;
+    lv_aic_display_deinit(other);
+    assert(other_ctx->dma_quarantined && !other_ctx->last_presented_valid);
+    assert(lv_display_get_driver_data(other) == other_ctx && allocations == 2);
+    assert(closes == before_closes);
     lv_aic_display_deinit(d);
-    assert(allocations==1 && lv_display_get_driver_data(d)==ctx);
+    assert(allocations==2 && lv_display_get_driver_data(d)==ctx);
     lv_display_t *replacement=NULL;
-    assert(lv_aic_display_init(&replacement)==LV_AIC_ERR_DISPLAY && !replacement && allocations==1);
+    assert(lv_aic_display_init(&replacement)==LV_AIC_ERR_DISPLAY && !replacement && allocations==2);
     /* Intentionally retain quarantined state until process exit, mirroring reboot. */
     return 0;
 }

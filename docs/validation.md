@@ -1,5 +1,22 @@
 # Validation record
 
+## Rotated combined firmware evidence (2026-10-04)
+
+The combined GE/widget/media/SPI profile now also has a clean 90-degree firmware build:
+boot/app build, static/live-map gates, image checks and manifest **PASS**.
+Includes panel lifecycle hooks, worker stage timing and rotation DMA quarantine.
+
+- Component: `c257ec759e3fc96b9f7a9c2672433c861b5209bc` (clean).
+- SDK: `4ee81ce25b578d8a08addb4dd2cd2d45c4969016` (clean).
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `874a62d195e88da8e4810ea138f1c09b149f30c48851766670638563bbb30c4c`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-rotate90/manifest.json`.
+- Config: `AIC_LVGL_DISPLAY_ROTATION=1`, `AIC_LVGL_USE_SPI_SDK=y`.
+
+Host suite at this revision: **68/68 PASS**. Hardware **NOT_RUN**; no SPI panel
+is instantiated. Subsequent shared-fault teardown protection is not included
+in this firmware; its validation is recorded in display-rotation-stage.md.
+
 ## Current combined GE/widget/SPI regression (2026-10-04)
 
 The latest combined profile enables GE2D, FreeType, GIF, widgets, AICP, player,
