@@ -17,6 +17,9 @@ static int fills;
 static int submits, rotate_submits, fail_at, rotate_fail;
 static int fail_submission;
 static const void *allowed_src, *allowed_dst;
+/* Native YUV executor has its own real-ABI lease/submission contract. */
+int lv_draw_aic_ge2d_yuv(lv_draw_task_t *task) { (void)task; return 0; }
+bool lv_draw_aic_ge2d_yuv_faulted(void) { return false; }
 struct mpp_ge *mpp_ge_open(void) { return (struct mpp_ge *)(uintptr_t)1; }
 void mpp_ge_close(struct mpp_ge *ge) { (void)ge; }
 int mpp_ge_bitblt(struct mpp_ge *ge, struct ge_bitblt *b)

@@ -32,6 +32,7 @@
 #include "lv_draw_aic_ge2d.h"
 #include "lv_draw_aic_ge2d_utils.h"
 #include "lv_aic_fake_image.h"
+#include "lv_draw_aic_ge2d_yuv.h"
 
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 
@@ -481,6 +482,14 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
         }
     }
     else {
+        if (lv_draw_aic_ge2d_yuv_faulted()) {
+            /* A failed YUV sync may leave DMA active. Keep this task and its
+             * destination layer in flight, and retain the source lease.
+             * Rendering is intentionally stopped until hardware reboot. */
+            g_ge2d_stats.errors++;
+            LV_LOG_ERROR("YUV DMA fault: rendering stopped; reboot required");
+            return 1;
+        }
         ge2d->task_act->state = LV_DRAW_TASK_STATE_FAILED;
         g_ge2d_stats.errors++;
     }

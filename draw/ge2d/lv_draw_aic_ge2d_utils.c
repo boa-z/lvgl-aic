@@ -119,4 +119,17 @@ void lv_draw_aic_ge2d_prepare_src_cache(const lv_draw_buf_t *draw_buf,
     lv_draw_aic_ge2d_prepare_cache(draw_buf, rel_area, true);
 }
 
+void lv_draw_aic_ge2d_prepare_yuv_cache(const lv_aic_yuv_frame_t *frame)
+{
+    lv_aic_yuv_layout_t layout;
+    if (!frame || !lv_aic_yuv_layout(frame->format,frame->width,frame->height,&layout)) return;
+    for (unsigned i=0;i<layout.planes;i++) {
+        uintptr_t address=(uintptr_t)frame->planes[i].data;
+        uintptr_t base=address & ~(uintptr_t)(CACHE_LINE_SIZE-1);
+        size_t bytes=(size_t)frame->planes[i].stride*layout.rows[i]+address-base;
+        bytes=(bytes+CACHE_LINE_SIZE-1) & ~(size_t)(CACHE_LINE_SIZE-1);
+        aicos_dcache_clean_range((unsigned long *)base,bytes);
+    }
+}
+
 #endif /* AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP */

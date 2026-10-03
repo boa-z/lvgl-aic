@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_aic_yuv_image.h"
+#include "lv_aic_yuv_image_private.h"
 #include "lvgl_aic_private.h"
 
 struct lv_aic_yuv_image {
@@ -43,6 +44,20 @@ static lv_result_t image_info(lv_image_decoder_t *dec, lv_image_decoder_dsc_t *d
     header->stride=lv_draw_buf_width_to_stride(header->w,LV_COLOR_FORMAT_RGB888);
     return LV_RESULT_OK;
 }
+lv_aic_yuv_image_t *lv_aic_yuv_image_acquire(const void *source, const lv_aic_yuv_frame_t **frame)
+{
+    lv_aic_yuv_image_t *image=find_image(source);
+    if (!frame || !image || image->retired || image->readers == UINT32_MAX) return NULL;
+    image->readers++;
+    *frame=&image->frame;
+    return image;
+}
+void lv_aic_yuv_image_release_lease(lv_aic_yuv_image_t *image)
+{
+    if (!image || !image->readers) return;
+    image->readers--;
+    if (image->retired && !image->readers) free_image(image);
+}
 static lv_result_t image_open(lv_image_decoder_t *dec, lv_image_decoder_dsc_t *dsc)
 {
     LV_UNUSED(dec);
@@ -69,8 +84,7 @@ static void image_close(lv_image_decoder_t *dec, lv_image_decoder_dsc_t *dsc)
     if (!image) return;
     lv_draw_buf_destroy((lv_draw_buf_t *)dsc->decoded);
     dsc->decoded=NULL; dsc->user_data=NULL;
-    image->readers--;
-    if (image->retired && !image->readers) free_image(image);
+    lv_aic_yuv_image_release_lease(image);
 }
 bool lv_aic_yuv_image_decoder_init(void)
 {

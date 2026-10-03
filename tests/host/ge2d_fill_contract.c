@@ -10,6 +10,7 @@ static struct ge_fillrect captured;
 static lv_area_t cache_area;
 static int submits, emits, syncs, caches, fail_at;
 static const void *allowed_dst;
+bool lv_draw_aic_ge2d_yuv_faulted(void) { return false; }
 struct mpp_ge *mpp_ge_open(void) { return (struct mpp_ge *)(uintptr_t)1; }
 void mpp_ge_close(struct mpp_ge *ge) { (void)ge; }
 int mpp_ge_fillrect(struct mpp_ge *ge, struct ge_fillrect *f)

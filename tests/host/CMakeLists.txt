@@ -237,6 +237,22 @@ endif()
 # Optional real-decoder contract test; SDK headers, mocked engine/OSAL only.
 set(AIC_SDK_ROOT "" CACHE PATH "Luban-Lite SDK for MPP ABI tests")
 if(AIC_SDK_ROOT)
+    add_executable(lvgl_aic_ge2d_yuv_contract ge2d_yuv_contract.c
+        "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/common/lv_aic_yuv_mpp.c"
+        "${AIC_ROOT}/common/lv_aic_pixel_format.c" "${AIC_ROOT}/image/mpp/lv_aic_yuv_image.c"
+        "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_rotate.c")
+    target_include_directories(lvgl_aic_ge2d_yuv_contract PRIVATE
+        "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${AIC_ROOT}/common" "${AIC_ROOT}/draw/ge2d"
+        "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs" "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/drv"
+        "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+    target_compile_definitions(lvgl_aic_ge2d_yuv_contract PRIVATE
+        AIC_LVGL_USE_GE2D=1 AIC_LVGL_BSP_MPP=1 AIC_LVGL_BSP_RTTHREAD=0 AIC_CHIP_D13X=1)
+    target_link_libraries(lvgl_aic_ge2d_yuv_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_ge2d_yuv_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_ge2d_yuv_contract COMMAND lvgl_aic_ge2d_yuv_contract)
     add_executable(lvgl_aic_yuv_mpp_contract yuv_mpp_contract.c
         "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/common/lv_aic_yuv_mpp.c"
         "${AIC_ROOT}/common/lv_aic_pixel_format.c" "${AIC_ROOT}/image/mpp/lv_aic_mpp_format.c")

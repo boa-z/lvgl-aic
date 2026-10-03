@@ -9,6 +9,7 @@
 #define LV_DRAW_AIC_GE2D_UTILS_H
 
 #include "lvgl_aic.h"
+#include "lv_aic_yuv.h"
 #include "lvgl_aic_compat.h"
 
 #if AIC_LVGL_USE_GE2D
@@ -58,6 +59,8 @@ void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *draw_buf,
  */
 void lv_draw_aic_ge2d_prepare_src_cache(const lv_draw_buf_t *draw_buf,
                                         const lv_area_t *rel_area);
+/* Validated physical YUV planes: write back all padded rows before DMA. */
+void lv_draw_aic_ge2d_prepare_yuv_cache(const lv_aic_yuv_frame_t *frame);
 
 #endif /* AIC_LVGL_USE_GE2D */
 

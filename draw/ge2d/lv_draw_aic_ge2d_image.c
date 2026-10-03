@@ -52,6 +52,7 @@
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_draw_aic_ge2d.h"
 #include "lv_draw_aic_ge2d_utils.h"
+#include "lv_draw_aic_ge2d_yuv.h"
 #include "lv_aic_fake_image.h"
 #include "lv_aic_pixel_format.h"
 #include "lv_draw_aic_ge2d_scale.h"
@@ -647,6 +648,12 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
     dsc = (const lv_draw_image_dsc_t *)task->draw_dsc;
     if (dsc == NULL || dsc->src == NULL) {
         return LV_RESULT_INVALID;
+    }
+    int yuv=lv_draw_aic_ge2d_yuv(task);
+    if (yuv<0) return LV_RESULT_INVALID;
+    if (yuv>0) {
+        if (yuv==1 && outcome) *outcome=LV_DRAW_AIC_GE2D_OUTCOME_ENGINE;
+        return LV_RESULT_OK;
     }
     lv_aic_fake_image_t fake;
     if (task->type == LV_DRAW_TASK_TYPE_IMAGE && lv_image_src_get_type(dsc->src) == LV_IMAGE_SRC_FILE &&
