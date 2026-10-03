@@ -122,7 +122,7 @@ def check_config(root, phase="gate1", with_fonts=False, with_gif=False, with_wid
         defined = bool(re.search(r"^#define %s(?:\s|$)" % symbol, header, re.MULTILINE))
         if enabled != with_widgets or defined != with_widgets:
             fail("widget profile mismatch: " + symbol)
-    for symbol in ("AIC_LVGL_USE_PLAYER", "AIC_LVGL_USE_PLAYER_SESSION",
+    for symbol in ("AIC_LVGL_USE_VIDEO_PLANE", "AIC_LVGL_USE_PLAYER", "AIC_LVGL_USE_PLAYER_SESSION",
                    "AIC_MPP_PLAYER_INTERFACE", "AIC_MPP_PLAYER_VIDEO_EXT_RENDER"):
         enabled = bool(re.search(r"^CONFIG_%s=y$" % symbol, config, re.MULTILINE))
         defined = bool(re.search(r"^#define %s(?:\s|$)" % symbol, header, re.MULTILINE))
@@ -330,7 +330,9 @@ def main():
         print("SDK widget live symbols: PASS")
     if args.with_player:
         text = map_path.read_text(encoding="utf-8", errors="replace")
-        for symbol in ("lv_aic_player_create", "lv_aic_player_set_src", "lv_aic_player_start",
+        for symbol in ("lv_aic_video_plane_open", "lv_aic_video_plane_present",
+                       "lv_aic_video_plane_hide", "lv_aic_video_plane_close", "lv_aic_video_plane_faulted",
+                       "lv_aic_player_create", "lv_aic_player_set_src", "lv_aic_player_start",
                        "lv_aic_player_seek", "lv_aic_player_playback_seek",
                        "lv_aic_player_set_rate", "lv_aic_player_get_rate",
                        "lv_aic_player_group_create", "lv_aic_player_group_add",

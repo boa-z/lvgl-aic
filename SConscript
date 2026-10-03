@@ -113,3 +113,7 @@ if GetDepend('AIC_LVGL_USE_MPP_DEC') and GetDepend('AIC_LVGL_SMOKE_APP'):
     Depends(target, [File(path) for path in assets])
     Depends(target, Value(str([os.path.basename(path) for path in assets])))
 Return('group')
+
+if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_VIDEO_PLANE'):
+    for api in ('open', 'present', 'hide', 'close', 'faulted'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_video_plane_' + api])

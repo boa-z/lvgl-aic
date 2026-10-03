@@ -188,3 +188,12 @@ config AIC_LVGL_USE_PLAYER
         pause/resume, seek, stop/replay, guarded auto-restart, volume, slave widgets and
         asynchronous deletion cleanup.
         Explicit CMA budget and RGB/YUV decoder initialization required.
+
+config AIC_LVGL_USE_VIDEO_PLANE
+    bool "Enable explicit native video-plane sessions"
+    depends on AIC_LVGL_PORT
+    default n
+    help
+        Owner-thread native RGB/YUV frame scanout with exclusive ownership and
+        deferred release after VSync. Does not automatically change UI alpha
+        or bind a widget. Do not combine with unmanaged video-layer writers.
