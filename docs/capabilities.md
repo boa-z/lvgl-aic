@@ -983,3 +983,11 @@ PASS; SDK `output/lvgl-ge-address-utils.o` SHA256:
 Host logs: `output/ge-address-build.log`, `output/ge-address-tests.log`.
 No cache/DMA calls occur in the boundary contract. Full firmware refresh and
 hardware execution of this increment remain pending; hardware **NOT_RUN**.
+
+### SPI GE conversion backend status
+
+A dedicated CMDQ RGB565 rotate/resize backend with two budgeted CMA staging
+buffers is available (`lv_aic_spi_ge2d.h`). Host contract and D13x compile PASS;
+not yet selected by the SPI session/worker. Physical filtering/performance and
+full firmware linkage remain NOT_RUN. See [spi-stage.md](spi-stage.md) for source
+ownership, fault retention and SDK arbitration boundaries.

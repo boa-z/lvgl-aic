@@ -18,3 +18,6 @@ aicos_thread_t aicos_thread_create(const char *name,uint32_t stack,uint32_t prio
 #define RT_THREAD_PRIORITY_MAX 32
 
 void aicos_msleep(unsigned int milliseconds);
+
+void aicos_dcache_clean_invalid_range(unsigned long *address,unsigned long bytes);
+void aicos_dcache_invalid_range(unsigned long *address,unsigned long bytes);

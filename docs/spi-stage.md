@@ -632,3 +632,47 @@ still need distinct exclusive sessions/buses and explicit budgets; the session
 registry rejects same-bus or overlapping transmit storage admission.
 Multi-display physical acceptance remains **NOT_RUN**. No production source
 changes were required by this regression.
+
+## Owned GE conversion backend (2026-10-04)
+
+`lv_aic_spi_ge2d_create/convert/close` now provide a dedicated CMDQ client for
+RGB565 rotation (clockwise 0/90/180/270) and resize. Both GE source and destination
+are owned, 64-byte-aligned CMA staging buffers with padded rows and an explicit
+aggregate pixel budget. Original CPU source is copied before GE submission;
+output is copied/swapped only after checked bitblt/emit/sync and destination cache
+invalidation. Neither caller buffer is a GE DMA target. A failure permanently
+retains client and staging, leaves output unchanged and permits original CPU
+source reuse. There is no force-close. Calls are single-worker-owned with
+synchronous reentry returning BUSY.
+
+SDK inspection: `mpp_ge.c` owns a lock per client; `hal_ge_cmdq.c` serializes batch
+submission using the hardware queue lock and `ge_client_sync` waits on that
+client's batch count. This backend rejects normal mode because it lacks that
+independent-client contract. It does not share or mutate the LVGL draw unit's
+client/counters. Global hardware recovery is still reboot-only. SDK queue wait
+failures may stall other clients (including an SDK lock-retention error path);
+this component does not claim to recover or repair the SDK queue.
+
+Preflight checks geometry, source stride/capacity, pointer spans, caller/staging
+nonoverlap and the SDK RGB scaler's >=4 input/output axes. Unscaled quarter-turn
+rotation permits smaller axes. Invalid requests issue no commands and may be
+handled by CPU fallback. Any actual submission error is FAULT, never fallback.
+CMA allocations are validated over their entire 32-bit physical-address span.
+SDK command-queue allocations and metadata are outside the pixel budget.
+
+Validation: **69/69 host PASS**, including low-address staging, padded source,
+four rotations with byte swap, modeled scaling, cache order, budget/allocation/
+open failures, normal-mode rejection, invalid input, reentry and failures at
+all three GE stages. Tests model engine pixels; they do not establish physical
+GE filtering or visual equivalence to CPU nearest-neighbor scaling.
+Real-header D13x compilation PASS. SDK `output/lv_aic_spi_ge2d.o` SHA256:
+`b99b4ba0b1043a0757396618d35302ec109a65581c1f63a119d082952112dd68`.
+Logs: component `output/spi-ge-staging-build.log`,
+`output/spi-ge-staging-tests.log`, `output/spi-ge-staging-target.log`.
+
+This is a callable conversion backend; the existing session/worker still uses
+CPU packing. Next step: integrate explicit optional GE ownership into session
+and preserve its sticky fault/close semantics across SPI transport failures.
+Full firmware linkage and physical GE/SPI execution for this backend **NOT_RUN**.
+Two copies plus staging costs are deliberate lifetime protection; throughput
+improvement has not been measured and GE/DMA overlap is not implemented.

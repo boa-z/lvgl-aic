@@ -1109,3 +1109,19 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME lvgl_aic_spi_multidisplay_contract COMMAND lvgl_aic_spi_multidisplay_contract)
 set_tests_properties(lvgl_aic_spi_multidisplay_contract PROPERTIES TIMEOUT 30)
+
+if(EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/include/mpp_ge.h")
+add_executable(lvgl_aic_spi_ge2d_contract spi_ge2d_contract.c
+    "${AIC_ROOT}/port/lv_aic_spi_ge2d.c" "${AIC_ROOT}/common/lv_aic_spi_frame.c")
+target_include_directories(lvgl_aic_spi_ge2d_contract PRIVATE "${AIC_ROOT}/include"
+    "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/spi_stubs"
+    "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs" "${AIC_SDK_ROOT}/bsp/artinchip/include/drv"
+    "${AIC_SDK_ROOT}/packages/artinchip/mpp/include" "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+target_compile_definitions(lvgl_aic_spi_ge2d_contract PRIVATE AIC_LVGL_USE_SPI_SDK=1
+    AIC_LVGL_USE_GE2D=1 AIC_LVGL_BSP_MPP=1 AIC_CHIP_D13X=1)
+target_link_libraries(lvgl_aic_spi_ge2d_contract PRIVATE lvgl)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_spi_ge2d_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_spi_ge2d_contract COMMAND lvgl_aic_spi_ge2d_contract)
+endif()
