@@ -20,7 +20,7 @@ Buffer validation rejects overlapping ranges, address overflow, inaccessible
 memory, insufficient capacity/stride, mismatched formats and dimensions.
 The initial geometry bound is 4096 on each axis.
 
-Host validation: 12/12 tests passed, including three rotations across four
+Host validation: 13/13 tests passed, including three rotations across four
 formats, padded strides, cache/submission ordering, failures at each engine
 step, unavailable engine, overlap and address/capacity rejection.
 These use mocked hardware and do not prove actual pixels, cache coherency,
@@ -42,6 +42,10 @@ Image SHA256:
 `0882c5c520600c13b13ea9560e086e84d56aba3bd60bfdcbf8e869a85e45f292`.
 All three source repositories were clean in that manifest. Board NOT_RUN.
 
-Remaining: 180/270 target configuration coverage, flush/presentation failure
-contract coverage and physical portrait/landscape checks. SPI and multiple
+The real display init/flush/deinit path is also exercised with mocked BSP and
+GE calls: hardware failure suppresses PAN/VSync and index advancement,
+software fallback presents, snapshot availability follows GE/PAN/VSync
+failures and recovery, and CMA allocation/free balances at teardown.
+
+Remaining: 180/270 target configuration coverage and physical portrait/landscape checks. SPI and multiple
 displays are still outside this implementation.
