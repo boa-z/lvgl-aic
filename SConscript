@@ -130,4 +130,17 @@ if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_VIDEO_PLANE'):
     for api in ('open', 'enable_ui_alpha', 'present', 'present_rotated', 'hide', 'close', 'faulted'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_video_plane_' + api])
 
+# 应用内生成经过指纹校验的 CMDQ 后端，不修改 SDK 源文件。
+# 链接替换仅作用于本应用；SDK 版本变化必须先复核补丁。
+if GetDepend('AIC_LVGL_USE_GE2D') and GetDepend('AIC_GE_CMDQ'):
+    import runpy
+    from SCons.Script import File
+    stage_ge = runpy.run_path(os.path.join(cwd, 'tools', 'sdk', 'stage_ge_cmdq.py'))
+    generated_ge = stage_ge['generate'](AIC_ROOT, os.path.join(AIC_ROOT, 'build', 'lvgl-ge-cmdq.c'))
+    ge_paths = includes + [os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'ge', 'include'),
+                          os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'base', 'include')]
+    group += DefineGroup('Application-GE-CMDQ', [File(generated_ge)], depend=['AIC_LVGL_PORT'],
+                         CPPPATH=ge_paths)
+    Env.AppendUnique(LINKFLAGS=['-Wl,--wrap=ge_cmdq_ops'])
+
 Return('group')

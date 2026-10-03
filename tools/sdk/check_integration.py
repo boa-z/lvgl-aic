@@ -3,6 +3,9 @@
 """Static Gate 1 checks for the Luban-Lite LVGL 9.6 integration."""
 
 import argparse
+import hashlib
+import json
+import struct
 import re
 import subprocess
 from pathlib import Path
@@ -50,6 +53,44 @@ def run_git(root, *args):
 
 def fail(message):
     raise SystemExit("Gate 1 check FAILED: " + message)
+
+
+def check_ge_cmdq(root, map_path):
+    """Check generated provenance and the actual linked operations pointer."""
+    from stage_ge_cmdq import corrected, SOURCE
+    expected = corrected((root / SOURCE).read_text(encoding="utf-8"))
+    generated = root / "build/lvgl-ge-cmdq.c"
+    evidence = json.loads(generated.with_suffix(".json").read_text(encoding="utf-8"))
+    if generated.read_bytes() != expected.encode("utf-8") or evidence.get(
+            "normalized_generated_sha256") != hashlib.sha256(generated.read_bytes()).hexdigest():
+        fail("GE CMDQ generated source/provenance mismatch")
+    nm = root / "toolchain/bin/riscv64-unknown-elf-nm.exe"
+    if not nm.is_file():
+        nm = nm.with_suffix("")
+    elf = map_path.with_suffix(".elf")
+    symbols = {}
+    for line in subprocess.check_output([str(nm), str(elf)], text=True).splitlines():
+        fields = line.split()
+        if len(fields) == 3:
+            symbols[fields[2]] = int(fields[0], 16)
+    required = ("ge_ops_lists", "ge_normal_ops", "__wrap_ge_cmdq_ops")
+    if any(name not in symbols for name in required):
+        fail("GE CMDQ operations symbols missing")
+    data = elf.read_bytes()
+    if data[:6] != b"\x7fELF\x01\x01":
+        fail("GE CMDQ routing check requires ELF32 little endian")
+    phoff = struct.unpack_from("<I", data, 28)[0]
+    entsize, count = struct.unpack_from("<HH", data, 42)
+    address = symbols["ge_ops_lists"]
+    for i in range(count):
+        kind, offset, vaddr, _, filesz = struct.unpack_from("<IIIII", data, phoff+i*entsize)
+        if kind == 1 and vaddr <= address and address+12 <= vaddr+filesz:
+            actual = struct.unpack_from("<III", data, offset+address-vaddr)
+            if actual != (symbols["ge_normal_ops"], symbols["__wrap_ge_cmdq_ops"], 0):
+                fail("GE CMDQ operations table bypasses corrected backend")
+            print("GE CMDQ generated source and linked operations routing: PASS")
+            return
+    fail("GE CMDQ operations table not found in ELF load segment")
 
 
 def check_ve_arbitration(root, map_path):
@@ -253,6 +294,8 @@ def main():
         if not re.search(pattern, text, re.MULTILINE):
             fail("application display rotation profile mismatch")
     check_map(map_path)
+    if args.phase == "ge2d" and "CONFIG_AIC_GE_CMDQ=y" in config:
+        check_ge_cmdq(root, map_path)
     if args.rotation and args.phase == "ge2d":
         text = map_path.read_text(encoding="utf-8", errors="replace")
         if not re.search(r"^\s+0x[0-9a-f]+\s+lv_draw_aic_ge2d_display_rotate\s*$",

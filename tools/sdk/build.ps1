@@ -116,5 +116,8 @@ Get-ChildItem "$app/*.img" | Copy-Item -Destination "$evidence/images"
 Copy-Item .config,rtconfig.h "$evidence/"
 Copy-Item "$app/d13x.elf","$app/d13x.map" "$evidence/images/"
 $env:PATH="$root/tools/env/tools/Python38;$env:PATH"
+if ($Phase -eq 'ge2d' -and (Select-String -Path .config -Pattern '^CONFIG_AIC_GE_CMDQ=y$' -Quiet)) {
+    Copy-Item build/lvgl-ge-cmdq.c,build/lvgl-ge-cmdq.json "$evidence/"
+}
 Run-Step 'manifest' @("$PSScriptRoot/write_manifest.py",$evidence,$variant)
 Write-Host "Verified test image and provenance: $evidence"

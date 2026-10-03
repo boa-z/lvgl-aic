@@ -696,8 +696,8 @@ Source inspection found a real reference defect in SDK
 `cmd[3]`, then blue overwrites `cmd[3]`; `cmd[2]` is uninitialized. The D50T
 profile enables AIC_GE_CMDQ. Distinct green/blue slopes in the probe deliberately
 expose this defect. Do NOT interpret descriptor-only helper PASS as functioning
-CMDQ gradients. An application-owned correction is still required; SDK files
-must stay untouched. YUV CSC numeric probes are also still pending. Board NOT_RUN.
+CMDQ gradients. The application-owned correction below fixes the generated
+backend; SDK files stay untouched. YUV CSC numeric probes are still pending. Board NOT_RUN.
 
 The host probe contract injects a no-op engine, corrupt green channel and crop
 boundary write, and checks all are rejected. It also verifies DMA failure retains
@@ -717,3 +717,24 @@ SHA256 `2ed4e33fad1522258e3d4c0a6addbac9fb0dcb79cbe90e40222579688fa34e63`. Board
 This diagnostic image still contains the known SDK CMDQ gradient defect;
 build success is not gradient acceptance. Correct it in application build glue
 before promoting a gradient-ready candidate.
+
+### Application-owned CMDQ correction (2026-10-04)
+
+GE CMDQ profiles now generate `build/lvgl-ge-cmdq.c` from the reviewed SDK
+source, correcting the green slot and replacing signed negative left shifts
+with defined multiplication. The full normalized SDK source SHA256 is guarded;
+an SDK update fails closed until this adapter is reviewed. No SDK file is edited.
+The generated source retains the SDK license and uses its private GE headers,
+so this narrow adapter is SDK-version-specific, not a portable GE replacement.
+
+The application link wraps `ge_cmdq_ops`. Static verification reads the final
+ELF operations table to prove CMDQ mode selects the corrected backend. Generated
+source and provenance JSON are copied into image evidence and hashed in the
+manifest. The original backend remains available to other SDK applications.
+
+Host regression compiles the actual original and corrected gradient builder:
+the original fails, the corrected builder passes all ARGB step words in both
+directions at lengths 1/2/8/17/4096, with boundary guards. Full host suite:
+**54/54 PASS**. This establishes command generation, not hardware pixels.
+The older diagnostic image above remains historical evidence; board numeric
+acceptance and YUV CSC probes are still pending.

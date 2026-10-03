@@ -937,3 +937,9 @@ if(AIC_BUILD_WIDGET_TESTS AND EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/inc
     endif()
     add_test(NAME lvgl_aic_native_fill_probe_contract COMMAND lvgl_aic_native_fill_probe_contract)
 endif()
+
+if(EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/ge/cmdq_ops.c")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME lvgl_aic_ge_cmdq_patch_contract COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_LIST_DIR}/ge_cmdq_patch_contract.py" "${AIC_SDK_ROOT}" "${CMAKE_C_COMPILER}")
+endif()
