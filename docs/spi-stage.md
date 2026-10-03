@@ -736,3 +736,28 @@ SDK `output/lvgl-spi-session-linked.o` SHA256:
 Logs: `output/spi-ge-bounds-build.log`, `output/spi-ge-bounds-tests.log`,
 `output/spi-ge-bounds-target.log`. Full firmware refresh for this guard remains
 pending. These checks do not establish hardware filter output or throughput.
+
+## Complete GE worker pipeline regression (2026-10-04)
+
+A second build of `spi_pipeline_contract.c` now links the real LVGL display,
+OSAL worker, handoff, session, GE converter, panel sequence, transfer and SDK SPI
+bridge. Only hardware/OS/cache interfaces are modeled. The normal CPU pipeline
+remains a separate executable and still exercises uncertain SPI completion.
+
+The GE variant renders six alternating black/white LVGL frames, then accepts red
+and coordinate-coded direct blits. It checks the final transmitted bytes against
+an independent clockwise-90/resize/byte-swap formula, both draw-buffer ownership
+and worker completion, and normal disposal of tx, two staging allocations and
+GE client. The coordinate-coded frame prevents solid colors from hiding mapping
+errors. This validates submitted geometry and modeled transport, not actual GE
+filter output.
+
+A second GE run fails sync before any panel command or SPI frame. Display/worker
+close completes, while the session, bus/tx claim, client and both GE stages remain
+retained. The captured GE source still contains the white frame after LVGL draw
+buffers are deleted: the worker did not leave hardware borrowing freed UI memory.
+
+Validation: **70/70 host PASS**. Logs:
+`output/spi-ge-pipeline-build.log`, `output/spi-ge-pipeline-tests.log`.
+Physical GE/SPI execution and actual panel DMA/TE performance **NOT_RUN**.
+This test-only increment does not refresh the earlier full-firmware artifact.

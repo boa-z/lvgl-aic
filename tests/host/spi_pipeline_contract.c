@@ -44,19 +44,83 @@ aicos_thread_t aicos_thread_create(const char *name,uint32_t stack,uint32_t prio
 #else
 #include <sys/mman.h>
 #endif
+#ifdef TEST_SPI_GE
+#include <mpp_ge.h>
+#define OUTPUT_WIDTH 4
+#define OUTPUT_HEIGHT 4
+#define PIXEL_BYTES 32
+#define DMA_SPACE 16384
+static unsigned ge_calls,ge_opens,ge_closes,dma_slot;
+static bool ge_fail;
+static struct ge_bitblt ge_command;
+#else
+#define OUTPUT_WIDTH 3
+#define OUTPUT_HEIGHT 2
+#define PIXEL_BYTES 12
+#define DMA_SPACE 8192
+#endif
 static uint8_t *dma;
 static unsigned dma_allocs,dma_frees,commands,frames,cleans,status;
 static bool data_mode,fail_pixel_wait;
 static const uint8_t *inflight;
 static size_t inflight_bytes;
-static uint8_t snapshot[12];
+static uint8_t snapshot[PIXEL_BYTES];
 void aicos_msleep(unsigned int ms) { while(ms--) pause_ms(); }
 void *aicos_malloc_align(unsigned int type,size_t bytes,size_t alignment)
-{ assert(type==MEM_CMA && bytes==64 && alignment==64);dma_allocs++;return dma; }
+{
+    assert(type==MEM_CMA && alignment==64);dma_allocs++;
+#ifdef TEST_SPI_GE
+    unsigned slot=dma_slot++%3;
+    assert(bytes==(slot?256:64));return slot?dma+4096*(slot+1):dma;
+#else
+    assert(bytes==64);return dma;
+#endif
+}
 void aicos_free_align(unsigned int type,void *p)
-{ assert(type==MEM_CMA && p==dma && !status);dma_frees++; }
+{
+    assert(type==MEM_CMA && !status);
+#ifdef TEST_SPI_GE
+    assert(p==dma || p==dma+8192 || p==dma+12288);
+#else
+    assert(p==dma);
+#endif
+    dma_frees++;
+}
 void aicos_dcache_clean_range(unsigned long *p,unsigned long bytes)
-{ assert(((void *)p==dma || (void *)p==dma+4096) && bytes==64 && !status);cleans++; }
+{
+#ifdef TEST_SPI_GE
+    if((void *)p==dma+8192) { assert(bytes==256 && !status);return; }
+#endif
+    assert(((void *)p==dma || (void *)p==dma+4096) && bytes==64 && !status);cleans++;
+}
+#ifdef TEST_SPI_GE
+void aicos_dcache_clean_invalid_range(unsigned long *p,unsigned long bytes)
+{ assert((void *)p==dma+12288 && bytes==256 && !status); }
+void aicos_dcache_invalid_range(unsigned long *p,unsigned long bytes)
+{ assert((void *)p==dma+12288 && bytes==256 && !status && !ge_fail); }
+struct mpp_ge *mpp_ge_open(void) { ge_opens++;return (struct mpp_ge *)(uintptr_t)1; }
+void mpp_ge_close(struct mpp_ge *g) { assert(g && !status);ge_closes++; }
+enum ge_mode mpp_ge_get_mode(struct mpp_ge *g) { assert(g);return GE_MODE_CMDQ; }
+int mpp_ge_bitblt(struct mpp_ge *g,struct ge_bitblt *b)
+{
+    assert(g && !status && b->ctrl.flags==MPP_ROTATION_90);
+    assert(b->src_buf.phy_addr[0]==(uintptr_t)dma+8192);
+    assert(b->dst_buf.phy_addr[0]==(uintptr_t)dma+12288);
+    assert(b->src_buf.size.width==8 && b->src_buf.size.height==4);
+    assert(b->dst_buf.size.width==4 && b->dst_buf.size.height==4);
+    ge_command=*b;ge_calls++;return 0;
+}
+int mpp_ge_emit(struct mpp_ge *g) { assert(g);return 0; }
+int mpp_ge_sync(struct mpp_ge *g)
+{
+    assert(g);pause_ms();if(ge_fail) return -1;
+    lv_aic_spi_rgb565_frame_t f={.data=dma+8192,.capacity=256,.stride=64,.width=8,.height=4};
+    uint8_t pixels[PIXEL_BYTES];
+    assert(lv_aic_spi_pack_rgb565(&f,pixels,sizeof(pixels),4,4,90,false));
+    for(unsigned y=0;y<4;y++) memcpy(dma+12288+y*64,pixels+y*8,8);
+    return 0;
+}
+#endif
 static void present(void) {}
 static bool dc(void *context,bool mode)
 { assert(context==dma && !status);data_mode=mode;return true; }
@@ -69,10 +133,16 @@ size_t rt_qspi_transfer_message(struct rt_qspi_device *d,struct rt_qspi_message 
     if(m->parent.length==1) {
         assert(!data_mode && p==dma+4096 && p[0]==0x2c && commands==frames);commands++;
     } else {
-        assert(data_mode && p==dma && m->parent.length==12 && commands==frames+1);
-        for(unsigned i=0;i<12;i+=2) {
+        assert(data_mode && p==dma && m->parent.length==PIXEL_BYTES && commands==frames+1);
+        for(unsigned i=0;i<PIXEL_BYTES;i+=2) {
             if(frames<6) assert(p[i]==((frames%2)?0:255) && p[i+1]==p[i]);
-            else assert(p[i]==0xf8 && p[i+1]==0);
+            else if(frames==6) assert(p[i]==0xf8 && p[i+1]==0);
+            else {
+                unsigned x=(i/2)%OUTPUT_WIDTH,y=(i/2)/OUTPUT_WIDTH;
+                /* Independent expected clockwise-90 sampling of an 8x4 grid. */
+                unsigned sx=y*8/OUTPUT_HEIGHT,sy=3-x*4/OUTPUT_WIDTH;
+                assert(p[i]==0x12 && p[i+1]==sy*8+sx+1);
+            }
         }
         frames++;
     }
@@ -83,25 +153,28 @@ int rt_spi_wait_completion(struct rt_spi_device *d)
 {
     assert(d && status==1);pause_ms();
     assert(!memcmp(inflight,snapshot,inflight_bytes));
-    if(fail_pixel_wait && inflight_bytes==12) return -1;
+    if(fail_pixel_wait && inflight_bytes==PIXEL_BYTES) return -1;
     status=0;return 0;
 }
 int main(void)
 {
     lv_init();
 #ifdef _WIN32
-    dma=VirtualAlloc((void *)(uintptr_t)0x48000000,8192,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+    dma=VirtualAlloc((void *)(uintptr_t)0x48000000,DMA_SPACE,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
 #else
-    dma=mmap((void *)(uintptr_t)0x48000000,8192,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
+    dma=mmap((void *)(uintptr_t)0x48000000,DMA_SPACE,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE,-1,0);
 #endif
-    assert(dma==(void *)(uintptr_t)0x48000000);memset(dma,0xa5,8192);dma[4096]=0x2c;
+    assert(dma==(void *)(uintptr_t)0x48000000);memset(dma,0xa5,DMA_SPACE);dma[4096]=0x2c;
     struct rt_spi_ops ops={present,present,present,present,present};
     struct rt_spi_bus bus={&ops};struct rt_qspi_device device={{&bus}};
     lv_aic_spi_panel_step_t step={.data=dma+4096,.bytes=1,.capacity=64,.data_lines=1};
-    lv_aic_spi_panel_t *panel=lv_aic_spi_panel_create(&device,&step,1,3,2,dc,dma,true);assert(panel);
-    lv_aic_spi_session_config_t config={.device=&device,.width=3,.height=2,.data_lines=1,.swap_bytes=true,
+    lv_aic_spi_panel_t *panel=lv_aic_spi_panel_create(&device,&step,1,OUTPUT_WIDTH,OUTPUT_HEIGHT,dc,dma,true);assert(panel);
+    lv_aic_spi_session_config_t config={.device=&device,.width=OUTPUT_WIDTH,.height=OUTPUT_HEIGHT,.data_lines=1,.swap_bytes=true,
         .prepare=lv_aic_spi_panel_prepare,.prepare_context=panel};
     lv_aic_spi_session_t *session=lv_aic_spi_session_open_owned(&config,64);assert(session);
+#ifdef TEST_SPI_GE
+    assert(lv_aic_spi_session_enable_ge2d(session,8,4,512));
+#endif
     lv_aic_spi_display_t *display=lv_aic_spi_display_create_buffered(session,8,4,90,1024,2,4096,20);assert(display);
     lv_display_t *lv=lv_aic_spi_display_get(display);lv_obj_t *screen=lv_display_get_screen_active(lv);
     lv_obj_set_style_bg_opa(screen,LV_OPA_COVER,0);
@@ -118,17 +191,33 @@ int main(void)
     lv_aic_spi_result_t result;
     while(!lv_aic_spi_display_blit_take(display,&result)) pause_ms();
     assert(result==LV_AIC_SPI_OK);
+    uint8_t grid[64];
+    for(unsigned i=0;i<32;i++) { grid[2*i]=(uint8_t)(i+1);grid[2*i+1]=0x12; }
+    source.data=grid;
+    assert(lv_aic_spi_display_blit(display,&source,90)==LV_AIC_SPI_OK);
+    while(!lv_aic_spi_display_blit_take(display,&result)) pause_ms();
+    assert(result==LV_AIC_SPI_OK);
+    memset(grid,0xee,sizeof(grid)); /* Completion releases the producer borrow. */
     lv_aic_spi_display_stats_t stats;assert(lv_aic_spi_display_stats(display,&stats));
-    assert(stats.accepted==7 && stats.completed==7 && !stats.failed && !stats.pending);
+    assert(stats.accepted==8 && stats.completed==8 && !stats.failed && !stats.pending);
     while(!lv_aic_spi_display_close(display)) pause_ms();
     assert(!pthread_join(thread,NULL));
     assert(lv_aic_spi_session_close(session)==LV_AIC_SPI_OK && lv_aic_spi_panel_close(panel));
-    assert(frames==7 && commands==7 && cleans==14 && allocated==freed && dma_allocs==dma_frees);
-    for(unsigned i=12;i<64;i++) assert(dma[i]==0xa5);
+    assert(frames==8 && commands==8 && cleans==16 && allocated==freed && dma_allocs==dma_frees);
+    for(unsigned i=PIXEL_BYTES;i<64;i++) assert(dma[i]==0xa5);
     /* Repeat the entire chain with uncertain pixel DMA completion. */
-    frames=commands=cleans=0;fail_pixel_wait=true;
-    panel=lv_aic_spi_panel_create(&device,&step,1,3,2,dc,dma,true);assert(panel);
+    frames=commands=cleans=0;
+#ifdef TEST_SPI_GE
+    assert(ge_calls==8 && ge_opens==ge_closes);
+    ge_fail=true;memset(dma,0xa5,64);
+#else
+    fail_pixel_wait=true;
+#endif
+    panel=lv_aic_spi_panel_create(&device,&step,1,OUTPUT_WIDTH,OUTPUT_HEIGHT,dc,dma,true);assert(panel);
     config.prepare_context=panel;session=lv_aic_spi_session_open_owned(&config,64);assert(session);
+#ifdef TEST_SPI_GE
+    assert(lv_aic_spi_session_enable_ge2d(session,8,4,512));
+#endif
     display=lv_aic_spi_display_create_buffered(session,8,4,90,1024,2,4096,20);assert(display);
     lv=lv_aic_spi_display_get(display);screen=lv_display_get_screen_active(lv);
     lv_obj_set_style_bg_color(screen,lv_color_white(),0);lv_obj_set_style_bg_opa(screen,LV_OPA_COVER,0);
@@ -139,8 +228,16 @@ int main(void)
     while(!lv_aic_spi_display_close(display)) pause_ms();
     assert(!pthread_join(thread,NULL));
     assert(lv_aic_spi_session_close(session)==LV_AIC_SPI_FAULT);
+#ifdef TEST_SPI_GE
+    assert(allocated==freed && dma_allocs==dma_frees+3 && !status);
+    assert(ge_opens==ge_closes+1 && ge_calls==9 && !frames && !commands);
+    for(unsigned i=0;i<64;i++) assert(dma[i]==0xa5);
+    /* LVGL draw buffers were deleted; uncertain GE still owns a private copy. */
+    assert(*(uint8_t *)(uintptr_t)ge_command.src_buf.phy_addr[0]==0xff);
+#else
     assert(allocated==freed && dma_allocs==dma_frees+1 && status==1);
-    assert(frames==1 && commands==1 && !memcmp(dma,snapshot,12));
+    assert(frames==1 && commands==1 && !memcmp(dma,snapshot,PIXEL_BYTES));
+#endif
     /* Faulted session, panel context and DMA mapping intentionally stay alive. */
     return 0;
 }

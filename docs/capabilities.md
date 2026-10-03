@@ -1,6 +1,6 @@
 # Current capabilities and SDK gaps
 
-Latest combined evidence: **69/69 host PASS** and GE/widget/SPI full firmware
+Latest combined evidence: **70/70 host PASS** and GE/widget/SPI full firmware
 build/link/image/provenance **PASS**; see [current validation](validation.md).
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
@@ -50,7 +50,7 @@ phase documents are historical; source presence and switches are not board proof
 | Area | Implementation | Remaining scope |
 |---|---|---|
 | Integration | App-owned pins; LV_OS_CUSTOM RT events | Board regression after app/OS refactor |
-| Display | One framebuffer, DIRECT, PAN/VSync; whole-screen 90/180/270 GE copy with software fallback before submission | GE target/board rotation acceptance, SPI/multi-display, extended cache/VSync tests; see [rotation stage](display-rotation-stage.md) |
+| Display | Framebuffer DIRECT/PAN/VSync and whole-screen GE rotation; opt-in SPI full-frame double buffers, worker, blit and GE conversion | Physical GE rotation, SPI panel binding/TE and multi-display acceptance; GE/SPI overlap; see [rotation stage](display-rotation-stage.md) and [SPI stage](spi-stage.md) |
 | Touch / input | Touch worker, mapping, diagnostics and optional recovery; application-owned encoder and mouse providers create native LVGL indevs | Board-specific encoder/USB mouse sampling and board acceptance remain application scope |
 | Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership; SDK L-drive .fake pseudo-fills; immutable RGB/YUV frame publication | New AICP/BMP/fake/YUV board probes NOT_RUN; integrated media/APNG workers await physical acceptance |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
@@ -953,9 +953,11 @@ SPI now also has a bounded producer/worker handoff, OSAL worker lifecycle and
 LVGL full-frame RGB565 display binding with one/two budgeted draw buffers.
 Host **65/65 PASS**. The new `-WithSpi` profile passes enabled final firmware
 linkage and live-symbol checks across the entire SPI chain; it does not initialize
-a panel or establish physical output. Still missing for SDK parity: direct-blit
-producer integration, concrete panel initialization/power/TE configuration,
-per-panel statistics, GE/DMA pipelining and multi-display acceptance.
+a panel or establish physical output. Subsequent stages provide direct-blit
+ownership, statistics/stage timing, lifecycle callbacks and opt-in GE conversion.
+The composed CPU and GE worker pipelines pass host contracts (70 tests total).
+Still pending: concrete panel initialization/power/TE binding, physical filtering,
+GE/SPI DMA overlap, throughput and multi-display board acceptance.
 
 Full GE/fonts/GIF/widgets/AICP/player/APNG/barcode regression after the SPI stages:
 boot/app/static/image/manifest **PASS**, clean component
