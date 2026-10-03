@@ -357,3 +357,16 @@ Full host 49/49 PASS. Deprecation warnings are suppressed only around this
 intentional compatibility test. New UI should prefer flex containers and explicit
 page navigation as upstream recommends. This does not prove target live linkage,
 touch input, layout or board rendering, and no new firmware image is claimed.
+
+## Legacy navigation target linkage (2026-10-04)
+
+The widget smoke profile now retains list/menu compatibility APIs and verifies
+their live final-map symbols. Initial cached linking missed lv_list_create;
+SDK scons -c followed by full rebuild passes boot/app/static/image/manifest.
+No automatic list/menu UI is created. Host lifecycle/navigation coverage remains
+49/49 PASS from the preceding stage; target input/rendering is NOT_RUN.
+- sdk: a9cec9eb4db16e639e7ec4ced377733a673d2a1e
+- lvgl-aic: 4fb9c547052af61bb3e2d63b43cc9f88f322d74b
+- lvgl: 80ca777e37a2b176770726a02e07a6fb79ef0b39
+- images/d13x.elf SHA256: d0256049319f2ba7bae05e8039a9f780ee7bfd3477aa188dd15f6b6eaf7b7302
+- images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img SHA256: 02c75558ff06cdccf97b0b333d64e042b9db0e714a5007bdfdada109fe7a532a
