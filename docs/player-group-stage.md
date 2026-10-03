@@ -177,3 +177,36 @@ ELF SHA256: `927759b619378dddcd5d2e0ce66164c22874418e70337d249f58dff064586622`.
 The linker map retains shared runtime acquisition/release. Physical APNG
 multi-instance decoding and mixed media arbitration remain **NOT_RUN**.
 No flashing or SDK source edits were performed.
+
+
+## SDK VE arbitration return protection (2026-10-03)
+
+Before enabling multiple media workers, SDK review found that PNG, JPEG, H.264,
+zlib and JPEG-encoder callers ignore `ve_get_client()` failure. The current HAL
+waits at most 2000 ms; a contender could therefore proceed to register accesses
+without owning the hardware client.
+
+Application SCons integration now applies GNU ld `--wrap=ve_get_client` when
+media sessions or APNG are enabled. The component wrapper calls the real SDK
+entry and retries a nonzero result after a 5 ms yield. It returns only once SDK
+arbitration succeeds. SDK release and hardware decode timeout/reset policies are
+unchanged. No SDK source is patched. This covers linked SDK codec callers,
+including media player's internal decoding threads; the existing APNG operation
+gate remains useful for serializing its tick/cleanup operations.
+
+A permanently unavailable arbiter intentionally stalls the decoder worker and
+retains its resources. Returning an error is not a safe cancellation mechanism
+because these SDK callers ignore it. This is not a bounded-close guarantee; do
+not terminate blocked workers or force-release DMA readers. The real SDK lock's
+timeout still bounds each individual retry, not the entire acquisition.
+
+The host contract uses an unchecked caller in a separate translation unit and
+actual GNU symbol wrapping. Forced failures cannot reach simulated registers,
+then two contending pthreads complete forty calls with mutual exclusion and
+balanced SDK releases. The firmware verifier disassembles the final ELF and
+requires live PNG/JPEG/H.264 call sites to target the wrapper, the wrapper to
+target the real SDK entry, and no direct bypass from other linked functions.
+
+Media remains single-instance until its independent session, callback, allocator
+and shared-audio lifecycle are verified. Runtime and hardware mixing are not
+inferred from this prerequisite. Physical contention/codec acceptance **NOT_RUN**.

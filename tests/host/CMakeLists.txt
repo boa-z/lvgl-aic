@@ -789,3 +789,18 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(lvgl_aic_media_runtime_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 endif()
 add_test(NAME lvgl_aic_media_runtime_contract COMMAND lvgl_aic_media_runtime_contract)
+
+# Separate SDK-style caller verifies actual GNU linker wrapping, not a direct
+# call to the wrapper. The firmware gate independently checks codec call sites.
+add_executable(lvgl_aic_ve_client_contract ve_client_contract.c ve_client_caller.c
+    "${AIC_ROOT}/port/lv_aic_ve_client.c")
+target_include_directories(lvgl_aic_ve_client_contract PRIVATE
+    "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/player_stubs")
+target_compile_definitions(lvgl_aic_ve_client_contract PRIVATE AIC_LVGL_USE_APNG=1)
+target_link_libraries(lvgl_aic_ve_client_contract PRIVATE Threads::Threads)
+target_link_options(lvgl_aic_ve_client_contract PRIVATE "-Wl,--wrap=ve_get_client")
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_ve_client_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_ve_client_contract COMMAND lvgl_aic_ve_client_contract)
+set_tests_properties(lvgl_aic_ve_client_contract PROPERTIES TIMEOUT 15)

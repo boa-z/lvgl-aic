@@ -52,6 +52,41 @@ def fail(message):
     raise SystemExit("Gate 1 check FAILED: " + message)
 
 
+def check_ve_arbitration(root, map_path):
+    """Prove final codec call sites use the wrapper, not just a live root."""
+    objdump = root / "toolchain/bin/riscv64-unknown-elf-objdump.exe"
+    if not objdump.is_file():
+        objdump = objdump.with_suffix("")
+    elf = map_path.with_suffix(".elf")
+    if not objdump.is_file() or not elf.is_file():
+        fail("VE arbitration check requires target objdump and linked ELF")
+    assembly = subprocess.check_output(
+        [str(objdump), "-d", str(elf)], text=True, encoding="utf-8", errors="replace"
+    )
+    functions = {}
+    current = None
+    for line in assembly.splitlines():
+        header = re.match(r"^[0-9a-f]+ <([^>]+)>:", line)
+        if header:
+            current = header.group(1)
+            functions[current] = []
+        elif current:
+            functions[current].append(line)
+            if "<ve_get_client>" in line and current != "__wrap_ve_get_client":
+                fail("VE arbitration bypass in " + current)
+    wrapper = "\n".join(functions.get("__wrap_ve_get_client", []))
+    if "<ve_get_client>" not in wrapper:
+        fail("VE wrapper does not call the real SDK arbitration entry")
+    callers = ("png_hardware_decode", "ve_decode_jpeg", "decode_slice")
+    present = [name for name in callers if name in functions]
+    if not present:
+        fail("no linked codec caller for VE arbitration verification")
+    for name in present:
+        if "<__wrap_ve_get_client>" not in "\n".join(functions[name]):
+            fail("codec VE call is not wrapped: " + name)
+    print("VE arbitration call sites: PASS (" + ", ".join(present) + ")")
+
+
 def check_submodule(root, path, expected):
     submodule = root / path
     if not submodule.is_dir():
@@ -314,6 +349,8 @@ def main():
                 if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                     fail("unified player APNG symbol absent: " + symbol)
         print("player link closure: PASS (no media playback execution)")
+    if args.with_player or args.with_apng:
+        check_ve_arbitration(root, map_path)
     print(args.phase + " static checks: PASS (not board validation)")
 
 

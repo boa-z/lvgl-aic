@@ -46,6 +46,11 @@ group = DefineGroup('Application-LVGL-9.6', src, depend=['AIC_LVGL_PORT'],
 # SCons must receive two tokens; DefineGroup treats a CCFLAGS string as one.
 Env.AppendUnique(CCFLAGS=['-include', 'lvgl_aic_build_config.h'])
 
+# SDK codec callers ignore a failed finite VE lock wait. Keep arbitration
+# inside the application link boundary until the driver grants ownership.
+if GetDepend('AIC_LVGL_USE_PLAYER_SESSION') or GetDepend('AIC_LVGL_USE_APNG'):
+    Env.AppendUnique(LINKFLAGS=['-Wl,--wrap=ve_get_client'])
+
 src = Glob('port/*.c') + Glob('image/mpp/*.c') + Glob('common/*.c') + Glob('draw/ge2d/*.c')
 if GetDepend('AIC_LVGL_USE_IMG_ROLLER'):
     src += Glob('widgets/lv_img_roller.c')
