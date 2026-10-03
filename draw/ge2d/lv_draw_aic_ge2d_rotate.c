@@ -62,8 +62,10 @@ bool lv_aic_ge2d_rotation_scale_crop(uint32_t src_w, uint32_t src_h,
         return false;
     if (angle < 0) angle += 3600;
     if (angle != 0 && angle != 900 && angle != 1800 && angle != 2700) return false;
-    px = (int64_t)pivot->x * sx * 256 / 256;
-    py = (int64_t)pivot->y * sy * 256 / 256;
+    /* LVGL scales around the pivot, then rotates. The destination pivot
+     * stays fixed; inverse rotation precedes division by source-axis scale. */
+    px = (int64_t)pivot->x * 256;
+    py = (int64_t)pivot->y * 256;
     *flags = angle == 0 ? 0 : angle == 900 ? MPP_ROTATION_90 :
              angle == 1800 ? MPP_ROTATION_180 : MPP_ROTATION_270;
     for (int i = 0; i < 4; i++) {
@@ -73,12 +75,12 @@ bool lv_aic_ge2d_rotation_scale_crop(uint32_t src_w, uint32_t src_h,
         switch (angle) {
         case 0:    x[i] = (int64_t)pivot->x * 65536 + dx * 65536 / sx;
                    y[i] = (int64_t)pivot->y * 65536 + dy * 65536 / sy; break;
-        case 900:  x[i] = (int64_t)pivot->x * 65536 + dy * 65536 / sy;
-                   y[i] = (int64_t)pivot->y * 65536 - dx * 65536 / sx; break;
+        case 900:  x[i] = (int64_t)pivot->x * 65536 + dy * 65536 / sx;
+                   y[i] = (int64_t)pivot->y * 65536 - dx * 65536 / sy; break;
         case 1800: x[i] = (int64_t)pivot->x * 65536 - dx * 65536 / sx;
                    y[i] = (int64_t)pivot->y * 65536 - dy * 65536 / sy; break;
-        default:   x[i] = (int64_t)pivot->x * 65536 - dy * 65536 / sy;
-                   y[i] = (int64_t)pivot->y * 65536 + dx * 65536 / sx; break;
+        default:   x[i] = (int64_t)pivot->x * 65536 - dy * 65536 / sx;
+                   y[i] = (int64_t)pivot->y * 65536 + dx * 65536 / sy; break;
         }
     }
     minx = maxx = x[0]; miny = maxy = y[0];
@@ -95,8 +97,8 @@ bool lv_aic_ge2d_rotation_scale_crop(uint32_t src_w, uint32_t src_h,
     src->y2 = (int32_t)((maxy + 65535) / 65536);
     if (src->x2 >= (int32_t)src_w) src->x2 = (int32_t)src_w - 1;
     if (src->y2 >= (int32_t)src_h) src->y2 = (int32_t)src_h - 1;
-    *phase_x = (int32_t)(angle == 900 || angle == 2700 ? miny : minx) & 0xffff;
-    *phase_y = (int32_t)(angle == 900 || angle == 2700 ? minx : miny) & 0xffff;
+    *phase_x = (int32_t)minx & 0xffff;
+    *phase_y = (int32_t)miny & 0xffff;
     return src->x2 - src->x1 >= 3 && src->y2 - src->y1 >= 3;
 }
 #else

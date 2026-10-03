@@ -17,6 +17,47 @@ static int fills;
 static int submits, rotate_submits, fail_at, rotate_fail;
 static int fail_submission;
 static const void *allowed_src, *allowed_dst;
+static void combined_transform_contract(void)
+{
+    const uint32_t scales[][2]={{128,384},{384,512},{512,128}};
+    const lv_point_t pivot={8,12};
+    for (unsigned s=0;s<3;s++) {
+        for (int angle=0;angle<3600;angle+=900) {
+            lv_point_t points[4]={{10,14},{22,14},{10,26},{22,26}};
+            lv_point_array_transform(points,4,angle,scales[s][0],scales[s][1],&pivot,true);
+            lv_area_t visible={points[0].x,points[0].y,points[0].x,points[0].y}, crop;
+            for (unsigned i=1;i<4;i++) {
+                if(points[i].x<visible.x1) visible.x1=points[i].x;
+                if(points[i].x>visible.x2) visible.x2=points[i].x;
+                if(points[i].y<visible.y1) visible.y1=points[i].y;
+                if(points[i].y>visible.y2) visible.y2=points[i].y;
+            }
+            unsigned flags;
+            int32_t px,py;
+            assert(lv_aic_ge2d_rotation_scale_crop(32,32,&visible,&pivot,angle,
+                       scales[s][0],scales[s][1],&crop,&flags,&px,&py));
+            assert(crop.x1==10 && crop.y1==14 && crop.x2==22 && crop.y2==26);
+            assert(px==0 && py==0);
+            /* A one-pixel inset creates independent fractional source phases.
+             * Use a floating inverse matrix as the oracle, not the Q16 helper. */
+            visible.x1++; visible.y1++; visible.x2--; visible.y2--;
+            double radians=angle*3.141592653589793/1800.0;
+            double minx=1e6,miny=1e6;
+            for(unsigned i=0;i<4;i++) {
+                double dx=((i&1)?visible.x2:visible.x1)-pivot.x;
+                double dy=((i&2)?visible.y2:visible.y1)-pivot.y;
+                double x=pivot.x+(cos(radians)*dx+sin(radians)*dy)*256/scales[s][0];
+                double y=pivot.y+(-sin(radians)*dx+cos(radians)*dy)*256/scales[s][1];
+                if(x<minx) minx=x;
+                if(y<miny) miny=y;
+            }
+            assert(lv_aic_ge2d_rotation_scale_crop(32,32,&visible,&pivot,angle,
+                       scales[s][0],scales[s][1],&crop,&flags,&px,&py));
+            assert(fabs(crop.x1+px/65536.0-minx)<0.00004);
+            assert(fabs(crop.y1+py/65536.0-miny)<0.00004);
+        }
+    }
+}
 /* Native YUV executor has its own real-ABI lease/submission contract. */
 int lv_draw_aic_ge2d_yuv(lv_draw_task_t *task) { (void)task; return 0; }
 bool lv_draw_aic_ge2d_yuv_faulted(void) { return false; }
@@ -41,6 +82,7 @@ int mpp_ge_fillrect(struct mpp_ge *ge, struct ge_fillrect *fill)
 
 int main(void)
 {
+    combined_transform_contract();
     static uint8_t pixels[32 * 128], output[128 * 512];
     lv_draw_buf_t src, dst;
     lv_draw_image_dsc_t d;
@@ -109,6 +151,14 @@ int main(void)
             }
         }
     }
+    d.scale_x=384; d.scale_y=512; d.pivot=(lv_point_t){16,16}; d.rotation=900;
+    clip=(lv_area_t){101,220,111,230};
+    assert(lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&clip));
+    assert(captured.ctrl.flags==MPP_ROTATION_90);
+    assert(captured.scale_phase.dx_16[0]==43690 && captured.scale_phase.dy_16[0]==32768);
+    assert(captured.src_buf.crop.x==18 && captured.src_buf.crop.y==18);
+    assert(captured.scale_phase.h_phase_16[0]==43690 && captured.scale_phase.v_phase_16[0]==32768);
+    d.rotation=0;
     d.scale_x = 384; d.scale_y = 192; d.pivot = (lv_point_t){7, 9};
     clip = (lv_area_t){101, 203, 120, 215};
     assert(lv_draw_aic_ge2d_blit(&task, &d, &decoder, &origin, &clip));

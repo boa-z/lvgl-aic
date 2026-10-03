@@ -314,10 +314,10 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     }
     if (scaled) {
         lv_aic_ge2d_scale_axis_t x, y;
-        uint32_t sx = draw_dsc->rotation == 900 || draw_dsc->rotation == 2700
-                          ? draw_dsc->scale_y : draw_dsc->scale_x;
-        uint32_t sy = draw_dsc->rotation == 900 || draw_dsc->rotation == 2700
-                          ? draw_dsc->scale_x : draw_dsc->scale_y;
+        uint32_t sx = draw_dsc->scale_x;
+        uint32_t sy = draw_dsc->scale_y;
+        int32_t scaler_width = draw_dsc->rotation == 900 || draw_dsc->rotation == 2700
+                                  ? lv_area_get_height(&dst_area) : lv_area_get_width(&dst_area);
         if (draw_dsc->skew_x != 0 || draw_dsc->skew_y != 0 ||
             (draw_dsc->rotation == 0 &&
              (!lv_aic_ge2d_scale_axis(src->header.w, src_area.x1, lv_area_get_width(&dst_area),
@@ -326,7 +326,7 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
                                       draw_dsc->pivot.y, draw_dsc->scale_y, &y))) ||
             (draw_dsc->rotation != 0 &&
              lv_aic_ge2d_scale_split_risk((int32_t)(16777216 / sx),
-                                          lv_area_get_width(&dst_area)))) {
+                                          scaler_width))) {
             return false;
         }
         if (draw_dsc->rotation == 0) {
@@ -338,7 +338,7 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
             x.crop = src_area.x1; x.extent = lv_area_get_width(&src_area);
             y.crop = src_area.y1; y.extent = lv_area_get_height(&src_area);
         }
-        if (lv_aic_ge2d_scale_split_risk(x.step_16, lv_area_get_width(&dst_area))) {
+        if (lv_aic_ge2d_scale_split_risk(x.step_16, scaler_width)) {
             return false;
         }
         blt.scale_phase.scale_phase_en = 1;
