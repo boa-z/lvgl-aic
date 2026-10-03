@@ -103,8 +103,8 @@ bool lv_aic_yuv_to_rgb888(const lv_aic_yuv_frame_t *frame, uint8_t *output,
         !span_valid(output, stride, frame->width * 3, frame->height, capacity, &output_span)) return false;
     lv_aic_yuv_layout(frame->format, frame->width, frame->height, &layout);
     for (unsigned i = 0; i < layout.planes; i++) {
-        span_valid(frame->planes[i].data, frame->planes[i].stride,
-                   layout.row_bytes[i], layout.rows[i], frame->planes[i].capacity, &input_span);
+        if (!span_valid(frame->planes[i].data, frame->planes[i].stride,
+                        layout.row_bytes[i], layout.rows[i], frame->planes[i].capacity, &input_span)) return false;
         uintptr_t src = (uintptr_t)frame->planes[i].data, dst = (uintptr_t)output;
         if (src < dst + output_span && dst < src + input_span) return false;
     }
