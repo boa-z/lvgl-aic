@@ -308,3 +308,9 @@ images. Offset values are bounded to +/-4096; nonzero offsets with tile/auto
 alignment remain rejected. Ancestor clipping still rejects partial visibility.
 Focused widget contract and strict E907 PASS. This offset change is NOT in the
 firmware manifest above, and pixel/board validation remains NOT_RUN.
+
+Masked plane correction: explicit plane players now reject bitmap masks before
+opening the video layer or changing UI alpha. The single DE rectangle and fake
+window cannot implement arbitrary mask coverage; accepting it silently was
+incorrect. New bitmap-mask and tile+offset rejection tests verify no submission,
+no alpha acquisition and balanced cleanup. Host 49/49 and strict E907 PASS.

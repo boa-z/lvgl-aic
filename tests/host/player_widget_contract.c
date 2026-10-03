@@ -648,6 +648,23 @@ int main(void)
         assert(!plane_live && alpha_enables==before && plane_presents==submitted);
         lv_obj_delete(o);tick();assert(!active && created==freed && retained==released);
     }
+    /* A single DE rectangle cannot reproduce a bitmap mask. Tile+offset also
+     * has LVGL clipping semantics outside this plane profile. */
+    static const uint8_t mask_pixels[24]={0};
+    static const lv_image_dsc_t mask={.header={.magic=LV_IMAGE_HEADER_MAGIC,
+        .cf=LV_COLOR_FORMAT_A8,.w=6,.h=4,.stride=6},.data_size=24,.data=mask_pixels};
+    for(unsigned scenario=0;scenario<2;scenario++) {
+        o=make();lv_obj_set_size(o,6,4);lv_obj_set_pos(o,2,2);
+        if(scenario) { lv_image_set_inner_align(o,LV_IMAGE_ALIGN_TILE);lv_image_set_offset_x(o,1); }
+        else lv_image_set_bitmap_map_src(o,&mask);
+        assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+        assert(lv_aic_player_set_src(o,"unsupported-geometry.mp4")==LV_RESULT_OK);
+        assert(lv_aic_player_start(o)==LV_RESULT_OK);
+        unsigned before=alpha_enables,submitted=plane_presents;frames=1;tick();
+        assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT);
+        assert(!plane_live && alpha_enables==before && plane_presents==submitted);
+        lv_obj_delete(o);tick();assert(!active && created==freed && retained==released);
+    }
     /* Top/system/bottom layers are visible roots, unlike inactive screens. */
     lv_obj_t *roots[]={lv_display_get_layer_top(d),lv_display_get_layer_sys(d),lv_display_get_layer_bottom(d)};
     for(unsigned i=0;i<3;i++) {

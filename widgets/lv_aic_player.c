@@ -450,7 +450,7 @@ static bool present_plane(player_binding_t *b)
        lv_image_get_scale_y(obj)!=LV_SCALE_NONE ||
        lv_obj_get_style_image_opa(obj,LV_PART_MAIN)!=LV_OPA_COVER ||
        lv_obj_get_style_image_recolor_opa(obj,LV_PART_MAIN)>LV_OPA_MIN ||
-       lv_image_get_blend_mode(obj)!=LV_BLEND_MODE_NORMAL) return false;
+       lv_image_get_blend_mode(obj)!=LV_BLEND_MODE_NORMAL || lv_image_get_bitmap_map_src(obj)) return false;
     lv_obj_update_layout(obj);lv_area_t area;lv_obj_get_coords(obj,&area);
     int32_t width=lv_area_get_width(&area),height=lv_area_get_height(&area);
     if(width<1 || height<1 || width>4096 || height>4096 || (uint64_t)width*height>8U*1024U*1024U) return false;
