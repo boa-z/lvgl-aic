@@ -578,3 +578,27 @@ boot/app/static/image/manifest gates PASS. Clean component
 `2054943be3f13304d32a1da003ddfbb21bed5c59`.
 SDK-relative image `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`,
 SHA256 `e18661e1b9804a219177f0e1160034658acdbdfab6c6f14a680c495adc7a0e31`. Board **NOT_RUN**.
+
+
+### Standalone SDK-shaped image buffers (2026-10-04)
+
+`canvas_image.h` now supplies `lv_mpp_image_alloc`, `lv_mpp_image_flush_cache`
+and `lv_mpp_image_free` under the canvas option. Only SDK-supported ARGB8888 and
+RGB565 are accepted. Allocation uses true MEM_CMA with 64-byte base/stride
+alignment, dimensions 1..4096 and checked 32-bit physical range. Default per-image
+budget is 4 MiB; `lv_aic_mpp_image_alloc_bounded` accepts an explicit byte bound.
+Pixels retain SDK uninitialized-allocation semantics: initialize before display.
+
+An internal owner list preserves actual addresses/capacities independently of
+public crop/descriptor edits. Unknown/NULL handles are ignored. Shared GE faults
+refuse allocations/cache operations and retain buffers until reboot. Callers must
+retire external image/cache/decoder users and complete DMA before normal free;
+this allocator does not infer arbitrary external leases or impose a global budget.
+UI-owner serialization is required. The standalone `lv_ge_fill` entry is still
+pending; these APIs do not yet claim SDK helper parity for GE gradients/blending.
+
+The real implementation is tested with SDK MPP headers and mocked CMA/cache calls:
+format/budget/stride/range checks, CMA failure, public metadata edits, concurrent
+owners, non-head removal and 100 balanced lifecycle cycles. Mocks never dereference
+physical addresses and do not prove actual CMA/cache behavior. Target live-symbol
+gates include all four APIs; board NOT_RUN.
