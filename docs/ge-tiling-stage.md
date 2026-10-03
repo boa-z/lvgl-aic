@@ -61,3 +61,15 @@ These are descriptor/ownership tests with mocked GE; they do not prove physical
 pixels, interpolation, DMA or cache behavior. The older native-tile board probes
 do not establish transformed-tile hardware acceptance. Current target-image
 build evidence is recorded separately after a clean source build.
+
+Clean target regression build for transformed tiling:
+- Command: tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -WithAicp -Jobs 8
+- SDK 1f2e34a5, lvgl-aic 230a51f, LVGL 80ca777e; manifest source states clean.
+- Boot/app builds, static symbol checks, image verification and manifest: PASS.
+- Evidence: SDK output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp.
+- Image: images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
+- SHA256: 74a92da2c0df09e2f0ae6080d7330b0070c42e2cb8fc8c175258666b21d98ceb.
+- VIN/camera disabled; this is not a camera-enabled image. Transformed-tile
+  hardware pixels and all new camera hardware acceptance remain NOT_RUN.
+- This directory replaces the historical evidence above; this documentation
+  commit is newer than the source commits that built the image.
