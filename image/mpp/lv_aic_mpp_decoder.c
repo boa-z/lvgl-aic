@@ -381,8 +381,12 @@ static lv_result_t lv_aic_mpp_parse_jpeg_header(lv_aic_mpp_stream_t *stream, int
         }
         if (marker == 0xFFC0U || marker == 0xFFC1U) {
             uint8_t precision;
-            if (lv_aic_mpp_stream_read(stream, sof, 15U, &got) != LV_FS_RES_OK ||
-                got != 15U) {
+            /* SOF has six fixed bytes followed by three bytes per component.
+             * A grayscale SOF is shorter than the RGB SOF; never read into
+             * the following marker to satisfy a fixed RGB-sized read. */
+            if (size < 8U ||
+                lv_aic_mpp_stream_read(stream, sof, 6U, &got) != LV_FS_RES_OK ||
+                got != 6U) {
                 return LV_RESULT_INVALID;
             }
             precision = sof[0];
@@ -398,6 +402,10 @@ static lv_result_t lv_aic_mpp_parse_jpeg_header(lv_aic_mpp_stream_t *stream, int
             if (*components != 1 && *components != 3) {
                 return LV_RESULT_INVALID;
             }
+            uint32_t component_bytes = 3U * (uint32_t)*components;
+            if (size != 8U + component_bytes ||
+                lv_aic_mpp_stream_read(stream, sof, component_bytes, &got) != LV_FS_RES_OK ||
+                got != component_bytes) return LV_RESULT_INVALID;
             return LV_RESULT_OK;
         }
         {

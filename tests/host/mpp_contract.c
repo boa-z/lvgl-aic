@@ -208,7 +208,29 @@ static void memory_cache_contract(const char *root)
     assert(live_cma==0); free(data);
 }
 
+static void jpeg_header_boundaries(void)
+{
+    uint8_t gray[] = {0xff, 0xd8, 0xff, 0xc0, 0, 11,
+                     8, 0, 16, 0, 24, 1, 1, 0x11, 0};
+    lv_aic_mpp_stream_t stream = {0};
+    int w, h, components;
+    assert(lv_aic_mpp_stream_open_memory(&stream, gray, sizeof(gray)) == LV_FS_RES_OK);
+    assert(lv_aic_mpp_parse_jpeg_header(&stream, &w, &h, &components) == LV_RESULT_OK);
+    assert(w == 24 && h == 16 && components == 1 && stream.cursor == sizeof(gray));
+    lv_aic_mpp_stream_close(&stream);
+    for (unsigned length = 6; length < sizeof(gray); length++) {
+        assert(lv_aic_mpp_stream_open_memory(&stream, gray, length) == LV_FS_RES_OK);
+        assert(lv_aic_mpp_parse_jpeg_header(&stream, &w, &h, &components) == LV_RESULT_INVALID);
+        lv_aic_mpp_stream_close(&stream);
+    }
+    gray[5] = 17; /* RGB length with one component is malformed. */
+    assert(lv_aic_mpp_stream_open_memory(&stream, gray, sizeof(gray)) == LV_FS_RES_OK);
+    assert(lv_aic_mpp_parse_jpeg_header(&stream, &w, &h, &components) == LV_RESULT_INVALID);
+    lv_aic_mpp_stream_close(&stream);
+}
+
 int main(int argc, char **argv) {
+    jpeg_header_boundaries();
     assert(argc == 2 || argc == 3);
     lv_init();
     if (argc == 3) {
