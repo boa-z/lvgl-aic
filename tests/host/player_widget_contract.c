@@ -69,7 +69,7 @@ static unsigned png_created,png_freed,png_frames;
 typedef struct { lv_aic_apng_playback_t *p; uint32_t pixels[16]; } png_frame_t;
 lv_aic_apng_playback_t *lv_aic_apng_playback_prepare(const char *path,const lv_aic_apng_playback_options_t *o)
 {
-    assert(!active && !png && o->snapshots==2); strcpy(last_uri,path);
+    assert(!png && o->snapshots==2); strcpy(last_uri,path);
     png=calloc(1,sizeof(*png)); assert(png); png_created++;
     png->status=(lv_aic_apng_playback_status_t){.state=LV_AIC_APNG_OPENING,.width=4,.height=4,
         .file_bytes=1234,.rate_num=1,.rate_den=1}; return png;
@@ -378,6 +378,70 @@ int main(void)
     assert(active && !png && !strcmp(last_uri,"return.mp4"));
     rgb=true;frames=1;tick();tick();assert(lv_image_get_src(o)==lv_image_get_src(s1));
     lv_obj_delete(o);lv_obj_delete(s1);tick();tick();
+    /* SDK-style group: independent video and PNG producers share a publication
+     * barrier, not frame pixels. The faster producer cannot race the slower. */
+    lv_obj_t *g=lv_aic_player_group_create(screen),*g2=lv_aic_player_group_create(screen);
+    assert(g && g2);size_t accepted=99;
+    assert(lv_aic_player_group_control(g,LV_AIC_PLAYER_CMD_START,NULL,&accepted)==LV_RESULT_INVALID && !accepted);
+    o=make();other=lv_aic_player_create(screen);
+    assert(lv_aic_player_configure_apng(other,&po)==LV_RESULT_OK);
+    assert(lv_aic_player_group_add(g,o)==LV_RESULT_OK);
+    assert(lv_aic_player_group_add(g,o)==LV_RESULT_OK && lv_aic_player_group_get_count(g)==1);
+    assert(lv_aic_player_control(other,LV_AIC_PLAYER_CMD_ATTACH_GROUP,g)==LV_RESULT_OK);
+    assert(lv_aic_player_get_group(other)==g && lv_aic_player_group_get_count(g)==2);
+    assert(lv_aic_player_set_src(o,"group.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(other,"group.png")==LV_RESULT_OK);
+    assert(lv_aic_player_group_control(g,LV_AIC_PLAYER_CMD_START,NULL,&accepted)==LV_RESULT_OK && accepted==2);
+    frames=20;png_frames=0;rgb=false;
+    tick();tick();tick();
+    assert(active->status.frames_queued==1 && !png->status.published);
+    /* Automatic repeat may not let a fast terminal member bypass a slow one. */
+    assert(lv_aic_player_set_auto_restart(o,true)==LV_RESULT_OK);
+    active->status.state=LV_AIC_PLAYBACK_TERMINAL;active->status.video_eos=true;
+    tick();tick();assert(!lv_aic_player_get_auto_restart_count(o) && !active->status.seek_pending);
+    assert(lv_aic_player_set_auto_restart(o,false)==LV_RESULT_OK);
+    active->status.state=LV_AIC_PLAYBACK_PLAYING;active->status.video_eos=false;
+    png_frames=1;tick();tick();tick();
+    assert(active->status.frames_queued==2 && png->status.published==1);
+    assert(lv_image_get_src(o)!=lv_image_get_src(other)); /* Independent source ownership. */
+    rate=2;
+    assert(lv_aic_player_group_control(g,LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE,&rate,&accepted)==LV_RESULT_INVALID && accepted==1);
+    assert(png->status.rate_num==2);
+    queried_volume=123;
+    assert(lv_aic_player_group_control(g,LV_AIC_PLAYER_CMD_GET_VOLUME,&queried_volume,&accepted)==LV_RESULT_INVALID);
+    assert(!accepted && queried_volume==123);
+    position=1;
+    assert(lv_aic_player_group_control(g,LV_AIC_PLAYER_CMD_SET_PLAY_TIME,&position,&accepted)==LV_RESULT_INVALID && !accepted);
+    assert(lv_aic_player_seek(o,1)==LV_RESULT_INVALID);
+    assert(lv_aic_player_group_control(g,LV_AIC_PLAYER_CMD_PAUSE,NULL,&accepted)==LV_RESULT_OK && accepted==2);
+    tick();assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED && lv_aic_player_get_state(other)==LV_AIC_PLAYER_PAUSED);
+    position=0;
+    assert(lv_aic_player_group_control(g,LV_AIC_PLAYER_CMD_SET_PLAY_TIME,&position,&accepted)==LV_RESULT_OK && accepted==2);
+    tick();assert(!lv_image_get_src(o) && !lv_image_get_src(other));
+    active->status.seek_pending=false;active->status.seeks_completed++;active->status.state=LV_AIC_PLAYBACK_PAUSED;
+    png->status.restart_pending=false;png->status.restarts++;tick();
+    assert(lv_aic_player_group_control(g,LV_AIC_PLAYER_CMD_RESUME,NULL,&accepted)==LV_RESULT_OK && accepted==2);
+    tick();tick();assert(active->status.frames_queued==3);
+    /* Reassignment removes old membership and releases its stalled barrier. */
+    assert(lv_aic_player_group_add(g2,other)==LV_RESULT_OK);
+    assert(lv_aic_player_group_get_count(g)==1 && lv_aic_player_group_get_count(g2)==1);
+    unsigned before=active->status.frames_queued;tick();tick();assert(active->status.frames_queued>before);
+    assert(lv_aic_player_group_remove(g,other)==LV_RESULT_INVALID);
+    assert(lv_aic_player_control(other,LV_AIC_PLAYER_CMD_ATTACH_GROUP,NULL)==LV_RESULT_OK);
+    assert(!lv_aic_player_get_group(other) && !lv_aic_player_group_get_count(g2));
+    assert(lv_aic_player_group_add(g,other)==LV_RESULT_OK);
+    /* Deleting a group only detaches, preserving its independent producers. */
+    lv_obj_delete(g);
+    assert(!lv_aic_player_get_group(o) && !lv_aic_player_get_group(other) && active && png);
+    assert(lv_aic_player_group_add(g2,o)==LV_RESULT_OK);
+    assert(lv_aic_player_group_add(g2,other)==LV_RESULT_OK);
+    lv_obj_delete(other);assert(lv_aic_player_group_get_count(g2)==1);tick();
+    lv_obj_delete(o);assert(!lv_aic_player_group_get_count(g2));tick();lv_obj_delete(g2);
+    frames=0;
+    assert(!active && !png && !lv_aic_player_pending_cleanup());
+    /* Parent group deletion invokes member and group destructors safely. */
+    g=lv_aic_player_group_create(screen);o=lv_aic_player_create(g);
+    assert(lv_aic_player_group_add(g,o)==LV_RESULT_OK);lv_obj_delete(g);tick();
     /* APNG can be configured without media budgets; deletion waits native readers. */
     o=lv_aic_player_create(screen);assert(lv_aic_player_configure_apng(o,&po)==LV_RESULT_OK);
     assert(lv_aic_player_set_src(o,"static.png")==LV_RESULT_OK);

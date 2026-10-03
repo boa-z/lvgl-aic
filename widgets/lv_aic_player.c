@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_aic_player.h"
+#include "lv_aic_player_control.h"
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lvgl_aic_private.h"
 #if defined(AIC_LVGL_USE_PLAYER) && AIC_LVGL_USE_PLAYER
@@ -10,6 +11,7 @@
 #endif
 typedef struct player_binding player_binding_t;
 typedef struct slave_binding slave_binding_t;
+typedef struct player_group player_group_t;
 /* One immutable image descriptor shared by widget owners; decoder/GE readers
  * independently retain its storage after the last widget owner releases. */
 typedef struct { lv_aic_player_image_t image; size_t owners; } player_frame_t;
@@ -25,6 +27,9 @@ struct player_binding {
 #endif
     player_frame_t *frame;
     slave_binding_t *slaves;
+    player_group_t *group;
+    player_binding_t *group_next;
+    bool group_presented;
     lv_aic_playback_options_t options;
     lv_aic_playback_status_t status;
     lv_aic_player_state_t state,reported;
@@ -44,6 +49,120 @@ struct slave_binding {
     player_frame_t *frame;
 };
 typedef struct { lv_image_t image; slave_binding_t *binding; } slave_widget_t;
+struct player_group {
+    lv_obj_t obj;
+    player_binding_t *members;
+};
+static void group_reset(player_group_t *group)
+{
+    if(group) for(player_binding_t *b=group->members;b;b=b->group_next) b->group_presented=false;
+}
+static void group_unlink(player_binding_t *b)
+{
+    player_group_t *group=b->group;
+    if(group) {
+        player_binding_t **entry=&group->members;
+        while(*entry && *entry!=b) entry=&(*entry)->group_next;
+        if(*entry) *entry=b->group_next;
+        group_reset(group);
+    }
+    b->group=NULL; b->group_next=NULL; b->group_presented=false;
+}
+/* Like the SDK's successful-GET_FRAME barrier: each member publishes at most
+ * once per round. This is not a timestamp or cross-display scanout barrier.
+ * A paused/starved/terminal member holds the round until replay or detachment. */
+static bool group_wait(player_binding_t *b)
+{
+    if(!b->group) return false;
+    bool complete=true;
+    for(player_binding_t *m=b->group->members;m;m=m->group_next)
+        if(!m->group_presented) complete=false;
+    if(complete) group_reset(b->group);
+    return b->group_presented;
+}
+static void group_destructor(const lv_obj_class_t *class_p,lv_obj_t *obj)
+{
+    (void)class_p;
+    player_group_t *g=(player_group_t *)obj;
+    while(g->members) group_unlink(g->members);
+}
+const lv_obj_class_t lv_aic_player_group_class={
+    .base_class=&lv_obj_class,.instance_size=sizeof(player_group_t),.destructor_cb=group_destructor,
+    .width_def=LV_SIZE_CONTENT,.height_def=LV_SIZE_CONTENT,.name="aic_player_group",
+};
+lv_obj_t *lv_aic_player_group_create(lv_obj_t *parent)
+{
+    lv_obj_t *obj=lv_obj_class_create_obj(&lv_aic_player_group_class,parent);
+    if(obj) lv_obj_class_init_obj(obj);
+    return obj;
+}
+lv_result_t lv_aic_player_set_group(lv_obj_t *obj,lv_obj_t *group)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+    if(group) { LV_CHECK_OBJ(group,&lv_aic_player_group_class,return LV_RESULT_INVALID); }
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    if(b->group==(player_group_t *)group) return LV_RESULT_OK;
+    group_unlink(b);
+    if(group) {
+        b->group=(player_group_t *)group;
+        b->group_next=b->group->members; b->group->members=b;
+        group_reset(b->group);
+    }
+    return LV_RESULT_OK;
+}
+lv_obj_t *lv_aic_player_get_group(lv_obj_t *obj)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return NULL);
+    return (lv_obj_t *)((player_widget_t *)obj)->binding->group;
+}
+lv_result_t lv_aic_player_group_add(lv_obj_t *group,lv_obj_t *player)
+{
+    LV_CHECK_OBJ(group,&lv_aic_player_group_class,return LV_RESULT_INVALID);
+    return lv_aic_player_set_group(player,group);
+}
+lv_result_t lv_aic_player_group_remove(lv_obj_t *group,lv_obj_t *player)
+{
+    LV_CHECK_OBJ(group,&lv_aic_player_group_class,return LV_RESULT_INVALID);
+    LV_CHECK_OBJ(player,&lv_aic_player_class,return LV_RESULT_INVALID);
+    if(lv_aic_player_get_group(player)!=group) return LV_RESULT_INVALID;
+    return lv_aic_player_set_group(player,NULL);
+}
+size_t lv_aic_player_group_get_count(lv_obj_t *group)
+{
+    LV_CHECK_OBJ(group,&lv_aic_player_group_class,return 0);
+    size_t count=0;
+    for(player_binding_t *b=((player_group_t *)group)->members;b;b=b->group_next) count++;
+    return count;
+}
+lv_result_t lv_aic_player_group_control(lv_obj_t *group,lv_aic_player_cmd_t cmd,void *data,size_t *accepted)
+{
+    if(accepted) *accepted=0;
+    LV_CHECK_OBJ(group,&lv_aic_player_group_class,return LV_RESULT_INVALID);
+    /* Query fan-out would overwrite one payload with unrelated member data.
+     * Membership changes during traversal are intentionally not broadcast. */
+    switch(cmd) {
+    case LV_AIC_PLAYER_CMD_START: case LV_AIC_PLAYER_CMD_STOP:
+    case LV_AIC_PLAYER_CMD_PAUSE: case LV_AIC_PLAYER_CMD_RESUME: break;
+    case LV_AIC_PLAYER_CMD_SET_VOLUME: case LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE:
+        if(!data) return LV_RESULT_INVALID;
+        break;
+    case LV_AIC_PLAYER_CMD_SET_PLAY_TIME:
+        if(!data || *(uint64_t *)data) return LV_RESULT_INVALID;
+        break;
+    default: return LV_RESULT_INVALID;
+    }
+    player_group_t *g=(player_group_t *)group;
+    if(!g->members) return LV_RESULT_INVALID;
+    size_t done=0; bool ok=true;
+    /* Controls enqueue requests and never emit synchronous widget events.
+     * Workers cannot mutate LVGL membership; all list access is owner-only. */
+    for(player_binding_t *b=g->members;b;b=b->group_next) {
+        if(lv_aic_player_control(b->obj,cmd,data)==LV_RESULT_OK) done++;
+        else ok=false;
+    }
+    if(accepted) *accepted=done;
+    return ok?LV_RESULT_OK:LV_RESULT_INVALID;
+}
 static unsigned orphans;
 static bool draws_idle(void)
 {
@@ -290,13 +409,14 @@ static void tick(lv_timer_t *timer)
         if(b->state==LV_AIC_PLAYER_FAULT) retire(b);
         else if(b->state==LV_AIC_PLAYER_PLAYING || b->state==LV_AIC_PLAYER_TERMINAL) {
             lv_aic_player_image_t next={0};
-            if(backend_poll(b,&next)) {
+            if(!group_wait(b) && backend_poll(b,&next)) {
                 player_frame_t *frame=lv_malloc(sizeof(*frame));
                 if(frame) {
                     *frame=(player_frame_t){.image=next,.owners=1};
                     player_frame_t *old=b->frame; b->frame=frame;
                     lv_image_set_src(b->obj,lv_aic_player_image_source(&frame->image));
                     publish_slaves(b,frame);
+                    b->group_presented=true;
                     release_frame(old);
                 } else lv_aic_player_image_destroy(&next);
             }
@@ -306,10 +426,10 @@ static void tick(lv_timer_t *timer)
      * repeat, replace source, stop or delete without post-event object access. */
     if(b->obj && !b->closing && b->state==LV_AIC_PLAYER_TERMINAL &&
        b->reported==LV_AIC_PLAYER_TERMINAL && b->auto_restart &&
-       b->auto_restarts<UINT64_MAX && can_repeat(b)) {
+       b->auto_restarts<UINT64_MAX && can_repeat(b) && !group_wait(b)) {
         if(backend_seek(b,0)) {
             b->repeat_frames=b->status.frames_queued; b->auto_restarts++;
-            b->state=LV_AIC_PLAYER_SEEKING; retire(b);
+            b->state=LV_AIC_PLAYER_SEEKING; group_reset(b->group); retire(b);
         }
     }
     /* Final action only: callback can delete the widget or replace its source. */
@@ -327,6 +447,7 @@ static void destructor(const lv_obj_class_t *class_p,lv_obj_t *obj)
     while(b->slaves) {
         slave_binding_t *s=b->slaves; unlink_slave(s); lv_timer_resume(s->timer);
     }
+    group_unlink(b);
     b->obj=NULL; b->reopen=false; orphans++;
     backend_close(b); lv_timer_resume(b->timer);
 }
@@ -405,7 +526,7 @@ lv_result_t lv_aic_player_set_src(lv_obj_t *obj,const char *uri)
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
     if(!uri || !uri[0] || strlen(uri)>=sizeof(b->uri) || !source_configured(b,uri)) return LV_RESULT_INVALID;
-    memcpy(b->uri,uri,strlen(uri)+1); b->start_requested=false;
+    memcpy(b->uri,uri,strlen(uri)+1); b->start_requested=false; group_reset(b->group);
     lv_timer_resume(b->timer);
     if(backend_active(b) || b->closing) {
         b->closing=b->reopen=true; b->state=LV_AIC_PLAYER_STOPPING;
@@ -418,7 +539,7 @@ lv_result_t lv_aic_player_start(lv_obj_t *obj)
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
     if(!b->uri[0] || !source_configured(b,b->uri) || b->state==LV_AIC_PLAYER_FAULT) return LV_RESULT_INVALID;
-    b->start_requested=true; lv_timer_resume(b->timer);
+    b->start_requested=true; group_reset(b->group); lv_timer_resume(b->timer);
     if(b->closing || b->state==LV_AIC_PLAYER_TERMINAL) {
         b->closing=b->reopen=true; b->state=LV_AIC_PLAYER_STOPPING;
         backend_close(b); return LV_RESULT_OK;
@@ -430,6 +551,7 @@ static lv_result_t request_close(lv_obj_t *obj,bool stopped)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
+    group_reset(b->group);
     b->reopen=b->start_requested=false; b->stopped=stopped; b->closing=true; b->state=LV_AIC_PLAYER_STOPPING;
     backend_close(b); lv_timer_resume(b->timer); return LV_RESULT_OK;
 }
@@ -447,7 +569,8 @@ lv_result_t lv_aic_player_seek(lv_obj_t *obj,uint64_t position_us)
 {
     LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
     player_binding_t *b=((player_widget_t *)obj)->binding;
-    if(b->closing || !backend_seek(b,position_us)) return LV_RESULT_INVALID;
+    if((b->group && position_us) || b->closing || !backend_seek(b,position_us)) return LV_RESULT_INVALID;
+    group_reset(b->group);
     b->repeat_frames=backend_status(b).frames_queued;
     b->state=LV_AIC_PLAYER_SEEKING; lv_timer_resume(b->timer); return LV_RESULT_OK;
 }

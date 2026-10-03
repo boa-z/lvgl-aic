@@ -11,7 +11,10 @@ Host **40/40 PASS**, strict combined-feature E907 compile **PASS**, and clean
 combined firmware boot/app/static/image/manifest **PASS**; [artifact evidence](apng-stage.md).
 Physical validation remains **NOT_RUN**.
 
-Remaining player parity: group lifecycle, explicit lower video-plane ownership,
+Unified player group lifecycle, checked broadcast and publication barriers are
+now available; see [group contract](player-group-stage.md). Remaining player
+parity: multi-instance decoder/resource handling, frame-preserving group
+backpressure, explicit lower video-plane ownership,
 physical codec/timing/audio/multi-view acceptance. Arbitrary APNG time seek and
 video playback-rate changes are not supported by the SDK reference either.
 See [current command contract](player-command-compat.md). The milestone notes

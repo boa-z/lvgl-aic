@@ -10,6 +10,21 @@ extern "C" {
 #endif
 extern const lv_obj_class_t lv_aic_player_class;
 extern const lv_obj_class_t lv_aic_slave_class;
+extern const lv_obj_class_t lv_aic_player_group_class;
+/* Owner-thread, successful-publication barrier (not PTS/scanout sync).
+ * All members must publish once before any publishes the next round. Paused,
+ * starved, stopped or ended members hold the group until replay/detachment.
+ * One group per master. Add is idempotent and reassigns from the old group.
+ * Membership/source/seek/start/stop changes reset publication rounds.
+ * Destroying a group detaches surviving masters; deleting a master removes it.
+ * Grouping adds no decoder instances: backend instance limits still apply.
+ * General nonzero seek is rejected while grouped. */
+lv_obj_t *lv_aic_player_group_create(lv_obj_t *parent);
+lv_result_t lv_aic_player_set_group(lv_obj_t *player,lv_obj_t *group);
+lv_obj_t *lv_aic_player_get_group(lv_obj_t *player);
+lv_result_t lv_aic_player_group_add(lv_obj_t *group,lv_obj_t *player);
+lv_result_t lv_aic_player_group_remove(lv_obj_t *group,lv_obj_t *player);
+size_t lv_aic_player_group_get_count(lv_obj_t *group);
 /* Display-only image subclass. Attach/detach on the LVGL owner thread, outside
  * draw callbacks. NULL master detaches; source updates on an idle timer pass.
  * Shares decoder frames, never starts another decoder or copies frame pixels.

@@ -20,7 +20,7 @@ types or call from a decoder/FinSH worker.
 | SET_PLAYBACK_RATE | Unsupported by SDK media backend | 0.1..10x, finite float | float pointer |
 | GET_PLAYBACK_RATE | Fixed 1x | Observed applied rate, if available | float output |
 | GET_MEDIA_INFO | Complete prepared SDK snapshot | File size and canvas dimensions, no audio | lv_aic_media_info_t output |
-| ATTACH_GROUP | Reserved, unsupported | Reserved, unsupported | no access |
+| ATTACH_GROUP | Attach/detach unified player group | Standalone widget: unsupported | group directly; NULL detaches |
 
 APNG float rate is rounded to increments of 1e-5 and reduced to a rational
 before dispatch; NaN/Inf/out-of-range input is rejected. Typed APNG rate APIs
@@ -30,7 +30,8 @@ and media terminal does not prove clean EOF (SDK PLAY_END also covers failures).
 For APNG, pause/rate intent survives zero-time replay, and static PNG may replay
 as an extension. The unified player now selects its backend by source suffix;
 its existing slave bindings survive backend switches. The standalone APNG widget
-remains available without the SDK media/audio dependency. Groups remain unsupported.
+remains available without the SDK media/audio dependency. Unified player groups provide a publication barrier;
+see [group contract and remaining concurrency work](player-group-stage.md).
 
 ## Corrected SDK seek comparison
 

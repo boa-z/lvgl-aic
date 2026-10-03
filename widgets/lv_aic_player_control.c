@@ -107,6 +107,8 @@ lv_result_t lv_aic_player_control(lv_obj_t *obj,lv_aic_player_cmd_t cmd,void *da
         }
         case LV_AIC_PLAYER_CMD_ATTACH_SLAVE:
             return data?lv_aic_slave_player_set_master(data,obj):LV_RESULT_INVALID;
+        case LV_AIC_PLAYER_CMD_ATTACH_GROUP:
+            return lv_aic_player_set_group(obj,data);
         case LV_AIC_PLAYER_CMD_SET_PLAYBACK_RATE: {
             if(!data) return LV_RESULT_INVALID;
             float rate=*(float *)data;
