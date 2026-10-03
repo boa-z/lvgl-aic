@@ -108,6 +108,16 @@ int lv_aic_mpp_resource_test_run(void)
     if (resource_probe("L:/data/mpp_test/aic_801x479.jpg",false) ||
         resource_probe("L:/data/mpp_test/b.png",true) ||
         resource_probe("L:/data/mpp_test/c.png",true)) goto done;
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+    AIC_TEST_I("BEGIN AICP resource probes");
+    if (resource_probe("L:/data/mpp_test/bird.aicp",true)) goto done;
+#ifdef AIC_VE_DRV_V31
+    if (resource_probe("L:/data/mpp_test/flower.aicp",true)) goto done;
+#else
+    AIC_TEST_I("SKIP AICP alpha fixture: requires V31");
+#endif
+    AIC_TEST_I("PASS AICP file-memory parity and cache lifecycle");
+#endif
     if (lv_aic_mpp_cache_stats()->entries || lv_aic_mpp_cma_stats()->current_cma_bytes) goto done;
     AIC_TEST_I("PASS resource stage; file/memory parity and cache lifetime balanced");
     result=0;

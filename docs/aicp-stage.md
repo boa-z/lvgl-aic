@@ -24,7 +24,7 @@ Non-V31 rejects flower; AIC_BUILD_AICP_V31_TESTS=ON accepts its ARGB header.
 Both platform contracts pass; the V31 host configuration passes 14/14 tests.
 Fixtures are read from the external SDK without copying vendor assets.
 
-Remaining: board resource-probe hookup and board pixel parity.
+Remaining: board execution and independent pixel reference comparison.
 Target build entry: `tools/sdk/build.ps1 -Phase ge2d -WithAicp`.
 It enables the SDK codec, stages bird/flower with SHA256 inventory, and checks
 the live create_aicp_decoder symbol.
@@ -38,4 +38,12 @@ Image SHA256:
 `cdc829726af4ea0876630e487ddb41479f92f1ee8f4fe6c2dea6a6505de241f6`.
 Board NOT_RUN. This image links the codec and contains assets; it does not
 yet invoke the AICP fixtures in the startup resource probe.
+
+The subsequent startup resource probe now runs bird.aicp when the codec
+is enabled, and flower.aicp only on V31. It checks FILE/RAW pixel hashes,
+shared readers, invalidation with active readers, CMA balance and 100 cache
+hits without another allocation. Expect BEGIN AICP resource probes followed
+by PASS AICP file-memory parity and cache lifecycle. Non-V31 explicitly logs
+SKIP for the alpha fixture. FILE/RAW agreement is not an independent pixel
+oracle; visual/reference-image acceptance remains necessary.
 Do not enable the codec in a release solely on the basis of these host tests.
