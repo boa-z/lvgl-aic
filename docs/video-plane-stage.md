@@ -16,7 +16,7 @@ are accepted; actual DE format/scaler support remains board-dependent.
 
 Rectangles use physical screen coordinates and must fit completely on screen.
 The DE performs scaling. Rotation, implicit clipping, automatic UI alpha
-changes and automatic widget-to-plane binding are not implemented. Use the
+changes are not implemented by the session. The player binding below is explicit; use the
 existing video-window API and an alpha-capable UI plane when composing UI over
 video. RGB565 global alpha policy remains the application's responsibility.
 This is a callable scanout session, not completion of SDK player auto-layer parity.
@@ -45,7 +45,7 @@ the polled image owner afterward; the plane retains its own native reader even
 when submission fails. If `lv_aic_video_plane_faulted` is true, stop submitting
 and retry hide/close. After successful hide/close, close and drain playback.
 Do not call the player polling API independently on a session owned by a widget.
-An automatic widget binding remains a separate integration stage.
+Use the explicit player output mode below instead of polling a widget-owned backend.
 
 ## Verified firmware
 
@@ -62,3 +62,43 @@ and a full rebuild were required after adding the linker roots.
 
 Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng/manifest.json`.
 Physical board **NOT_RUN**.
+
+
+## Explicit player output mode (2026-10-04)
+
+Call `lv_aic_player_set_video_plane(player, true)` before `set_src`. Default
+output remains normal LVGL image composition. The selected mode persists across
+stop/start and source switches. The first native video/APNG frame opens the
+plane; there is no automatic fallback or reservation before the first frame.
+A competing owner is reported as player FAULT. Audio-only sources open no plane.
+
+The player's object rectangle becomes the physical scanout rectangle and its
+source becomes an alpha-zero `.fake` window. Native frames remain available to
+slave image widgets, with their independent transforms. The MPP fake decoder
+and GE replacement path must be initialized; the default display must use
+ARGB8888 and the application must configure the SDK UI plane for pixel alpha.
+The adapter does not silently alter global UI alpha settings. RGB565 output,
+rotated/offset displays, native/style transforms, recolor, partial ancestor clipping,
+rounded ancestors and non-opaque styles are outside this initial profile and
+report FAULT. This is not yet SDK automatic layer selection or rotated-plane parity.
+
+Position and size changes are detected on owner timer passes, including while
+paused. Hidden ancestors or inactive screens disable scanout while retaining
+the latest widget frame; becoming visible resubmits it. Window repaint and DE
+updates are not atomic and need board acceptance during motion/page changes.
+Only the default display is mapped to the SDK framebuffer.
+
+Stop, close, source replacement, seek and object deletion retire the scanout
+reader before releasing widget image ownership. A failed disable/VSync keeps
+the backend and cleanup timer alive. Keep pumping timers until
+`lv_aic_player_pending_cleanup()==0`; never force-free retained objects.
+Unsupported runtime geometry or submission failure latches FAULT until an
+explicit stop/close/source replacement. Slaves are detached through the normal
+shared-frame cleanup path.
+
+Host **45/45 PASS** and strict E907 compile **PASS**. Widget tests use the real
+LVGL object/timer/native image lifetime code, mocked playback/plane operations,
+and a metadata-only fake-window decoder. They cover movement, paused resize,
+hide/show, native slaves, seek, replacement, deletion and fault recovery. They
+do not prove transparent pixels, physical placement, DMA or scanout. The prior
+session firmware evidence above remains historical until a new manifest is recorded.

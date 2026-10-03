@@ -6,6 +6,10 @@
 #if defined(AIC_LVGL_USE_PLAYER) && AIC_LVGL_USE_PLAYER
 #include <string.h>
 #include <limits.h>
+#include <stdio.h>
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+#include "lv_aic_video_plane.h"
+#endif
 #if !LV_USE_IMAGE
 #error "The AIC player widget requires LV_USE_IMAGE"
 #endif
@@ -26,6 +30,12 @@ struct player_binding {
     uint32_t rate_num,rate_den;
 #endif
     player_frame_t *frame;
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    lv_aic_video_plane_t *plane;
+    const void *plane_source;
+    lv_area_t plane_area;
+    bool plane_enabled,plane_failed;
+#endif
     slave_binding_t *slaves;
     player_group_t *group;
     player_binding_t *group_next;
@@ -198,13 +208,20 @@ static void publish_slaves(player_binding_t *b,player_frame_t *frame)
         s=next;
     }
 }
-static void retire(player_binding_t *b)
+static bool retire(player_binding_t *b)
 {
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    if(b->plane) {
+        if(!lv_aic_video_plane_close(b->plane)) return false;
+        b->plane=NULL;b->plane_source=NULL;
+    }
+#endif
     publish_slaves(b,NULL);
     if(b->frame) {
         if(b->obj) lv_image_set_src(b->obj,NULL);
         release_frame(b->frame); b->frame=NULL;
     }
+    return true;
 }
 static void unlink_slave(slave_binding_t *s)
 {
@@ -374,6 +391,9 @@ static bool can_repeat(player_binding_t *b)
 }
 static bool prepare(player_binding_t *b)
 {
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    b->plane_failed=false;
+#endif
 #if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
     if(png_source(b->uri)) b->apng=lv_aic_apng_playback_prepare(b->uri,&b->apng_options);
     else
@@ -393,12 +413,64 @@ static bool prepare(player_binding_t *b)
     }
     return true;
 }
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+/* Strict rectangle profile: reject transforms that a single DE rectangle
+ * cannot reproduce. Hidden objects keep their last frame but stop scanout. */
+static bool present_plane(player_binding_t *b)
+{
+    if(!b->plane_enabled || !b->frame) return true;
+    lv_obj_t *obj=b->obj;lv_display_t *display=lv_obj_get_display(obj);
+    bool hidden=lv_obj_get_screen(obj)!=lv_display_get_screen_active(display);
+    for(lv_obj_t *a=obj;a;a=lv_obj_get_parent(a))
+        hidden=hidden || lv_obj_is_hidden(a);
+    if(hidden) {
+        if(b->plane && !lv_aic_video_plane_hide(b->plane)) return false;
+        b->plane_source=NULL;return true;
+    }
+    if(display!=lv_display_get_default() || lv_display_get_offset_x(display) || lv_display_get_offset_y(display) ||
+       lv_display_get_rotation(display)!=LV_DISPLAY_ROTATION_0 ||
+       lv_display_get_color_format(display)!=LV_COLOR_FORMAT_ARGB8888 ||
+       lv_image_get_rotation(obj) || lv_image_get_scale_x(obj)!=LV_SCALE_NONE ||
+       lv_image_get_scale_y(obj)!=LV_SCALE_NONE || lv_image_get_offset_x(obj) || lv_image_get_offset_y(obj) ||
+       lv_obj_get_style_image_opa(obj,LV_PART_MAIN)!=LV_OPA_COVER ||
+       lv_obj_get_style_image_recolor_opa(obj,LV_PART_MAIN)>LV_OPA_MIN ||
+       lv_image_get_blend_mode(obj)!=LV_BLEND_MODE_NORMAL) return false;
+    lv_obj_update_layout(obj);lv_area_t area;lv_obj_get_coords(obj,&area);
+    for(lv_obj_t *a=obj;a;a=lv_obj_get_parent(a)) {
+        if(lv_obj_get_style_transform_width(a,LV_PART_MAIN) || lv_obj_get_style_transform_height(a,LV_PART_MAIN) ||
+           lv_obj_get_style_blend_mode(a,LV_PART_MAIN)!=LV_BLEND_MODE_NORMAL ||
+           lv_obj_get_style_transform_rotation(a,LV_PART_MAIN) ||
+           lv_obj_get_style_transform_scale_x(a,LV_PART_MAIN)!=LV_SCALE_NONE ||
+           lv_obj_get_style_transform_scale_y(a,LV_PART_MAIN)!=LV_SCALE_NONE ||
+           lv_obj_get_style_transform_skew_x(a,LV_PART_MAIN) || lv_obj_get_style_transform_skew_y(a,LV_PART_MAIN) ||
+           lv_obj_get_style_opa(a,LV_PART_MAIN)!=LV_OPA_COVER ||
+           lv_obj_get_style_opa_layered(a,LV_PART_MAIN)!=LV_OPA_COVER || lv_obj_get_style_radius(a,LV_PART_MAIN)) return false;
+        if(a!=obj) {
+            lv_area_t clip;lv_obj_get_content_coords(a,&clip);
+            if(area.x1<clip.x1 || area.y1<clip.y1 || area.x2>clip.x2 || area.y2>clip.y2) return false;
+        }
+    }
+    int32_t width=lv_area_get_width(&area),height=lv_area_get_height(&area);
+    if(width<1 || height<1 || width>4096 || height>4096 || (uint64_t)width*height>8U*1024U*1024U) return false;
+    const void *source=lv_aic_player_image_source(&b->frame->image);
+    char window[64];snprintf(window,sizeof(window),"L:/%ux%u_0_00000000.fake",(unsigned)width,(unsigned)height);
+    const void *current=lv_image_get_src(obj);
+    if(!current || lv_image_src_get_type(current)!=LV_IMAGE_SRC_FILE || strcmp(current,window)) lv_image_set_src(obj,window);
+    current=lv_image_get_src(obj);
+    if(!current || lv_image_src_get_type(current)!=LV_IMAGE_SRC_FILE || strcmp(current,window)) return false;
+    if(!b->plane) b->plane=lv_aic_video_plane_open();
+    if(!b->plane) return false;
+    if(source==b->plane_source && !memcmp(&area,&b->plane_area,sizeof(area))) return true;
+    if(!lv_aic_video_plane_present(b->plane,source,area.x1,area.y1,width,height)) return false;
+    b->plane_source=source;b->plane_area=area;return true;
+}
+#endif
 static void tick(lv_timer_t *timer)
 {
     player_binding_t *b=lv_timer_get_user_data(timer);
     if(!draws_idle()) return;
     if(!b->obj || b->closing) {
-        retire(b);
+        if(!retire(b)) return;
         if(backend_active(b)) b->status=backend_status(b);
         if(!backend_destroy(b)) return;
         b->playback=NULL; b->closing=false;
@@ -408,7 +480,7 @@ static void tick(lv_timer_t *timer)
     }
     else if(backend_active(b)) {
         b->status=backend_status(b);
-        if(b->status.seek_pending) retire(b);
+        if(b->status.seek_pending && !retire(b)) return;
         switch(b->status.state) {
         case LV_AIC_PLAYBACK_OPENING: b->state=LV_AIC_PLAYER_OPENING; break;
         case LV_AIC_PLAYBACK_READY: b->state=LV_AIC_PLAYER_READY; break;
@@ -419,7 +491,10 @@ static void tick(lv_timer_t *timer)
         case LV_AIC_PLAYBACK_FAULT: b->state=LV_AIC_PLAYER_FAULT; break;
         default: break;
         }
-        if(b->state==LV_AIC_PLAYER_FAULT) retire(b);
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+        if(b->plane_failed) b->state=LV_AIC_PLAYER_FAULT;
+#endif
+        if(b->state==LV_AIC_PLAYER_FAULT) (void)retire(b);
         else if(b->state==LV_AIC_PLAYER_PLAYING || b->state==LV_AIC_PLAYER_TERMINAL) {
             if(!group_wait(b)) {
                 /* Reserve the widget owner before consuming the mailbox so an
@@ -428,7 +503,10 @@ static void tick(lv_timer_t *timer)
                 if(frame && backend_poll(b,&frame->image)) {
                     frame->owners=1;
                     player_frame_t *old=b->frame; b->frame=frame;
-                    lv_image_set_src(b->obj,lv_aic_player_image_source(&frame->image));
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+                    if(!b->plane_enabled || !old)
+#endif
+                        lv_image_set_src(b->obj,lv_aic_player_image_source(&frame->image));
                     publish_slaves(b,frame);
                     b->group_presented=true;
                     release_frame(old);
@@ -436,6 +514,12 @@ static void tick(lv_timer_t *timer)
             }
         }
     }
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    if(b->obj && !b->closing && !b->plane_failed && !present_plane(b)) {
+        b->plane_failed=true;b->state=LV_AIC_PLAYER_FAULT;backend_close(b);
+        (void)retire(b);
+    }
+#endif
     /* Notify terminal on a separate tick first, so its handler can disable
      * repeat, replace source, stop or delete without post-event object access. */
     if(b->obj && !b->closing && b->state==LV_AIC_PLAYER_TERMINAL &&
@@ -482,6 +566,18 @@ lv_obj_t *lv_aic_player_create(lv_obj_t *parent)
 #endif
     b->obj=obj; b->volume=b->reported_volume=-1; b->status=lv_aic_player_playback_status(NULL);
     ((player_widget_t *)obj)->binding=b; lv_timer_pause(b->timer); return obj;
+}
+lv_result_t lv_aic_player_set_video_plane(lv_obj_t *obj,bool enabled)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    if(backend_active(b) || b->closing || b->frame || b->plane) return LV_RESULT_INVALID;
+    if(enabled && lv_display_get_color_format(lv_obj_get_display(obj))!=LV_COLOR_FORMAT_ARGB8888) return LV_RESULT_INVALID;
+    b->plane_enabled=enabled;return LV_RESULT_OK;
+#else
+    return enabled?LV_RESULT_INVALID:LV_RESULT_OK;
+#endif
 }
 lv_result_t lv_aic_player_configure(lv_obj_t *obj,const lv_aic_playback_options_t *options)
 {

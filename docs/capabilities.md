@@ -7,16 +7,17 @@ APNG worker and other suffixes to SDK media, retaining the same image object,
 transforms and slave bindings across drained source replacement. APNG rate,
 zero-time replay, finite repeat and metadata use checked common commands.
 The standalone APNG widget remains usable without SDK media/audio.
-Host **44/44 PASS** and strict combined-feature E907 compile **PASS**.
+Host **45/45 PASS** and strict combined-feature E907 compile **PASS**.
 The video-plane stage clean firmware passed boot/app/static/image/manifest;
 source identities and artifact evidence are recorded in [video-plane stage](video-plane-stage.md).
 Physical validation remains **NOT_RUN**.
 
 Unified player group lifecycle, checked broadcast and publication barriers are
 now available; see [group contract](player-group-stage.md). Remaining player
-parity: physical multi-decoder validation, audio mixing and automatic lower video-plane widget binding.
+parity: physical multi-decoder validation, audio mixing, automatic layer selection and rotated-plane composition.
 An opt-in [video-plane session](video-plane-stage.md) now provides exclusive
-native frame scanout and VSync-protected lifetime; automatic player selection,
+native frame scanout and VSync-protected lifetime. Explicit player binding now
+tracks a rectangular alpha-zero window and drains scanout on lifecycle changes; automatic player selection,
 UI alpha policy and physical validation remain open.
 APNG now supports four independent instances with shared SDK decode serialization.
 Application linking also protects SDK VE arbitration failure; the final image's

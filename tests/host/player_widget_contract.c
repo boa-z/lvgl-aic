@@ -120,6 +120,64 @@ const lv_image_dsc_t *lv_aic_player_image_source(const lv_aic_player_image_t *p)
 { return p->rgb?lv_aic_rgb_image_source(p->rgb):lv_aic_yuv_image_source(p->yuv); }
 void lv_aic_player_image_destroy(lv_aic_player_image_t *p)
 { if(p->rgb) lv_aic_rgb_image_destroy(p->rgb); if(p->yuv) lv_aic_yuv_image_destroy(p->yuv); *p=(lv_aic_player_image_t){0}; }
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+#include "lv_aic_video_plane.h"
+#include <stdio.h>
+struct lv_aic_video_plane { unsigned unused; };
+static struct lv_aic_video_plane plane_mock;
+static bool plane_live,plane_fail_present,plane_fail_close;
+static lv_aic_rgb_image_t *plane_rgb[2];
+static lv_aic_yuv_image_t *plane_yuv[2];
+static unsigned plane_presents,plane_closes;
+static int32_t plane_x,plane_y;static uint32_t plane_w,plane_h;
+lv_aic_video_plane_t *lv_aic_video_plane_open(void)
+{ if(plane_live) return NULL;plane_live=true;return &plane_mock; }
+bool lv_aic_video_plane_hide(lv_aic_video_plane_t *p)
+{
+    assert(p==&plane_mock && plane_live);if(plane_fail_close) return false;
+    for(unsigned i=0;i<2;i++) {
+        if(plane_rgb[i]) lv_aic_rgb_image_release_lease(plane_rgb[i]);
+        if(plane_yuv[i]) lv_aic_yuv_image_release_lease(plane_yuv[i]);
+        plane_rgb[i]=NULL;plane_yuv[i]=NULL;
+    }
+    return true;
+}
+bool lv_aic_video_plane_present(lv_aic_video_plane_t *p,const void *src,int32_t x,int32_t y,uint32_t w,uint32_t h)
+{
+    assert(p==&plane_mock && plane_live && !plane_rgb[1] && !plane_yuv[1]);
+    const lv_aic_rgb_frame_t *r;const lv_aic_yuv_frame_t *v;
+    plane_rgb[1]=lv_aic_rgb_image_acquire(src,&r);
+    if(!plane_rgb[1]) plane_yuv[1]=lv_aic_yuv_image_acquire(src,&v);
+    assert(plane_rgb[1] || plane_yuv[1]);plane_presents++;
+    plane_x=x;plane_y=y;plane_w=w;plane_h=h;
+    if(plane_fail_present) return false;
+    if(plane_rgb[0]) lv_aic_rgb_image_release_lease(plane_rgb[0]);
+    if(plane_yuv[0]) lv_aic_yuv_image_release_lease(plane_yuv[0]);
+    plane_rgb[0]=plane_rgb[1];plane_yuv[0]=plane_yuv[1];plane_rgb[1]=NULL;plane_yuv[1]=NULL;
+    return true;
+}
+bool lv_aic_video_plane_close(lv_aic_video_plane_t *p)
+{ if(!lv_aic_video_plane_hide(p)) return false;plane_live=false;plane_closes++;return true; }
+bool lv_aic_video_plane_faulted(const lv_aic_video_plane_t *p) { (void)p;return plane_fail_present; }
+static void *window_open(lv_fs_drv_t *d,const char *path,lv_fs_mode_t mode)
+{ (void)path;(void)mode;return d; }
+static lv_fs_res_t window_close(lv_fs_drv_t *d,void *f)
+{ (void)d;(void)f;return LV_FS_RES_OK; }
+static lv_fs_res_t window_read(lv_fs_drv_t *d,void *f,void *b,uint32_t n,uint32_t *r)
+{ (void)d;(void)f;(void)b;(void)n;*r=0;return LV_FS_RES_OK; }
+static lv_fs_res_t window_seek(lv_fs_drv_t *d,void *f,uint32_t n,lv_fs_whence_t w)
+{ (void)d;(void)f;(void)n;(void)w;return LV_FS_RES_OK; }
+static lv_fs_res_t window_tell(lv_fs_drv_t *d,void *f,uint32_t *p)
+{ (void)d;(void)f;*p=0;return LV_FS_RES_OK; }
+static lv_result_t window_decode(lv_image_decoder_t *d,lv_image_decoder_dsc_t *s)
+{ (void)d;(void)s;return LV_RESULT_INVALID; } /* Metadata-only stub; no pixel evidence. */
+static lv_result_t window_info(lv_image_decoder_t *dec,lv_image_decoder_dsc_t *dsc,lv_image_header_t *h)
+{
+    (void)dec;unsigned w,v;
+    if(dsc->src_type!=LV_IMAGE_SRC_FILE || sscanf(dsc->src,"L:/%ux%u_0_00000000.fake",&w,&v)!=2) return LV_RESULT_INVALID;
+    *h=(lv_image_header_t){.magic=LV_IMAGE_HEADER_MAGIC,.cf=LV_COLOR_FORMAT_ARGB8888,.w=w,.h=v,.stride=w*4};return LV_RESULT_OK;
+}
+#endif
 static void tick(void) { lv_tick_inc(25); lv_timer_handler(); }
 static void flush(lv_display_t *d,const lv_area_t *a,uint8_t *p) { (void)a;(void)p;lv_display_flush_ready(d); }
 static void delete_on_event(lv_event_t *e) { lv_obj_delete(lv_event_get_target_obj(e)); }
@@ -146,7 +204,7 @@ static lv_obj_t *make(void)
 int main(void)
 {
     lv_init(); assert(lv_aic_yuv_image_decoder_init()); assert(lv_aic_rgb_image_decoder_init());
-    static uint8_t pixels[16*16*3]; lv_display_t *d=lv_display_create(16,16);
+    static uint8_t pixels[16*16*4]; lv_display_t *d=lv_display_create(16,16);
     lv_display_set_color_format(d,LV_COLOR_FORMAT_RGB888);
     lv_display_set_buffers(d,pixels,NULL,sizeof(pixels),LV_DISPLAY_RENDER_MODE_DIRECT);
     lv_display_set_flush_cb(d,flush); lv_timer_pause(lv_display_get_refr_timer(d));
@@ -456,6 +514,63 @@ int main(void)
     lv_obj_delete(o);tick();assert(png && lv_aic_player_pending_cleanup());
     lv_aic_rgb_image_release_lease(rgb_reader);tick();
     assert(png_created==png_freed && created==freed && retained==released && !lv_aic_player_pending_cleanup());
+#endif
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    static lv_fs_drv_t window_fs;lv_fs_drv_init(&window_fs);window_fs.letter='L';
+    window_fs.open_cb=window_open;window_fs.close_cb=window_close;window_fs.read_cb=window_read;
+    window_fs.seek_cb=window_seek;window_fs.tell_cb=window_tell;lv_fs_drv_register(&window_fs);
+    lv_image_decoder_t *window_decoder=lv_image_decoder_create();assert(window_decoder);
+    lv_image_decoder_set_info_cb(window_decoder,window_info);lv_image_decoder_set_open_cb(window_decoder,window_decode);
+    o=make();assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_INVALID);lv_obj_delete(o);tick();
+    lv_display_set_color_format(d,LV_COLOR_FORMAT_ARGB8888);
+    lv_display_set_buffers(d,pixels,NULL,sizeof(pixels),LV_DISPLAY_RENDER_MODE_DIRECT);
+    lv_timer_pause(lv_display_get_refr_timer(d));
+    o=make();lv_obj_set_size(o,4,4);lv_obj_set_pos(o,1,2);
+    assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"plane.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_set_video_plane(o,false)==LV_RESULT_INVALID);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);rgb=true;frames=1;tick();
+    assert(plane_live && plane_presents && plane_x==1 && plane_y==2 && plane_w==4 && plane_h==4);
+    assert(lv_image_src_get_type(lv_image_get_src(o))==LV_IMAGE_SRC_FILE);
+    s1=lv_aic_slave_player_create(screen);assert(lv_aic_slave_player_set_master(s1,o)==LV_RESULT_OK);tick();
+    assert(lv_image_src_get_type(lv_image_get_src(s1))==LV_IMAGE_SRC_VARIABLE);
+    unsigned presented=plane_presents;tick();assert(plane_presents==presented);
+    lv_obj_set_pos(o,3,4);tick();assert(plane_x==3 && plane_y==4 && plane_presents==presented+1);
+    lv_obj_set_hidden(o,true);tick();assert(!plane_rgb[0]);
+    lv_obj_set_hidden(o,false);tick();assert(plane_rgb[0]);
+    assert(lv_aic_player_pause(o)==LV_RESULT_OK);tick();lv_obj_set_size(o,6,5);tick();
+    assert(plane_w==6 && plane_h==5 && lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
+    lv_obj_delete(s1);tick();
+    /* Seek cannot retire the old epoch until scanout has been disabled. */
+    plane_fail_close=true;assert(lv_aic_player_seek(o,100)==LV_RESULT_OK);tick();assert(plane_live && active->readers);
+    plane_fail_close=false;tick();assert(!plane_live && !active->readers);
+    active->status.seek_pending=false;active->status.state=LV_AIC_PLAYBACK_PLAYING;frames=1;tick();assert(plane_live);
+    /* Failed close holds the backend and orphan until DMA is no longer live. */
+    plane_fail_close=true;lv_obj_delete(o);tick();
+    assert(active && lv_aic_player_pending_cleanup() && plane_live);
+    plane_fail_close=false;tick();assert(!active && !plane_live && !lv_aic_player_pending_cleanup());
+    o=make();assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"plane.mp4")==LV_RESULT_OK);assert(lv_aic_player_start(o)==LV_RESULT_OK);
+    frames=1;tick();assert(plane_live);
+    plane_fail_close=true;assert(lv_aic_player_set_src(o,"replacement.mp4")==LV_RESULT_OK);tick();
+    assert(!strcmp(last_uri,"plane.mp4"));plane_fail_close=false;tick();assert(!strcmp(last_uri,"replacement.mp4"));
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);frames=1;tick();assert(plane_live);
+    lv_image_set_rotation(o,100);tick();assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT && !plane_live);
+    lv_obj_delete(o);tick();assert(!active);
+    o=make();assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"fault.mp4")==LV_RESULT_OK);assert(lv_aic_player_start(o)==LV_RESULT_OK);
+    plane_fail_present=plane_fail_close=true;frames=1;tick();
+    assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT && plane_live);
+    lv_obj_delete(o);tick();assert(active && lv_aic_player_pending_cleanup());
+    plane_fail_present=plane_fail_close=false;tick();assert(!active && !plane_live);
+    assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
+    o=make();assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"offset.mp4")==LV_RESULT_OK);assert(lv_aic_player_start(o)==LV_RESULT_OK);
+    lv_display_set_offset(d,1,0);frames=1;tick();
+    assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_FAULT && !plane_live);
+    lv_obj_delete(o);tick();lv_display_set_offset(d,0,0);
+    assert(created==freed && retained==released && !lv_aic_player_pending_cleanup());
+    lv_image_decoder_delete(window_decoder);
 #endif
     lv_display_delete(d); assert(lv_aic_yuv_image_decoder_deinit()); assert(lv_aic_rgb_image_decoder_deinit()); lv_deinit();
     return 0;

@@ -47,6 +47,16 @@ typedef enum {
  * set_src. Explicit budget/extra-frame/colorimetry options are mandatory.
  * LV_RESULT_OK means request accepted, not media/device completion. */
 lv_obj_t *lv_aic_player_create(lv_obj_t *parent);
+/* Select explicit video-plane output before opening a source (default false).
+ * Requires VIDEO_PLANE plus MPP .fake decoder/GE replacement support and an
+ * ARGB8888 UI display with pixel alpha enabled by the application. Unrotated,
+ * fully visible rectangular objects only; native/style transforms, partial
+ * ancestor clipping, rounded ancestors and opacity are rejected at runtime.
+ * Object position/size drives physical scanout and a transparent fake window.
+ * Hidden ancestors stop scanout; slaves continue normal image composition.
+ * Unsupported geometry/plane failures report FAULT; stop/close drains retained
+ * scanout before backend destruction. Window repaint and DE are not atomic. */
+lv_result_t lv_aic_player_set_video_plane(lv_obj_t *obj,bool enabled);
 lv_result_t lv_aic_player_configure(lv_obj_t *obj,const lv_aic_playback_options_t *options);
 #if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
 /* Configure PNG budgets independently, while no backend/replacement is live. */
