@@ -188,3 +188,21 @@ Rotation firmware boot/app/static/image/manifest **PASS**, including the live
 - ELF SHA256: `0e004b39e8ad5a130c852180bf5e6db24019edf7748d575c833805ffda2c971c`.
 
 The combined-profile manifest now records this build. Board **NOT_RUN**.
+
+## Player display rotation (2026-10-04)
+
+Explicit player plane mode now maps the logical transparent-window rectangle
+through `lv_display_rotate_area`, and submits clockwise GE rotation equal to
+360 minus the LVGL display rotation. Configure the independent peak CMA budget
+with `lv_aic_player_set_video_plane_rotation_budget` before opening a source;
+zero defaults to refusing rotated display output. Decoder budgets are unchanged.
+The window remains in logical coordinates, while DE receives physical bounds.
+Paused display rotation triggers resubmission even when the frame is unchanged.
+LVGL 9.6's mirrored offset getters are normalized before rejecting offsets.
+
+Host **49/49 PASS**, strict E907 compile **PASS**. Widget mocks cover all three
+angles, physical bounds, paused transitions and refusal to change a live budget.
+Raw session tests separately enforce memory budgets and GE failure lifetime.
+Native image rotation/pivots, style transforms and partial clipping remain
+unsupported. This stage does not establish rotated alpha pixels or physical
+scanout acceptance; firmware validation is pending and board is **NOT_RUN**.

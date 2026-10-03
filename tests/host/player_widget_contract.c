@@ -128,7 +128,8 @@ static struct lv_aic_video_plane plane_mock;
 static bool plane_live,plane_fail_present,plane_fail_close;
 static lv_aic_rgb_image_t *plane_rgb[2];
 static lv_aic_yuv_image_t *plane_yuv[2];
-static unsigned plane_presents,plane_closes;
+static unsigned plane_presents,plane_closes,plane_degrees;
+static size_t plane_budget;
 static int32_t plane_x,plane_y;static uint32_t plane_w,plane_h;
 lv_aic_video_plane_t *lv_aic_video_plane_open(void)
 { if(plane_live) return NULL;plane_live=true;return &plane_mock; }
@@ -158,6 +159,12 @@ bool lv_aic_video_plane_present(lv_aic_video_plane_t *p,const void *src,int32_t 
     if(plane_yuv[0]) lv_aic_yuv_image_release_lease(plane_yuv[0]);
     plane_rgb[0]=plane_rgb[1];plane_yuv[0]=plane_yuv[1];plane_rgb[1]=NULL;plane_yuv[1]=NULL;
     return true;
+}
+bool lv_aic_video_plane_present_rotated(lv_aic_video_plane_t *p,const void *src,
+    int32_t x,int32_t y,uint32_t w,uint32_t h,unsigned degrees,size_t budget)
+{
+    plane_degrees=degrees;plane_budget=budget;
+    return lv_aic_video_plane_present(p,src,x,y,w,h);
 }
 bool lv_aic_video_plane_close(lv_aic_video_plane_t *p)
 { if(!lv_aic_video_plane_hide(p)) return false;plane_live=false;plane_closes++;return true; }
@@ -530,6 +537,7 @@ int main(void)
     lv_timer_pause(lv_display_get_refr_timer(d));
     o=make();lv_obj_set_size(o,4,4);lv_obj_set_pos(o,1,2);
     assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_set_video_plane_rotation_budget(o,8192)==LV_RESULT_OK);
     assert(lv_aic_player_set_src(o,"plane.mp4")==LV_RESULT_OK);
     assert(lv_aic_player_set_video_plane(o,false)==LV_RESULT_INVALID);
     assert(lv_aic_player_start(o)==LV_RESULT_OK);rgb=true;frames=1;tick();
@@ -543,6 +551,16 @@ int main(void)
     lv_obj_set_hidden(o,false);tick();assert(plane_rgb[0]);
     assert(lv_aic_player_pause(o)==LV_RESULT_OK);tick();lv_obj_set_size(o,6,5);tick();
     assert(plane_w==6 && plane_h==5 && lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
+    assert(lv_aic_player_set_video_plane_rotation_budget(o,16384)==LV_RESULT_INVALID);
+    for(unsigned rotation=1;rotation<=3;rotation++) {
+        lv_display_set_rotation(d,(lv_display_rotation_t)rotation);lv_timer_pause(lv_display_get_refr_timer(d));tick();
+        assert(plane_degrees==360-rotation*90 && plane_budget==8192);
+        assert(plane_w==(rotation==2?6:5) && plane_h==(rotation==2?5:6));
+        assert(plane_x==(rotation==1?4:rotation==2?7:7));
+        assert(plane_y==(rotation==1?7:rotation==2?7:3));
+        assert(lv_aic_player_get_state(o)==LV_AIC_PLAYER_PAUSED);
+    }
+    lv_display_set_rotation(d,LV_DISPLAY_ROTATION_0);tick();assert(plane_degrees==0);
     lv_obj_delete(s1);tick();
     /* Seek cannot retire the old epoch until scanout has been disabled. */
     plane_fail_close=true;assert(lv_aic_player_seek(o,100)==LV_RESULT_OK);tick();assert(plane_live && active->readers);

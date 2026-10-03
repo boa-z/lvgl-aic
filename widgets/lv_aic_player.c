@@ -34,6 +34,8 @@ struct player_binding {
     lv_aic_video_plane_t *plane;
     const void *plane_source;
     lv_area_t plane_area;
+    size_t plane_rotation_budget;
+    unsigned plane_degrees;
     bool plane_enabled,plane_failed;
 #endif
     slave_binding_t *slaves;
@@ -430,8 +432,15 @@ static bool present_plane(player_binding_t *b)
         if(b->plane && !lv_aic_video_plane_hide(b->plane)) return false;
         b->plane_source=NULL;return true;
     }
-    if(display!=lv_display_get_default() || lv_display_get_offset_x(display) || lv_display_get_offset_y(display) ||
-       lv_display_get_rotation(display)!=LV_DISPLAY_ROTATION_0 ||
+    /* LVGL 9.6 offset getters mirror around the physical extent at 180/270.
+     * Normalize their origin before rejecting sub-display offsets. */
+    lv_display_rotation_t rotation=lv_display_get_rotation(display);
+    int32_t ox=lv_display_get_offset_x(display),oy=lv_display_get_offset_y(display);
+    if(rotation==LV_DISPLAY_ROTATION_180 || rotation==LV_DISPLAY_ROTATION_270) {
+        ox=lv_display_get_physical_horizontal_resolution(display)-ox;
+        oy=lv_display_get_physical_vertical_resolution(display)-oy;
+    }
+    if(display!=lv_display_get_default() || ox || oy ||
        lv_display_get_color_format(display)!=LV_COLOR_FORMAT_ARGB8888 ||
        lv_image_get_rotation(obj) || lv_image_get_scale_x(obj)!=LV_SCALE_NONE ||
        lv_image_get_scale_y(obj)!=LV_SCALE_NONE || lv_image_get_offset_x(obj) || lv_image_get_offset_y(obj) ||
@@ -463,9 +472,13 @@ static bool present_plane(player_binding_t *b)
     if(!current || lv_image_src_get_type(current)!=LV_IMAGE_SRC_FILE || strcmp(current,window)) return false;
     if(!b->plane) b->plane=lv_aic_video_plane_open();
     if(!b->plane || !lv_aic_video_plane_enable_ui_alpha(b->plane)) return false;
-    if(source==b->plane_source && !memcmp(&area,&b->plane_area,sizeof(area))) return true;
-    if(!lv_aic_video_plane_present(b->plane,source,area.x1,area.y1,width,height)) return false;
-    b->plane_source=source;b->plane_area=area;return true;
+    unsigned degrees=(360U-(unsigned)lv_display_get_rotation(display)*90U)%360U;
+    if(degrees && !b->plane_rotation_budget) return false;
+    lv_display_rotate_area(display,&area);
+    if(source==b->plane_source && degrees==b->plane_degrees && !memcmp(&area,&b->plane_area,sizeof(area))) return true;
+    if(!lv_aic_video_plane_present_rotated(b->plane,source,area.x1,area.y1,
+        lv_area_get_width(&area),lv_area_get_height(&area),degrees,b->plane_rotation_budget)) return false;
+    b->plane_source=source;b->plane_area=area;b->plane_degrees=degrees;return true;
 }
 #endif
 static void tick(lv_timer_t *timer)
@@ -580,6 +593,17 @@ lv_result_t lv_aic_player_set_video_plane(lv_obj_t *obj,bool enabled)
     b->plane_enabled=enabled;return LV_RESULT_OK;
 #else
     return enabled?LV_RESULT_INVALID:LV_RESULT_OK;
+#endif
+}
+lv_result_t lv_aic_player_set_video_plane_rotation_budget(lv_obj_t *obj,size_t bytes)
+{
+    LV_CHECK_OBJ(obj,&lv_aic_player_class,return LV_RESULT_INVALID);
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    player_binding_t *b=((player_widget_t *)obj)->binding;
+    if(backend_active(b) || b->closing || b->frame || b->plane) return LV_RESULT_INVALID;
+    b->plane_rotation_budget=bytes;return LV_RESULT_OK;
+#else
+    return bytes?LV_RESULT_INVALID:LV_RESULT_OK;
 #endif
 }
 lv_result_t lv_aic_player_configure(lv_obj_t *obj,const lv_aic_playback_options_t *options)

@@ -50,7 +50,8 @@ lv_obj_t *lv_aic_player_create(lv_obj_t *parent);
 /* Select explicit video-plane output before opening a source (default false).
  * Requires VIDEO_PLANE plus MPP .fake decoder/GE replacement support and an
  * ARGB8888 UI display. Saves/applies/restores SDK UI pixel alpha while the
- * plane is owned; no concurrent unmanaged alpha writers. Unrotated,
+ * plane is owned; no concurrent unmanaged alpha writers. Display rotation is
+ * supported with an explicit rotation budget; objects must remain unrotated,
  * fully visible rectangular objects only; native/style transforms, partial
  * ancestor clipping, rounded ancestors and opacity are rejected at runtime.
  * Object position/size drives physical scanout and a transparent fake window.
@@ -58,6 +59,10 @@ lv_obj_t *lv_aic_player_create(lv_obj_t *parent);
  * Unsupported geometry/plane failures report FAULT; stop/close drains retained
  * scanout before backend destruction. Window repaint and DE are not atomic. */
 lv_result_t lv_aic_player_set_video_plane(lv_obj_t *obj,bool enabled);
+/* Additional CMA peak budget for display-rotated plane copies, independent of
+ * decoder memory; set before opening a source. Zero (default) rejects rotation.
+ * GE support is required. Includes both old and replacement scanout copies. */
+lv_result_t lv_aic_player_set_video_plane_rotation_budget(lv_obj_t *obj,size_t bytes);
 lv_result_t lv_aic_player_configure(lv_obj_t *obj,const lv_aic_playback_options_t *options);
 #if defined(AIC_LVGL_USE_APNG) && AIC_LVGL_USE_APNG
 /* Configure PNG budgets independently, while no backend/replacement is live. */
