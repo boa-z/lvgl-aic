@@ -247,6 +247,7 @@ def main():
     parser.add_argument("--with-music", action="store_true")
     parser.add_argument("--with-vector", action="store_true")
     parser.add_argument("--with-svg", action="store_true")
+    parser.add_argument("--with-lottie", action="store_true")
     parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
@@ -376,6 +377,35 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("SVG live symbol absent: " + symbol)
         print("Native SVG decoder/parser/render final link: PASS (not board execution)")
+    enabled = re.search(r"^CONFIG_AIC_LVGL_USE_LOTTIE=y$", config, re.MULTILINE) is not None
+    defined = re.search(r"^#define AIC_LVGL_USE_LOTTIE(?:\s|$)", header, re.MULTILINE) is not None
+    if enabled != args.with_lottie or defined != args.with_lottie:
+        fail("Lottie profile mismatch")
+    if args.with_lottie:
+        if not args.with_vector:
+            fail("Lottie requires vector rendering")
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_lottie_create", "lv_lottie_set_buffer", "lv_lottie_set_draw_buf",
+                       "lv_lottie_set_src_data", "lv_lottie_set_src_file", "lv_lottie_get_anim",
+                       "tvg_animation_new", "tvg_animation_set_frame"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("Lottie live symbol absent: " + symbol)
+        from stage_lottie import corrected
+        expected = corrected((lvgl_root() / "src/libs/thorvg/tvgLottieBuilder.cpp").read_text(encoding="utf-8"))
+        if (root / "build/lvgl-lottie-builder.cpp").read_bytes() != expected.encode("utf-8"):
+            fail("Lottie generated opacity correction mismatch")
+        # GCC can inline updateSolid into an internal updateLayer.part clone;
+        # inspect a nonzero live section, never the discarded zero-address copy.
+        sections = re.findall(r"^ \.text\._ZN13LottieBuilder11updateLayer[^\n]*\n"
+                              r"\s+0x([0-9a-f]+)\s+0x[0-9a-f]+\s+[^\n]*lvgl-lottie-builder\.o\s*$",
+                              text, re.MULTILINE)
+        if not any(int(address, 16) for address in sections):
+            fail("Lottie layer builder does not resolve to corrected object")
+        lines = text.splitlines()
+        live = [i for i, line in enumerate(lines) if re.search(r"^\s+0x[0-9a-f]+\s+lv_lottie_set_draw_buf\s*$", line)]
+        if not live or not any("lv_aic_lottie.o" in "\n".join(lines[max(0, i-4):i+1]) for i in live):
+            fail("Lottie canvas format wrapper is not linked")
+        print("Native Lottie widget/loader and corrected solid opacity final link: PASS (not board execution)")
     spi_enabled = re.search(r"^CONFIG_AIC_LVGL_USE_SPI_SDK=y$", config, re.MULTILINE) is not None
     if spi_enabled != args.with_spi:
         fail("SPI profile mismatch")

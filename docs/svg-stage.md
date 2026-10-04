@@ -4,7 +4,8 @@
 selects `AIC_LVGL_USE_VECTOR`. `tools/sdk/build.ps1 -WithSvg` selects both and adds
 `-vector-svg` to the profile suffix. The default remains off.
 This uses LVGL's native C parser and custom-draw path over software vectors;
-ThorVG's separate SVG/Lottie loader remains excluded. The SDK v9 baseline has
+ThorVG's separate SVG loader remains excluded; its Lottie loader is controlled
+by the independent [Lottie option](lottie-stage.md). The SDK v9 baseline has
 vector/ThorVG options but no equivalent native `LV_USE_SVG` Kconfig entry, so
 this is a native 9.6 resource capability beyond the baseline configuration.
 

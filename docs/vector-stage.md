@@ -21,17 +21,20 @@ sources or the LVGL dependency.
   Vector storage uses native heap allocation, with no separate component byte
   budget. The optional [native SVG image decoder](svg-stage.md) is configured separately.
   The vector option itself does not enable the Lottie widget, SVG loaders or ThorVG
-  worker threads. Those require separate integration and validation.
+  worker threads. The separately configured [native Lottie widget](lottie-stage.md)
+  now enables its JSON loader; physical validation remains separate.
 
 C++14/no-exception/no-RTTI flags are local to the ThorVG group; sized deallocation
 is disabled so the backend uses the SDK's existing unsized delete interface.
 A build-only compatibility header normalizes disabled loader flags because the
 pinned upstream configuration defines them numerically while the registry uses
-`#ifdef`. Loader source files are excluded. The shim establishes application
+`#ifdef`. SVG loader sources stay excluded; Lottie sources are selected only
+with the explicit Lottie option. The shim establishes application
 configuration before including upstream headers, even when SCons orders the
 C++ forced include before its global C forced include. A linked C++ probe asserts
 that the application OS bridge, vector/float/matrix settings and single draw
-unit are all selected, with no accidental loader/thread features.
+unit are all selected, with only the requested Lottie loader and no accidental
+SVG, expression or thread features.
 
 ## Validation
 

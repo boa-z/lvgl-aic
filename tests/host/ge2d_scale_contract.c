@@ -252,6 +252,7 @@ int main(void)
     assert(lv_draw_buf_init(&dst, 128, 128, LV_COLOR_FORMAT_ARGB8888, 512,
                             output, sizeof(output)) == LV_RESULT_OK);
     layer.draw_buf = &dst;
+    layer.color_format = LV_COLOR_FORMAT_ARGB8888;
     layer.buf_area = (lv_area_t){90, 190, 217, 317};
     child_layer.draw_buf = &src;
     task.target_layer = &layer;
@@ -259,6 +260,25 @@ int main(void)
     task.draw_dsc = &d;
     g_ge2d_dev = mpp_ge_open();
     g_ge2d_ready = true;
+    /* The Lottie wrapper publishes explicit premultiplied pixels. Exercise
+     * the real GE rejection and software composition, including the decoder. */
+    {
+        assert(lv_draw_buf_init(&src,32,32,LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED,128,
+                               pixels,sizeof pixels)==LV_RESULT_OK);
+        src.header.flags|=LV_IMAGE_FLAGS_PREMULTIPLIED;
+        for(unsigned i=0;i<sizeof pixels/4;i++) ((uint32_t *)pixels)[i]=0x80800000;
+        for(unsigned i=0;i<sizeof output/4;i++) ((uint32_t *)output)[i]=0xff000000;
+        lv_draw_image_dsc_init(&d);d.src=&src;d.header=src.header;d.image_area=origin;
+        task.area=origin;task.clip_area=layer.buf_area;
+        int count=submits,rot_count=rotate_submits;
+        lv_draw_aic_ge2d_outcome_t outcome;
+        assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK);
+        assert(outcome==LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+        uint32_t result=*(uint32_t *)(output+10*512+10*4);
+        assert(((result>>16)&255)>=127 && ((result>>16)&255)<=128 && !(result&0xffff));
+        assert(submits==count && rotate_submits==rot_count);
+        lv_image_cache_drop(&src);
+    }
     /* Independent floating-point oracle for every LVGL tenth of a degree.
      * Integer-degree rounding used to lose up to 36 Q12 units here. */
     for (int angle = 0; angle < 3600; angle++) {

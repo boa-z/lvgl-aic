@@ -32,6 +32,10 @@ _Static_assert(LV_USE_VECTOR_GRAPHIC && LV_USE_THORVG && LV_USE_THORVG_INTERNAL 
                LV_USE_MATRIX && LV_DRAW_SW_DRAW_UNIT_CNT == 1, "vector profile mismatch");
 #endif
 
+#if AIC_LVGL_USE_LOTTIE
+_Static_assert(LV_USE_LOTTIE && LV_USE_CANVAS && AIC_LVGL_USE_VECTOR, "Lottie profile mismatch");
+#endif
+
 #if AIC_LVGL_USE_SVG
 _Static_assert(LV_USE_SVG && LV_USE_VECTOR_GRAPHIC && AIC_LVGL_USE_VECTOR, "SVG profile mismatch");
 #endif

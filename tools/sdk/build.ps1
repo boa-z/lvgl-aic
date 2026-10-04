@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithVector, [switch]$WithSvg, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithVector, [switch]$WithSvg, [switch]$WithLottie, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
 $ErrorActionPreference='Stop'
-if ($WithSvg) { $WithVector=$true }
+if ($WithSvg -or $WithLottie) { $WithVector=$true }
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
     while ($candidate -and -not (Test-Path (Join-Path $candidate.FullName 'SConstruct'))) { $candidate=$candidate.Parent }
@@ -48,6 +48,7 @@ if ($WithDemos) { $variant += '-demos' }
 if ($WithMusic) { $variant += '-music' }
 if ($WithVector) { $variant += '-vector' }
 if ($WithSvg) { $variant += '-svg' }
+if ($WithLottie) { $variant += '-lottie' }
 if ($Rotation) { $variant += "-rotate$Rotation" }
 $evidence=Join-Path $root "output/lvgl-evidence/$variant"
 New-Item -ItemType Directory -Force $evidence | Out-Null
@@ -110,6 +111,7 @@ try {
         if ($WithPlayer) { $settings += @('CONFIG_AIC_LVGL_USE_VIDEO_PLANE=y', 'CONFIG_AIC_LVGL_USE_PLAYER=y', 'CONFIG_AIC_LVGL_USE_PLAYER_SESSION=y', 'CONFIG_AIC_MPP_PLAYER_INTERFACE=y', 'CONFIG_AIC_MPP_PLAYER_VIDEO_EXT_RENDER=y', 'CONFIG_AIC_MPP_H264_DEC_ENABLE=y') }
         if ($WithBarcode) { $settings += 'CONFIG_AIC_LVGL_USE_BARCODE=y' }
         if ($WithSpi) { $settings += 'CONFIG_AIC_LVGL_USE_SPI_SDK=y' }
+        if ($WithLottie) { $settings += 'CONFIG_AIC_LVGL_USE_LOTTIE=y' }
         if ($WithSvg) { $settings += 'CONFIG_AIC_LVGL_USE_SVG=y' }
         if ($WithVector) { $settings += 'CONFIG_AIC_LVGL_USE_VECTOR=y' }
         if ($WithMusic) { $settings += 'CONFIG_AIC_LVGL_BUILD_DEMO_MUSIC=y' }
@@ -145,6 +147,7 @@ if ($WithCamera) { $checkArgs += '--with-camera' }
 if ($WithDemos) { $checkArgs += '--with-demos' }
 if ($WithMusic) { $checkArgs += '--with-music' }
 if ($WithVector) { $checkArgs += '--with-vector' }
+if ($WithLottie) { $checkArgs += '--with-lottie' }
 if ($WithSvg) { $checkArgs += '--with-svg' }
 $checkArgs += @('--rotation', "$Rotation")
 Run-Step 'static-check' $checkArgs
@@ -157,5 +160,6 @@ $env:PATH="$root/tools/env/tools/Python38;$env:PATH"
 if ($Phase -eq 'ge2d' -and (Select-String -Path .config -Pattern '^CONFIG_AIC_GE_CMDQ=y$' -Quiet)) {
     Copy-Item build/lvgl-ge-cmdq.c,build/lvgl-ge-cmdq.json "$evidence/"
 }
+if ($WithLottie) { Copy-Item build/lvgl-lottie-builder.cpp "$evidence/" }
 Run-Step 'manifest' @("$PSScriptRoot/write_manifest.py",$evidence,$variant)
 Write-Host "Verified test image and provenance: $evidence"

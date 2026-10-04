@@ -86,6 +86,17 @@ config AIC_LVGL_FREETYPE_GLYPHS
     range 8 512
     depends on AIC_LVGL_USE_FREETYPE
 
+config AIC_LVGL_USE_LOTTIE
+    bool "Enable native LVGL Lottie animation widget"
+    default n
+    depends on AIC_LVGL_PORT
+    select AIC_LVGL_USE_VECTOR
+    help
+        Build the native LVGL 9.6 canvas widget and pinned ThorVG JSON loader.
+        Uses software rendering and caller-owned ARGB8888 buffers. This is
+        the native lv_lottie API, not binary/source compatibility with RLottie.
+        Expressions, external bitmap assets and audio are not enabled.
+
 config AIC_LVGL_USE_SVG
     bool "Enable native LVGL SVG image decoder"
     default n

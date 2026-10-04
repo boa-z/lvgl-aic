@@ -59,6 +59,9 @@ if demo_enabled:
                 else:
                     relative = os.path.relpath(directory, cwd).replace(os.sep, '/')
                     src += Glob(relative + '/' + name, ondisk=True, source=True)
+if GetDepend('AIC_LVGL_USE_LOTTIE'):
+    src = [source for source in src if os.path.basename(str(source)) != 'lv_lottie.c']
+    src += [File('compat/lv_aic_lottie.c')]
 src += [File('compat/lvgl_aic_config_probe.c'), File('compat/lv_aic_rtthread_os.c')]
 includes = [cwd, os.path.join(cwd, 'include'), os.path.join(cwd, 'compat'),
             lvgl_root, os.path.join(lvgl_root, 'include'), os.path.join(lvgl_root, 'include', 'lvgl'),
@@ -67,8 +70,19 @@ group = DefineGroup('Application-LVGL-9.6', src, depend=['AIC_LVGL_PORT'],
     CPPPATH=includes, CPPDEFINES=['LV_KCONFIG_IGNORE=1', 'LV_BUILD_EXAMPLES=0', 'LV_BUILD_DEMOS=' + ('1' if demo_enabled else '0')])
 if GetDepend('AIC_LVGL_USE_VECTOR'):
     # Keep C++ flags local to the pinned software vector backend.
+    excluded_loaders = ('tvgSvg', 'tvgXmlParser')
+    if not GetDepend('AIC_LVGL_USE_LOTTIE'):
+        excluded_loaders += ('tvgLottie',)
     vector_src = [source for source in Glob('../lvgl/src/libs/thorvg/*.cpp', ondisk=True, source=True)
-                  if not os.path.basename(str(source)).startswith(('tvgLottie', 'tvgSvg', 'tvgXmlParser'))]
+                  if not os.path.basename(str(source)).startswith(excluded_loaders)]
+    if GetDepend('AIC_LVGL_USE_LOTTIE'):
+        import runpy
+        stage_lottie = runpy.run_path(os.path.join(cwd, 'tools', 'sdk', 'stage_lottie.py'))
+        generated_lottie = stage_lottie['generate'](
+            os.path.join(lvgl_root, 'src', 'libs', 'thorvg', 'tvgLottieBuilder.cpp'),
+            os.path.join(AIC_ROOT, 'build', 'lvgl-lottie-builder.cpp'))
+        vector_src = [source for source in vector_src if os.path.basename(str(source)) != 'tvgLottieBuilder.cpp']
+        vector_src += [File(generated_lottie)]
     vector_src += [File('compat/lvgl_aic_thorvg_probe.cpp')]
     group += DefineGroup('Application-LVGL-ThorVG', vector_src, depend=['AIC_LVGL_PORT'],
                          LOCAL_CXXFLAGS=' -std=c++14 -fno-exceptions -fno-rtti -fno-sized-deallocation -include lvgl_aic_thorvg_config.h',
@@ -76,6 +90,10 @@ if GetDepend('AIC_LVGL_USE_VECTOR'):
     if GetDepend('AIC_LVGL_SMOKE_APP'):
         for api in ('lvgl_aic_thorvg_config_probe', 'lv_draw_vector', 'lv_vector_path_create', 'lv_draw_vector_dsc_create'):
             Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
+if GetDepend('AIC_LVGL_USE_LOTTIE') and GetDepend('AIC_LVGL_SMOKE_APP'):
+    for api in ('lv_lottie_create', 'lv_lottie_set_buffer', 'lv_lottie_set_draw_buf',
+                'lv_lottie_set_src_data', 'lv_lottie_set_src_file', 'lv_lottie_get_anim'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
 if GetDepend('AIC_LVGL_USE_SVG') and GetDepend('AIC_LVGL_SMOKE_APP'):
     for api in ('lv_svg_decoder_init', 'lv_svg_load_data', 'lv_svg_render_create', 'lv_draw_svg_render'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
