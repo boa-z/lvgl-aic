@@ -1,5 +1,36 @@
 # Validation record
 
+## SVG image transforms and clipped child layers (2026-10-04)
+
+Combined SVG/vector/Lottie host regression **78/78 PASS** (32.41 seconds).
+A new independent inverse-transform oracle validates 48 scenes covering scale,
+rotation, pivot, clip guards, canvas without an object, translated child layers,
+real image widgets and parent opacity layers. The native code failed the initial
+canvas case with 436 incorrect interior pixels. Existing FILE/VARIABLE, native
+vector, Lottie and GE/software image regressions remain green. Logs retain both
+the reproducer failure and corrected result.
+
+The combined D13x 90-degree GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/
+widgets-demo/benchmark/music/vector/SVG/Lottie firmware passes boot/app,
+final-link/static, image and clean-source manifest gates. The checker validates
+both generated source contents and live symbol ownership for the corrected
+custom-image dispatcher and SVG decoder.
+
+- lvgl-aic: `de530680d25943d823d823c70a1de3cd9d00fb14` (clean).
+- sdk: `02fcc4e35aca10620ed7dd3a2ec5a2d107b49668` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `450ecc659f293bcc4307cd3a681850a8f3c1d0ade4e21ca6be02baf1a482ae67` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-svg-transform/manifest.json`.
+- Component logs: `output/svg-transform-before.log`, `output/svg-transform-focus.log`, `output/svg-transform-tests.log`, `output/svg-transform-firmware.log`.
+
+Build using the combined profile and `-EvidenceTag svg-transform`. SDK/LVGL
+sources stay unchanged; generated copies remain in the build/evidence directory.
+Native image-specific opacity/recolor/tiling/rounded clipping and richer SVG
+documents remain separate gaps. The older disabled baseline was not rerun for
+this SVG-only implementation. Camera stays disabled and no SPI panel is bound.
+Physical SVG rendering/performance **NOT_RUN**; no flashing.
+See [SVG transform correction](svg-transforms-stage.md).
+
 ## Checked Lottie source loading (2026-10-04)
 
 Combined SVG/vector/Lottie host regression **77/77 PASS** (15.38 seconds).

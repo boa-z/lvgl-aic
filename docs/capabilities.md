@@ -1,11 +1,12 @@
 # Current capabilities and SDK gaps
 
-Latest combined evidence: **77/77 SVG/vector/Lottie-enabled host PASS**, **74/74 baseline PASS** and GE/widget/SPI full firmware
+Latest combined evidence: **78/78 SVG/vector/Lottie-enabled host PASS**, **74/74 baseline PASS** and GE/widget/SPI full firmware
 build/link/image/provenance **PASS**, including the two-slot SPI display pipeline
 and widgets/benchmark/music/vector/SVG/Lottie enabled together, plus premultiplied
-GE sources, consistent native software fallback and checked Lottie source loading;
+GE sources, consistent native software fallback, checked Lottie source loading
+and corrected SVG transforms/clipping;
 see [current validation](validation.md). The 74-test disabled baseline belongs to
-the preceding premultiplied stage; this Lottie-only increment reran the 77-test suite.
+the preceding premultiplied stage; the SVG transform increment ran the 78-test suite.
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
@@ -15,7 +16,8 @@ Native SVG custom drawing now preserves image origin, pivot, per-axis scale and
 rotation through clipping and offset child layers. Canvas drawing without an
 object is supported. The independent pixel regression covers 48 canvas/widget/
 layer combinations; full host suite **78/78 PASS**. See the
-[transform stage](svg-transforms-stage.md); its target evidence is pending.
+[transform stage](svg-transforms-stage.md); combined target build/link/image/manifest
+also pass. Physical execution remains **NOT_RUN**.
 
 ## Checked Lottie resources increment
 

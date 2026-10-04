@@ -24,9 +24,9 @@ pixel outside the clip must stay black; interior/exterior samples tolerate at
 most two channel levels and exclude a two-source-pixel antialias boundary.
 Caller clip preservation is checked before dispatch.
 
-Full SVG/vector/Lottie host suite **78/78 PASS**. Target generation and live-symbol
-ownership checks are integrated; clean target firmware evidence is pending at
-this feature commit. The existing FILE/VARIABLE contract also remains green.
+Full SVG/vector/Lottie host suite **78/78 PASS**. Combined D13x target firmware passes boot/app compilation, final-link/live-symbol
+ownership, image and clean-source manifest gates. Both generated corrections are
+retained in the manifest; see [exact pins and image hash](validation.md). The existing FILE/VARIABLE contract also remains green.
 
 This corrects native 9.6 SVG integration, an extension beyond the SDK's legacy
 configuration. It is not GE vector acceleration. Parent layered opacity is
