@@ -10,6 +10,15 @@ the preceding premultiplied stage; the SVG transform increment ran the 78-test s
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
+## SVG composition increment
+
+Native SVG now composes a premultiplied vector layer before applying image
+opacity/recolor, rounded clips, masks, color keys and tiling. Straight-alpha
+destinations are preserved, and shared software masking scales premultiplied
+RGB with alpha. Host **79/79 PASS**, disabled baseline **74/74 PASS**; target
+evidence is pending. See [composition](svg-composition-stage.md), including the
+additional temporary pixel memory and native sampling boundaries.
+
 ## SVG transform increment
 
 Native SVG custom drawing now preserves image origin, pivot, per-axis scale and

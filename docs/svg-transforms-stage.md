@@ -30,6 +30,6 @@ retained in the manifest; see [exact pins and image hash](validation.md). The ex
 
 This corrects native 9.6 SVG integration, an extension beyond the SDK's legacy
 configuration. It is not GE vector acceleration. Parent layered opacity is
-covered; native image-specific opacity/recolor/tiling and rounded-image clips
-need separate handling/coverage. Rich SVG document semantics, font/embedded
+covered; image-specific opacity/recolor/tiling/masks and rounded-image clips
+are subsequently handled by the [composition stage](svg-composition-stage.md). Rich SVG document semantics, font/embedded
 assets, allocation budgets and animation remain open. Hardware **NOT_RUN**.

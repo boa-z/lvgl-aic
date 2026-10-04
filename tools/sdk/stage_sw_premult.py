@@ -14,9 +14,22 @@ def corrected(text):
     old = "    lv_color_format_t cf = decoded->header.cf;"
     if text.count(old) != 4:
         raise ValueError("Unexpected software image format sites")
-    return text.replace(old, old + "\n    if (cf == LV_COLOR_FORMAT_ARGB8888 &&\n"
+    text = text.replace(old, old + "\n    if (cf == LV_COLOR_FORMAT_ARGB8888 &&\n"
         "        (decoded->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED))\n"
         "        cf = LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED;")
+
+    # Alpha-only masking is valid for straight pixels. Premultiplied layers
+    # must scale RGB as well or transparent masked pixels keep emitting colour.
+    mask = "            img_start[x * 4 + 3] = LV_OPA_MIX2(mask_start[x], img_start[x * 4 + 3]);"
+    if text.count(mask) != 1:
+        raise ValueError("Unexpected software layer mask site")
+    text = text.replace(mask, """            if(image_draw_buf->header.cf == LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED ||
+               (image_draw_buf->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED)) {
+                for(unsigned channel = 0; channel < 3; channel++)
+                    img_start[x * 4 + channel] = LV_OPA_MIX2(mask_start[x], img_start[x * 4 + channel]);
+            }
+""" + mask)
+    return text
 
 def generate(source, destination):
     result = corrected(Path(source).read_text(encoding="utf-8"))

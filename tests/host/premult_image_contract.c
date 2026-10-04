@@ -3,6 +3,7 @@
 #include "lvgl_private.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 static uint32_t pixels[16*16], reference[64*64];
 static void flush(lv_display_t *d,const lv_area_t *a,uint8_t *p)
@@ -44,6 +45,36 @@ int main(void)
         }
         lv_image_cache_drop(&src);
     }
+    /* A centered layer mask must scale premultiplied RGB as well as alpha.
+     * Compare both encodings against straight alpha and an independent blend. */
+    uint8_t masks[8*8];
+    static const uint8_t coverage[4]={0,64,128,255};
+    for(unsigned i=0;i<sizeof masks;i++) masks[i]=coverage[i%4];
+    lv_image_dsc_t mask={.header={.magic=LV_IMAGE_HEADER_MAGIC,.w=8,.h=8,.stride=8,.cf=LV_COLOR_FORMAT_A8},
+        .data=masks,.data_size=sizeof masks};
+    for(unsigned encoding=0;encoding<3;encoding++) {
+        lv_canvas_fill_bg(canvas,lv_color_hex(0x103050),LV_OPA_COVER);
+        lv_layer_t parent;lv_canvas_init_layer(canvas,&parent);
+        lv_area_t area={20,20,35,35};
+        lv_layer_t *child=lv_draw_layer_create(&parent,
+            encoding==1?LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED:LV_COLOR_FORMAT_ARGB8888,&area);
+        assert(child && lv_draw_layer_alloc_buf(child));
+        if(encoding==2) child->draw_buf->header.flags|=LV_IMAGE_FLAGS_PREMULTIPLIED;
+        for(unsigned y=0;y<16;y++) {
+            uint32_t *row=(uint32_t *)(child->draw_buf->data+y*child->draw_buf->header.stride);
+            for(unsigned x=0;x<16;x++) row[x]=encoding?0x80800000:0x80ff0000;
+        }
+        lv_draw_image_dsc_t d;lv_draw_image_dsc_init(&d);d.src=child;
+        d.bitmap_mask_src=&mask;d.image_area=area;
+        lv_draw_layer(&parent,&d,&area);lv_canvas_finish_layer(canvas,&parent);
+        for(unsigned y=20;y<36;y++) for(unsigned x=20;x<36;x++) {
+            unsigned a=x>=24 && x<32 && y>=24 && y<32?coverage[(x-24)%4]*128/255:0;
+            unsigned r=(255*a+16*(255-a))/255,g=48*(255-a)/255,b=80*(255-a)/255;
+            lv_color32_t px=lv_canvas_get_px(canvas,x,y);
+            assert(abs((int)px.red-(int)r)<=2 && abs((int)px.green-(int)g)<=2 && abs((int)px.blue-(int)b)<=2);
+        }
+    }
+    lv_image_cache_drop(&mask);
     lv_obj_delete(canvas);lv_draw_buf_destroy(buf);lv_display_delete(disp);lv_deinit();
     puts("PASS premultiplied format/flag parity: native, opacity, rounded clip, recolor and transformed pixels");
     return 0;
