@@ -4,9 +4,10 @@ Latest combined evidence: **79/79 SVG/vector/Lottie-enabled host PASS**, **74/74
 build/link/image/provenance **PASS**, including the two-slot SPI display pipeline
 and widgets/benchmark/music/vector/SVG/Lottie enabled together, plus premultiplied
 GE sources, consistent native software fallback, checked Lottie source loading
-and corrected SVG transforms, clipping and image composition;
+corrected SVG transforms, clipping and image composition, and checked GE rotation centers;
 see [current validation](validation.md). Both the 79-test combined suite and
-74-test disabled baseline were rerun for the SVG composition increment.
+74-test disabled baseline were rerun for the SVG composition increment; the
+subsequent GE center increment reran the 79-test suite.
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
@@ -14,7 +15,8 @@ Board acceptance remains scoped to previously supplied logs; the new image is
 
 ROTATE source and crop-relative destination centers are now checked in a
 conservative signed 14-bit domain after 64-bit translation, before cache/DMA
-and tile preflight. Host **79/79 PASS**; target evidence is pending.
+and tile preflight. Host **79/79 PASS**; combined target build/link/image/manifest
+checks also pass. Physical center-limit verification remains **NOT_RUN**.
 Native software far-pivot Q10 precision remains a separate observed gap, and
 arbitrary-angle plus scale still needs a multi-pass implementation.
 See [rotation center bounds](ge-center-stage.md).

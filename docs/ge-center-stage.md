@@ -37,5 +37,7 @@ interior pixel shared by the ideal/native footprints; it does not prove
 whole-domain software accuracy. Higher-precision native fallback is a remaining
 gap and must not be hidden by the GE command guard.
 
-Host/full-firmware results will be recorded in validation.md. SDK/LVGL source
+Combined host **79/79 PASS**. D13x boot/app compilation, final-link (including
+the new center helper), image and clean-source manifest checks pass.
+[Validation](validation.md) records exact pins and image hash. SDK/LVGL source
 files remain unchanged; physical rotation/center limits **NOT_RUN**.

@@ -1,5 +1,37 @@
 # Validation record
 
+## GE ROTATE center bounds (2026-10-04)
+
+Combined host regression **79/79 PASS** (16.43 seconds). The new center contract
+covers 1,210 boundary/large-translation combinations, null arguments and
+unchanged outputs on rejection. The real executor rejects unrepresentable
+centers before cache work or submission in both preflight and execution.
+A translated remote-pivot IMAGE/LAYER case verifies software outcome and an
+interior pixel without GE calls. The initial rejection assertion failed against
+the old executor, which would silently truncate the command center.
+
+The combined D13x 90-degree GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/
+widgets-demo/benchmark/music/vector/SVG/Lottie firmware passes boot/app,
+final-link/static, image and clean-source manifest gates. The new rotation
+center helper is required as a live final-link symbol.
+
+- lvgl-aic: `f7e4f0b1e7c01c8765508e68b0e1f34331741a9c` (clean).
+- sdk: `b1ba69c8e6e65f3121297b3dc72068d09183874a` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `341516520f9a99dade09d8d5417247ccde0f68f2c4c733b2c7e63b23516e4f8d` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-ge-center/manifest.json`.
+- Component logs: `output/ge-center-before.log`, `output/ge-center-focus.log`, `output/ge-center-tests.log`, `output/ge-center-firmware.log`.
+
+Use the combined build profile and `-EvidenceTag ge-center`. The 74-test
+disabled baseline was last run in the preceding SVG-composition stage.
+SDK/LVGL sources remain unchanged. Signed 14-bit center bounds are a conservative
+port policy; register endpoints are not physically accepted by these tests.
+Exploratory software rendering also exposed native Q10 far-pivot precision
+limits, documented as an open gap. Arbitrary-angle plus scale remains
+unsupported and needs a multi-pass implementation. Camera stays disabled and
+no SPI panel is bound. Hardware **NOT_RUN**; nothing was flashed.
+See [center bounds and the remaining software precision gap](ge-center-stage.md).
+
 ## SVG composition and premultiplied masks (2026-10-04)
 
 Combined SVG/vector/Lottie host regression **79/79 PASS** (34.90 seconds);
