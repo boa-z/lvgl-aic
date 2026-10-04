@@ -3,6 +3,7 @@
 #include "lvgl_private.h"
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 static void flush(lv_display_t *d,const lv_area_t *a,uint8_t *pixels)
 { (void)a;(void)pixels;lv_display_flush_ready(d); }
 static void scene(lv_obj_t *canvas,unsigned kind)
@@ -64,6 +65,9 @@ static void scene(lv_obj_t *canvas,unsigned kind)
 int main(void)
 {
     lv_init();
+    char formatted[24];
+    assert(lv_snprintf(formatted,sizeof formatted,"%.2f %.1f",1.25,-2.5)==9);
+    assert(!strcmp(formatted,"1.25 -2.5"));
     lv_display_t *display=lv_display_create(64,64);assert(display);
     uint32_t pixels[64*64];
     lv_display_set_buffers(display,pixels,NULL,sizeof pixels,LV_DISPLAY_RENDER_MODE_DIRECT);

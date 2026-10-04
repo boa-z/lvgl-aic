@@ -246,6 +246,7 @@ def main():
     parser.add_argument("--with-demos", action="store_true")
     parser.add_argument("--with-music", action="store_true")
     parser.add_argument("--with-vector", action="store_true")
+    parser.add_argument("--with-svg", action="store_true")
     parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
@@ -364,6 +365,17 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("Vector live symbol absent: " + symbol)
         print("Native vector/ThorVG software final link: PASS (not board execution)")
+    enabled = re.search(r"^CONFIG_AIC_LVGL_USE_SVG=y$", config, re.MULTILINE) is not None
+    if enabled != args.with_svg:
+        fail("SVG profile mismatch")
+    if args.with_svg:
+        if not args.with_vector:
+            fail("SVG requires vector rendering")
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_svg_decoder_init", "lv_svg_load_data", "lv_svg_render_create", "lv_draw_svg_render"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("SVG live symbol absent: " + symbol)
+        print("Native SVG decoder/parser/render final link: PASS (not board execution)")
     spi_enabled = re.search(r"^CONFIG_AIC_LVGL_USE_SPI_SDK=y$", config, re.MULTILINE) is not None
     if spi_enabled != args.with_spi:
         fail("SPI profile mismatch")

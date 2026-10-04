@@ -76,6 +76,9 @@ if GetDepend('AIC_LVGL_USE_VECTOR'):
     if GetDepend('AIC_LVGL_SMOKE_APP'):
         for api in ('lvgl_aic_thorvg_config_probe', 'lv_draw_vector', 'lv_vector_path_create', 'lv_draw_vector_dsc_create'):
             Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
+if GetDepend('AIC_LVGL_USE_SVG') and GetDepend('AIC_LVGL_SMOKE_APP'):
+    for api in ('lv_svg_decoder_init', 'lv_svg_load_data', 'lv_svg_render_create', 'lv_draw_svg_render'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
 if demo_enabled and GetDepend('AIC_LVGL_SMOKE_APP'):
     if GetDepend('AIC_LVGL_BUILD_DEMO_WIDGETS') or GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
         for api in ('lv_demo_widgets', 'lv_demo_widgets_with_args'):

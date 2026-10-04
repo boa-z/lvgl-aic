@@ -19,7 +19,8 @@ sources or the LVGL dependency.
   with `lv_canvas_init_layer` and submitted with `lv_canvas_finish_layer`.
 - This is software vector rasterization; GE2D has no new vector acceleration.
   Vector storage uses native heap allocation, with no separate component byte
-  budget. This option does not enable the Lottie widget, SVG loaders or ThorVG
+  budget. The optional [native SVG image decoder](svg-stage.md) is configured separately.
+  The vector option itself does not enable the Lottie widget, SVG loaders or ThorVG
   worker threads. Those require separate integration and validation.
 
 C++14/no-exception/no-RTTI flags are local to the ThorVG group; sized deallocation

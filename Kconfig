@@ -86,6 +86,16 @@ config AIC_LVGL_FREETYPE_GLYPHS
     range 8 512
     depends on AIC_LVGL_USE_FREETYPE
 
+config AIC_LVGL_USE_SVG
+    bool "Enable native LVGL SVG image decoder"
+    default n
+    depends on AIC_LVGL_PORT
+    select AIC_LVGL_USE_VECTOR
+    help
+        Enable the LVGL 9.6 SVG parser/image decoder over the software vector
+        renderer. Supports file and variable image resources. This is separate
+        from ThorVG's SVG loader and does not enable SVG animation or Lottie.
+
 config AIC_LVGL_USE_VECTOR
     bool "Enable native vector graphics with internal ThorVG software rendering"
     default n

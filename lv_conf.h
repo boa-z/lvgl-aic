@@ -23,6 +23,10 @@
  * Every AIC_LVGL_USE_* symbol that is read with `#if` must be listed here:
  * a bare `#define X` makes `#if X` a compile error, not a false branch. */
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
+#ifdef AIC_LVGL_USE_SVG
+#undef AIC_LVGL_USE_SVG
+#define AIC_LVGL_USE_SVG 1
+#endif
 #ifdef AIC_LVGL_USE_VECTOR
 #undef AIC_LVGL_USE_VECTOR
 #define AIC_LVGL_USE_VECTOR 1
@@ -129,6 +133,14 @@
 #define LV_USE_OS LV_OS_NONE
 #endif
 
+/* Vector/matrix profiles need floating-point text as well as arithmetic.
+ * RT-Thread's formatter lacks %f; use LVGL's native bounded formatter by default. */
+#if (defined(AIC_LVGL_USE_VECTOR) && AIC_LVGL_USE_VECTOR) ||     (defined(AIC_LVGL_USE_SVG) && AIC_LVGL_USE_SVG)
+#ifndef LV_USE_STDLIB_SPRINTF
+#define LV_USE_STDLIB_SPRINTF LV_STDLIB_BUILTIN
+#endif
+#endif
+
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
 #ifndef LV_USE_STDLIB_MALLOC
 #define LV_USE_STDLIB_MALLOC LV_STDLIB_RTTHREAD
@@ -190,8 +202,14 @@
 #ifndef LV_USE_DRAW_SW_ASM
 #define LV_USE_DRAW_SW_ASM LV_DRAW_SW_ASM_NONE
 #endif
+#ifndef AIC_LVGL_USE_SVG
+#define AIC_LVGL_USE_SVG 0
+#endif
+#ifndef LV_USE_SVG
+#define LV_USE_SVG AIC_LVGL_USE_SVG
+#endif
 #ifndef AIC_LVGL_USE_VECTOR
-#define AIC_LVGL_USE_VECTOR 0
+#define AIC_LVGL_USE_VECTOR AIC_LVGL_USE_SVG
 #endif
 #ifndef LV_USE_VECTOR_GRAPHIC
 #define LV_USE_VECTOR_GRAPHIC AIC_LVGL_USE_VECTOR

@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithVector, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithVector, [switch]$WithSvg, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
 $ErrorActionPreference='Stop'
+if ($WithSvg) { $WithVector=$true }
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
     while ($candidate -and -not (Test-Path (Join-Path $candidate.FullName 'SConstruct'))) { $candidate=$candidate.Parent }
@@ -46,6 +47,7 @@ if ($WithCamera) { $variant += '-camera' }
 if ($WithDemos) { $variant += '-demos' }
 if ($WithMusic) { $variant += '-music' }
 if ($WithVector) { $variant += '-vector' }
+if ($WithSvg) { $variant += '-svg' }
 if ($Rotation) { $variant += "-rotate$Rotation" }
 $evidence=Join-Path $root "output/lvgl-evidence/$variant"
 New-Item -ItemType Directory -Force $evidence | Out-Null
@@ -108,6 +110,7 @@ try {
         if ($WithPlayer) { $settings += @('CONFIG_AIC_LVGL_USE_VIDEO_PLANE=y', 'CONFIG_AIC_LVGL_USE_PLAYER=y', 'CONFIG_AIC_LVGL_USE_PLAYER_SESSION=y', 'CONFIG_AIC_MPP_PLAYER_INTERFACE=y', 'CONFIG_AIC_MPP_PLAYER_VIDEO_EXT_RENDER=y', 'CONFIG_AIC_MPP_H264_DEC_ENABLE=y') }
         if ($WithBarcode) { $settings += 'CONFIG_AIC_LVGL_USE_BARCODE=y' }
         if ($WithSpi) { $settings += 'CONFIG_AIC_LVGL_USE_SPI_SDK=y' }
+        if ($WithSvg) { $settings += 'CONFIG_AIC_LVGL_USE_SVG=y' }
         if ($WithVector) { $settings += 'CONFIG_AIC_LVGL_USE_VECTOR=y' }
         if ($WithMusic) { $settings += 'CONFIG_AIC_LVGL_BUILD_DEMO_MUSIC=y' }
         if ($WithDemos) { $settings += @('CONFIG_AIC_LVGL_BUILD_DEMO_WIDGETS=y','CONFIG_AIC_LVGL_BUILD_DEMO_BENCHMARK=y') }
@@ -142,6 +145,7 @@ if ($WithCamera) { $checkArgs += '--with-camera' }
 if ($WithDemos) { $checkArgs += '--with-demos' }
 if ($WithMusic) { $checkArgs += '--with-music' }
 if ($WithVector) { $checkArgs += '--with-vector' }
+if ($WithSvg) { $checkArgs += '--with-svg' }
 $checkArgs += @('--rotation', "$Rotation")
 Run-Step 'static-check' $checkArgs
 Run-Step 'image-check' @("$PSScriptRoot/verify_image.py",$app,'output/d13x_d50t-2-lite_baremetal_bootloader/images',$Phase)

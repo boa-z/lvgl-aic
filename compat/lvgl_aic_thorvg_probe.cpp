@@ -5,6 +5,7 @@ static_assert(LV_USE_OS == LV_OS_CUSTOM, "vector must use the application OS bri
 static_assert(LV_USE_VECTOR_GRAPHIC && LV_USE_THORVG && LV_USE_THORVG_INTERNAL &&
               LV_USE_MATRIX && LV_USE_FLOAT && LV_DRAW_SW_DRAW_UNIT_CNT == 1,
               "vector C++ configuration mismatch");
+static_assert(LV_USE_STDLIB_SPRINTF != LV_STDLIB_RTTHREAD, "vector needs floating-point formatting");
 static_assert(__cplusplus >= 201402L, "ThorVG requires C++14");
 #if defined(THORVG_THREAD_SUPPORT) || defined(THORVG_LOTTIE_LOADER_SUPPORT) || defined(THORVG_SVG_LOADER_SUPPORT)
 #error "Unexpected vector-only ThorVG thread/loader feature"
