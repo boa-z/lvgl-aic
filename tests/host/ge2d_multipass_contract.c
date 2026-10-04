@@ -11,7 +11,7 @@
 #include "../../draw/ge2d/lv_draw_aic_ge2d_fill.c"
 
 enum { N = 96 };
-static uint8_t source[32*128];
+static uint8_t source[64*256];
 static uint32_t output[N*N], whole[N*N];
 static void *allocated[2], *bases[2];
 static size_t sizes[2];
@@ -95,9 +95,10 @@ int mpp_ge_bitblt(struct mpp_ge *g,struct ge_bitblt *b)
 {
     (void)g; if(++event==fail_event) return -1;
     bool scale=b->scale_phase.scale_phase_en;
+    bool direct=b->dst_buf.phy_addr[0]==(uint32_t)(uintptr_t)output;
     struct mpp_rect r=b->dst_buf.crop_en?b->dst_buf.crop:(struct mpp_rect){0,0,b->dst_buf.size.width,b->dst_buf.size.height};
     if(scale) {
-        scales++; assert(!b->ctrl.alpha_en && !b->src_buf.flags && !b->dst_buf.flags);
+        scales++; if(!direct) assert(!b->ctrl.alpha_en && !b->src_buf.flags && !b->dst_buf.flags);
         assert(b->scale_phase.scaler_en && b->scale_phase.channel_num==1);
     } else {
         copies++; assert(r.x==2 && r.y==2 && r.width==32 && r.height==32);
@@ -106,8 +107,28 @@ int mpp_ge_bitblt(struct mpp_ge *g,struct ge_bitblt *b)
     }
     for(int y=0;y<r.height;y++) for(int x=0;x<r.width;x++) {
         uint32_t v;
-        if(scale) v=filtered(&b->src_buf,b->src_buf.crop.x+(b->scale_phase.h_phase_16[0]+(int64_t)x*b->scale_phase.dx_16[0])/65536.0,
-                             b->src_buf.crop.y+(b->scale_phase.v_phase_16[0]+(int64_t)y*b->scale_phase.dy_16[0])/65536.0);
+        if(scale) {
+            int u=x,vv=y;
+            switch(MPP_ROTATION_GET(b->ctrl.flags)) {
+            case MPP_ROTATION_90: u=y;vv=r.width-1-x;break;
+            case MPP_ROTATION_180: u=r.width-1-x;vv=r.height-1-y;break;
+            case MPP_ROTATION_270: u=r.height-1-y;vv=x;break;
+            default:break;
+            }
+            v=filtered(&b->src_buf,b->src_buf.crop.x+(b->scale_phase.h_phase_16[0]+(int64_t)u*b->scale_phase.dx_16[0])/65536.0,
+                       b->src_buf.crop.y+(b->scale_phase.v_phase_16[0]+(int64_t)vv*b->scale_phase.dy_16[0])/65536.0);
+            if(direct) {
+                uint32_t bg=read_pixel(&b->dst_buf,r.x+x,r.y+y),out=0xff000000;
+                unsigned opa=b->ctrl.alpha_en?b->ctrl.src_global_alpha:255;
+                unsigned alpha=((v>>24)*opa+127)/255;
+                bool premult=b->src_buf.flags & MPP_BUF_IS_PREMULTIPLY;
+                for(unsigned k=0;k<3;k++) {
+                    unsigned c=(((v>>(k*8))&255)*(premult?opa:alpha)+((bg>>(k*8))&255)*(255-alpha)+127)/255;
+                    out|=LV_MIN(c,255U)<<(k*8);
+                }
+                v=out;
+            }
+        }
         else {
             v=read_pixel(&b->src_buf,x,y);
             if(b->dst_buf.flags & MPP_BUF_IS_PREMULTIPLY) {
@@ -174,10 +195,10 @@ int main(void)
     assert(lv_draw_buf_init(&dst,N,N,LV_COLOR_FORMAT_ARGB8888,N*4,output,sizeof output)==LV_RESULT_OK);
     layer.draw_buf=&dst;layer.color_format=LV_COLOR_FORMAT_ARGB8888;layer.buf_area=(lv_area_t){90,190,90+N-1,190+N-1};
     task.target_layer=&layer;task.area=(lv_area_t){120,220,151,251};task.clip_area=layer.buf_area;
-    const int ratios[][2]={{128,384},{384,192},{512,512},{255,384}};
+    const int ratios[][2]={{128,384},{384,192},{512,512},{255,384},{264,384},{281,192}};
     unsigned scenes=0,pixels=0;
     lv_draw_image_dsc_t d;
-    for(unsigned kind=0;kind<6;kind++) for(unsigned ratio=0;ratio<4;ratio++)
+    for(unsigned kind=0;kind<6;kind++) for(unsigned ratio=0;ratio<sizeof ratios/sizeof ratios[0];ratio++)
     for(unsigned angle=0;angle<3;angle++) for(unsigned is_layer=0;is_layer<2;is_layer++)
     for(unsigned opacity=0;opacity<2;opacity++) {
         bool premult=kind==2 || kind==3, has_alpha=kind>=1 && kind<=3;
@@ -201,7 +222,7 @@ int main(void)
         task.type=is_layer?LV_DRAW_TASK_TYPE_LAYER:LV_DRAW_TASK_TYPE_IMAGE;task.draw_dsc=&d;
         reset();lv_draw_aic_ge2d_outcome_t outcome;
         assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK && outcome==LV_DRAW_AIC_GE2D_OUTCOME_ENGINE);
-        assert(copies==1 && scales==1 && rotations==1 && frees==2 && allocation_calls==2);
+        assert(copies==1 && scales==(ratio>=4?2U:1U) && rotations==1 && frees==2 && allocation_calls==2);
         memcpy(whole,output,sizeof output);
         double r=d.rotation*3.141592653589793/1800.0,c=cos(r),s=sin(r);unsigned interior=0;
         for(int y=0;y<N;y++) for(int x=0;x<N;x++) {
@@ -233,12 +254,13 @@ int main(void)
     }
     /* Nine cells share ONE preparation, preserve clipping, and produce the
      * same pixels when the refresh divides the middle column of tiles. */
+    for(unsigned tile_zoom=0;tile_zoom<2;tile_zoom++) {
     task.type=LV_DRAW_TASK_TYPE_IMAGE;d.src=&src;d.rotation=175;
-    d.scale_x=d.scale_y=512;d.tile=true;task.area=d.image_area=layer.buf_area;
+    d.scale_x=tile_zoom?264:512;d.scale_y=512;d.tile=true;task.area=d.image_area=layer.buf_area;
     lv_draw_aic_ge2d_outcome_t tiled_outcome;
     reset();
     assert(lv_draw_aic_ge2d_image(&task,&tiled_outcome)==LV_RESULT_OK && tiled_outcome==LV_DRAW_AIC_GE2D_OUTCOME_ENGINE);
-    assert(copies==1 && scales==1 && rotations==9 && allocation_calls==2 && frees==2);
+    assert(copies==1 && scales==(tile_zoom?2U:1U) && rotations==9 && allocation_calls==2 && frees==2);
     memcpy(whole,output,sizeof output);reset();
     for(int i=0;i<2;i++) {
         task.clip_area=(lv_area_t){90+i*48,190,90+(i+1)*48-1,285};
@@ -251,6 +273,7 @@ int main(void)
     assert(!event && !allocation_calls);
     task.clip_area=layer.buf_area;d.tile=false;task.area=(lv_area_t){120,220,151,251};
     lv_image_cache_drop(&src);
+    }
     /* Full task preparation failures must replay in native software only
      * before any command. Uncertain command/emit/sync completion retains both
      * scratch allocations and decoder, and blocks every subsequent request. */
@@ -261,7 +284,8 @@ int main(void)
         assert(lv_draw_aic_ge2d_image(&task,&result)==LV_RESULT_OK && result==LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
         assert(event==0 && !allocated[0] && !allocated[1]);lv_image_cache_drop(&src);
     }
-    for(unsigned failure=1;failure<=9;failure++) {
+    d.scale_x=264;
+    for(unsigned failure=1;failure<=12;failure++) {
         reset();fail_event=failure;lv_draw_aic_ge2d_outcome_t result;
         assert(lv_draw_aic_ge2d_image(&task,&result)==LV_RESULT_INVALID);
         assert(decoder_quarantined && allocated[0] && allocated[1] && !frees && event==failure);
@@ -270,7 +294,71 @@ int main(void)
         lv_image_decoder_close(&image_decoder);decoder_quarantined=false;
         s_blit_failed=false;transform_release();lv_image_cache_drop(&src);
     }
+    /* Ordinary RGB scaling: inverse-coordinate ramps, both alpha encodings,
+     * all orthogonal placements and split refresh across the stripe boundary. */
+    unsigned direct_scenes=0,direct_pixels=0;
+    task.type=LV_DRAW_TASK_TYPE_IMAGE;task.area=(lv_area_t){106,222,169,253};
+    for(unsigned kind=0;kind<3;kind++) for(unsigned ratio=0;ratio<3;ratio++)
+    for(unsigned angle=0;angle<4;angle++) {
+        const unsigned zooms[]={257,264,281};
+        bool premult=kind==2;
+        assert(lv_draw_buf_init(&src,64,32,premult?LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED:
+               kind?LV_COLOR_FORMAT_ARGB8888:LV_COLOR_FORMAT_XRGB8888,256,source,sizeof source)==LV_RESULT_OK);
+        for(unsigned y=0;y<32;y++) for(unsigned x=0;x<64;x++) {
+            unsigned a=kind?128:255,c[3]={40+x+y,30+5*y,20+2*x};
+            for(unsigned k=0;k<3;k++) source[y*256+x*4+k]=premult?(c[k]*a+127)/255:c[k];
+            source[y*256+x*4+3]=a;
+        }
+        lv_draw_image_dsc_init(&d);d.src=&src;d.header=src.header;
+        d.pivot=(lv_point_t){32,16};d.scale_x=zooms[ratio];d.scale_y=384;d.rotation=angle*900;d.opa=128;
+        /* Transform the interior source rectangle independently; ceil/floor
+         * discard exterior fractional samples, preserving a >31 scaler width. */
+        const int cs[]={1,0,-1,0},sn[]={0,1,0,-1};
+        double minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
+        for(unsigned j=0;j<4;j++) {
+            double u=((j&1)?61:2)-32,v=((j&2)?29:2)-16;
+            u*=d.scale_x/256.0;v*=d.scale_y/256.0;
+            double xx=138+cs[angle]*u-sn[angle]*v,yy=238+sn[angle]*u+cs[angle]*v;
+            minx=fmin(minx,xx);maxx=fmax(maxx,xx);miny=fmin(miny,yy);maxy=fmax(maxy,yy);
+        }
+        lv_area_t clip={(int)ceil(minx),(int)ceil(miny),(int)floor(maxx),(int)floor(maxy)};
+        task.clip_area=clip;reset();lv_draw_aic_ge2d_outcome_t result;
+        assert(lv_draw_aic_ge2d_image(&task,&result)==LV_RESULT_OK && result==LV_DRAW_AIC_GE2D_OUTCOME_ENGINE);
+        assert(scales>=2 && !copies && !rotations && !allocation_calls);
+        memcpy(whole,output,sizeof output);
+        for(int y=0;y<N;y++) for(int x=0;x<N;x++) {
+            int xx=x+90,yy=y+190;
+            if(xx<clip.x1 || xx>clip.x2 || yy<clip.y1 || yy>clip.y2) { assert(output[y*N+x]==0xff102030);continue; }
+            double u=(cs[angle]*(xx-138)+sn[angle]*(yy-238))*256.0/d.scale_x+32;
+            double v=(-sn[angle]*(xx-138)+cs[angle]*(yy-238))*256.0/d.scale_y+16;
+            double colors[3]={40+u+v,30+5*v,20+2*u};unsigned alpha=((kind?128:255)*128+127)/255;
+            for(unsigned k=0;k<3;k++) {
+                int expected=(int)lround((colors[k]*alpha+((0xff102030U>>(k*8))&255)*(255-alpha))/255.0);
+                assert(abs((int)((output[y*N+x]>>(k*8))&255)-expected)<=2);
+            }
+            assert(output[y*N+x]>>24==255);direct_pixels++;
+        }
+        reset();
+        for(unsigned half=0;half<2;half++) {
+            task.clip_area=clip;
+            if(half) task.clip_area.x1=(clip.x1+clip.x2)/2+1;
+            else task.clip_area.x2=(clip.x1+clip.x2)/2;
+            assert(lv_draw_aic_ge2d_image(&task,&result)==LV_RESULT_OK && result==LV_DRAW_AIC_GE2D_OUTCOME_ENGINE);
+        }
+        assert(!memcmp(output,whole,sizeof output));lv_image_cache_drop(&src);direct_scenes++;
+        /* A failed later submission follows a completed target strip. Never
+         * replay this translucent request through native software. */
+        task.clip_area=clip;reset();fail_event=4;
+        assert(lv_draw_aic_ge2d_image(&task,&result)==LV_RESULT_INVALID);
+        assert(event==4 && scales==1 && decoder_quarantined && !allocation_calls);
+        bool changed=false;for(unsigned i=0;i<N*N;i++) if(output[i]!=0xff102030) changed=true;
+        assert(changed && memcmp(output,whole,sizeof output));
+        assert(lv_draw_aic_ge2d_image(&task,&result)==LV_RESULT_INVALID && event==4);
+        lv_image_decoder_close(&image_decoder);decoder_quarantined=false;s_blit_failed=false;
+        lv_image_cache_drop(&src);
+    }
     reset();lv_deinit();
-    printf("PASS %u multipass IMAGE/LAYER scenes, %u independent interior pixels, partial refresh, allocation/address failure and 9 DMA failure points\n",scenes,pixels);
+    printf("PASS %u direct striped scenes, %u independent ramp pixels, exact partial refresh and late-strip quarantine\n",direct_scenes,direct_pixels);
+    printf("PASS %u multipass IMAGE/LAYER scenes, %u independent interior pixels, partial refresh, allocation/address failure and 12 DMA failure points\n",scenes,pixels);
     return 0;
 }

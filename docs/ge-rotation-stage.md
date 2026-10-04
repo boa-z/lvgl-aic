@@ -2,12 +2,13 @@
 
 The application-owned backend now shares the unscaled GE ROTATE path between
 IMAGE and LAYER. Right-angle scaling continues to use BITBLT. Arbitrary angles
-combined with scaling or skew remain software work.
+combined with scaling use the subsequent [bounded multipass path](ge-multipass-stage.md);
+skew remains software work.
 
 Combined orthogonal transforms keep the destination pivot fixed and inverse
 rotate before dividing by source-axis scale. GE scales before rotating, so
 Q16 steps and phases stay in source X/Y order even at 90/270 degrees; the
-split-risk guard uses the pre-rotation output width. This fixes nonzero-pivot
+[RGB stripe planner](ge-stripes-stage.md) uses the pre-rotation output width. This fixes nonzero-pivot
 drift and swapped anisotropic scales. Host tests use upstream LVGL forward
 transforms and a floating inverse matrix across all four rotations, three
 anisotropic scale pairs and fractional clips, plus a real blit descriptor

@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lv_draw_aic_ge2d_transform.h"
-#include "lv_draw_aic_ge2d_scale.h"
 
 static int64_t floor_div(int64_t a, int64_t b)
 {
@@ -32,8 +31,7 @@ bool lv_aic_ge2d_transform_plan(uint32_t w, uint32_t h,
        (dsc->scale_x == 256 && dsc->scale_y == 256)) return false;
     lv_aic_ge2d_transform_plan_t p = {0};
     if(!axis(w,dsc->pivot.x,dsc->scale_x,&p.scaled_w,&p.pivot.x,&p.crop_x,&p.phase_x,&p.step_x) ||
-       !axis(h,dsc->pivot.y,dsc->scale_y,&p.scaled_h,&p.pivot.y,&p.crop_y,&p.phase_y,&p.step_y) ||
-       lv_aic_ge2d_scale_split_risk(p.step_x,p.scaled_w-4)) return false;
+       !axis(h,dsc->pivot.y,dsc->scale_y,&p.scaled_h,&p.pivot.y,&p.crop_y,&p.phase_y,&p.step_y)) return false;
     p.padded_w = w + 4; p.padded_h = h + 4;
     p.padded_stride = ((uint32_t)p.padded_w * 4 + 63) & ~63U;
     p.scaled_stride = ((uint32_t)p.scaled_w * 4 + 63) & ~63U;

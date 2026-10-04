@@ -1,19 +1,23 @@
 # Current capabilities and SDK gaps
 
-Latest combined evidence: **81/81 SVG/vector/Lottie-enabled host PASS**, **76/76 baseline PASS** and GE/widget/SPI full firmware
-build/link/image/provenance **PASS**, including the two-slot SPI display pipeline
-and widgets/benchmark/music/vector/SVG/Lottie enabled together, plus premultiplied
-GE sources, checked Lottie source loading, corrected SVG transforms/composition,
-checked GE rotation centers, matched Q15 software fallback geometry/sampling
-and bounded GE arbitrary-angle scale/rotation;
-see [current validation](validation.md). Both host configurations were rerun for
-the multipass transform increment.
-Board acceptance remains scoped to previously supplied logs; the new image is
-**NOT_RUN**. Milestone counts below describe their historical checkpoints.
+Latest host evidence: **82/82 SVG/vector/Lottie-enabled PASS** and **77/77 baseline
+PASS** for near-unity RGB stripes. The previous multipass combined firmware has
+passed build/link/image/provenance gates; the new stripe image is pending its
+build. See [current validation](validation.md). Physical acceptance of these
+increments remains **NOT_RUN**; milestone counts below are historical checkpoints.
+
+## GE near-unity RGB stripe increment
+
+Ordinary IMAGE/LAYER, orthogonal transforms, tiles and multipass preparation now
+avoid the vendor scaler split-risk interval using balanced 16..31-pixel RGB
+commands. Every strip is preflighted and retains the original sampling phase;
+uncertain DMA blocks replay. Forty board probes are included. YUV and the
+separate SPI planner retain their existing fallback. See [stripe geometry,
+limits and host evidence](ge-stripes-stage.md).
 
 ## GE multipass transform increment
 
-Arbitrary-angle scale now has a bounded three-command path: padded premultiplied
+Arbitrary-angle scale now has a bounded three-pass path: padded premultiplied
 copy, raw-channel scale, final rotate/composite. IMAGE/LAYER and tiled requests
 share scratch ownership and all-tile preflight. A combined 2 MiB default budget
 limits allocation; uncertain DMA retains both scratch buffers. Eight numeric

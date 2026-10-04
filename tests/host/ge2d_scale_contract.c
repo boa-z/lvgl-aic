@@ -406,7 +406,8 @@ int main(void)
         d.pivot = (lv_point_t){0,0}; d.scale_x = d.scale_y = 512;
         assert(!lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&tiny));
         d.scale_x = 264; d.scale_y = 256;
-        assert(!lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&origin));
+        assert(lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&origin));
+        assert(submits==before+2);before+=2;
         d.scale_x = 4097;
         assert(!lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&origin));
         assert(submits == before);

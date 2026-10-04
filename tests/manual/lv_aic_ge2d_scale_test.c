@@ -18,7 +18,7 @@
 #define SRC_STRIDE 128
 #define DST_STRIDE (DST_W * 4)
 
-static int scale_probe(uint16_t sx, uint16_t sy, unsigned source_kind, bool clipped,
+static int scale_probe(uint16_t sx, uint16_t sy, unsigned source_kind, unsigned clipped,
                        bool pivoted, bool expect_engine, bool tiled, uint16_t rotation)
 {
     bool argb = source_kind != 0, premult = source_kind >= 2;
@@ -66,6 +66,14 @@ static int scale_probe(uint16_t sx, uint16_t sy, unsigned source_kind, bool clip
     task.target_layer = &layer; task.type = LV_DRAW_TASK_TYPE_IMAGE;
     task.draw_dsc = &d; task.area = (lv_area_t){124, 224, 155, 255};
     task.clip_area = clipped ? (lv_area_t){125, 227, 144, 239} : layer.buf_area;
+    if(clipped==2) {
+        /* Full valid 32-sample scaler interval: two balanced commands, while
+         * discarding fractional outer samples that independently need SW. */
+        d.pivot=(lv_point_t){16,16};
+        const lv_area_t stripes[]={{124,224,155,255},{125,224,156,255},
+                                   {125,225,156,256},{124,225,155,256}};
+        task.clip_area=stripes[rotation/900];
+    }
     if (tiled) {
         if (sx != 256 || sy != 256 || rotation) d.pivot = (lv_point_t){16,16};
         d.image_area = task.area;
@@ -156,7 +164,7 @@ done:
     }
     if (source) aicos_free_align(MEM_CMA, source);
     if (output) aicos_free_align(MEM_CMA, output);
-    if (result != 0) AIC_TEST_E("FAIL scale sx=%u sy=%u argb=%d clip=%d pivot=%d",
+    if (result != 0) AIC_TEST_E("FAIL scale sx=%u sy=%u argb=%d clip=%u pivot=%d",
                           (unsigned)sx, (unsigned)sy, argb, clipped, pivoted);
     return result;
 }
@@ -251,7 +259,17 @@ int lv_aic_ge2d_scale_test_run(void)
     if (scale_probe(384,192,true,true,true,true,false,0)) return -1;
     if (scale_probe(15,256,false,false,false,false,false,0)) return -1;
     if (scale_probe(4097,256,false,true,false,false,false,0)) return -1;
+    /* Unclipped fractional outer samples still require whole-task SW. */
     if (scale_probe(264,256,false,false,false,false,false,0)) return -1;
+    const uint16_t stripe_scales[]={264,281};
+    for(unsigned kind=0;kind<4;kind++) for(unsigned zoom=0;zoom<2;zoom++) {
+        for(unsigned angle=0;angle<3600;angle+=900) {
+            AIC_TEST_I("BEGIN RGB stripes sx=%u rot=%u kind=%u",(unsigned)stripe_scales[zoom],angle/10,kind);
+            if(scale_probe(stripe_scales[zoom],256,kind,2,true,true,false,(uint16_t)angle)) return -1;
+        }
+        AIC_TEST_I("BEGIN multipass stripes sx=%u rot=33 kind=%u",(unsigned)stripe_scales[zoom],kind);
+        if(scale_probe(stripe_scales[zoom],384,kind,false,true,true,false,330)) return -1;
+    }
     for (int argb = 0; argb < 4; argb++) {
         AIC_TEST_I("BEGIN native tile source_kind=%d", argb);
         if (scale_probe(256,256,argb,true,false,true,true,0)) return -1;

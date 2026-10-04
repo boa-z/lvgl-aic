@@ -30,7 +30,7 @@ software without a partial hardware blend.
 
 Source dimensions must be 4..4092; the scaled storage and ROTATE destination
 must fit the SDK's 4..4096 limits. Scale remains 1/16..16, and the known scaler
-split-risk interval is still declined. The resampled source center and cropped
+split-risk interval now uses the subsequent [RGB stripe planner](ge-stripes-stage.md). The resampled source center and cropped
 destination center must fit the conservative signed 14-bit policy. Tiny clips,
 excessive memory, unsupported formats, keys, recoloring, masks, skew and special
 blend modes retain the existing software paths.

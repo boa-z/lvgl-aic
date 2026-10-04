@@ -36,11 +36,12 @@ Remaining: explicit decoder close-count instrumentation, physical-board numeric 
 
 RGB/ARGB tiled IMAGE now accepts the same bounded transforms as the existing
 single-image executor: scaling, orthogonal rotation with scaling, and unscaled
-arbitrary rotation. YUV tiled publication uses its existing bounded scaler and
+arbitrary rotation, plus the subsequent [bounded arbitrary-angle scale path](ge-multipass-stage.md). YUV tiled publication uses its existing bounded scaler and
 orthogonal rotation path for all ten frame formats. Unsupported crops, small
-filter footprints, chroma alignment, inaccessible buffers and scaler split-risk
-cases still decline the whole task before submission. This is not universal
-transform acceleration, and arbitrary-angle scaling remains unsupported.
+filter footprints, chroma alignment and inaccessible buffers still decline the
+whole task before submission. YUV split-risk cases retain their fallback; RGB
+uses the subsequent [stripe planner](ge-stripes-stage.md). This remains bounded
+transform acceleration.
 
 LVGL 9.6 的 lv_draw_image_tiled_helper 仍以原图宽高步进，而不是变换后的尺寸。
 每个原始 cell 单独变换、裁剪，不能把缩放倍率再乘到平铺间距。RGB 复用两阶段

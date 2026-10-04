@@ -55,6 +55,7 @@
 #include "lv_draw_aic_ge2d_scale.h"
 #include "lv_draw_aic_ge2d_rotate.h"
 #include "lv_draw_aic_ge2d_transform.h"
+#include "lv_draw_aic_ge2d_stripes.h"
 
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 
@@ -123,7 +124,9 @@ static struct mpp_buf transform_mpp(const lv_draw_buf_t *buf, enum mpp_pixel_for
 
 static bool transform_submit(struct mpp_ge *ge, struct ge_bitblt *blt)
 {
-    if(mpp_ge_bitblt(ge,blt) < 0 || mpp_ge_emit(ge) < 0 || mpp_ge_sync(ge) < 0) {
+    int result=lv_aic_ge2d_stripe_run(ge,blt);
+    if(result==0) return false;
+    if(result<0) {
         s_blit_failed = true;
         LV_LOG_ERROR("GE2D transform preparation failed; retaining scratch DMA buffers");
         return false;
@@ -198,10 +201,6 @@ static bool transform_prepare(const lv_draw_buf_t *src)
         copy.ctrl.alpha_en = 1; copy.ctrl.alpha_rules = GE_PD_SRC;
         copy.ctrl.src_alpha_mode = 0; copy.ctrl.src_global_alpha = 255;
     }
-    /* Existing premultiplied storage can be copied bit-for-bit. */
-    lv_draw_aic_ge2d_prepare_src_cache(src,&source);
-    lv_draw_aic_ge2d_prepare_dst_cache(&transform_padded,&padded);
-    if(!transform_submit(ge,&copy)) return false;
     struct ge_bitblt scale = {0};
     scale.src_buf = transform_mpp(&transform_padded,MPP_FMT_ARGB_8888);
     scale.src_buf.crop_en = 1;
@@ -213,6 +212,13 @@ static bool transform_prepare(const lv_draw_buf_t *src)
     scale.scale_phase.channel_num = 1;
     scale.scale_phase.dx_16[0] = p->step_x; scale.scale_phase.dy_16[0] = p->step_y;
     scale.scale_phase.h_phase_16[0] = p->phase_x; scale.scale_phase.v_phase_16[0] = p->phase_y;
+    /* Validate ALL scale strips before even the preparation copy. */
+    unsigned commands;
+    if(!lv_aic_ge2d_stripe_count(&copy,&commands) || !lv_aic_ge2d_stripe_count(&scale,&commands)) return false;
+    /* Existing premultiplied storage can be copied bit-for-bit. */
+    lv_draw_aic_ge2d_prepare_src_cache(src,&source);
+    lv_draw_aic_ge2d_prepare_dst_cache(&transform_padded,&padded);
+    if(!transform_submit(ge,&copy)) return false;
     lv_draw_aic_ge2d_prepare_src_cache(&transform_padded,&padded);
     lv_draw_aic_ge2d_prepare_dst_cache(&transform_scaled,&scaled);
     return transform_submit(ge,&scale);
@@ -454,17 +460,12 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         lv_aic_ge2d_scale_axis_t x, y;
         uint32_t sx = draw_dsc->scale_x;
         uint32_t sy = draw_dsc->scale_y;
-        int32_t scaler_width = draw_dsc->rotation == 900 || draw_dsc->rotation == 2700
-                                  ? lv_area_get_height(&dst_area) : lv_area_get_width(&dst_area);
         if (draw_dsc->skew_x != 0 || draw_dsc->skew_y != 0 ||
             (draw_dsc->rotation == 0 &&
              (!lv_aic_ge2d_scale_axis(src->header.w, src_area.x1, lv_area_get_width(&dst_area),
                                       draw_dsc->pivot.x, draw_dsc->scale_x, &x) ||
               !lv_aic_ge2d_scale_axis(src->header.h, src_area.y1, lv_area_get_height(&dst_area),
-                                      draw_dsc->pivot.y, draw_dsc->scale_y, &y))) ||
-            (draw_dsc->rotation != 0 &&
-             lv_aic_ge2d_scale_split_risk((int32_t)(16777216 / sx),
-                                          scaler_width))) {
+                                      draw_dsc->pivot.y, draw_dsc->scale_y, &y)))) {
             return false;
         }
         if (draw_dsc->rotation == 0) {
@@ -475,9 +476,6 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
             y.step_16 = (int32_t)(16777216 / sy);
             x.crop = src_area.x1; x.extent = lv_area_get_width(&src_area);
             y.crop = src_area.y1; y.extent = lv_area_get_height(&src_area);
-        }
-        if (lv_aic_ge2d_scale_split_risk(x.step_16, scaler_width)) {
-            return false;
         }
         blt.scale_phase.scale_phase_en = 1;
         blt.scale_phase.scaler_en = 1;
@@ -505,11 +503,6 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         dst_area.x2 >= (int32_t)dst->header.w || dst_area.y2 >= (int32_t)dst->header.h) {
         return false;
     }
-
-    /* Source is read by the engine, so write back; destination is written. */
-    if (s_blit_validate_only) return true;
-    lv_draw_aic_ge2d_prepare_src_cache(src, &src_area);
-    lv_draw_aic_ge2d_prepare_dst_cache(dst, &dst_area);
 
     blt.src_buf.buf_type = MPP_PHY_ADDR;
     blt.src_buf.phy_addr[0] = (uint32_t)(ulong)src->data;
@@ -548,29 +541,23 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         blt.ctrl.ck_en = 1U;
         blt.ctrl.ck_value = lv_color_to_u32(draw_dsc->colorkey->low) & 0xffffffU;
     }
+    unsigned commands;
+    if(!lv_aic_ge2d_stripe_count(&blt,&commands)) return false;
+    if(s_blit_validate_only) return true;
+    lv_draw_aic_ge2d_prepare_src_cache(src,&src_area);
+    lv_draw_aic_ge2d_prepare_dst_cache(dst,&dst_area);
     ge = lv_draw_aic_ge2d_device();
     if (ge == NULL) {
         LV_LOG_ERROR("GE2D device is not open");
         return false;
     }
 
-    if (mpp_ge_bitblt(ge, &blt) < 0) {
-        s_blit_failed = true;
-        LV_LOG_ERROR("GE2D bitblt failed");
-        return false;
+    int result=lv_aic_ge2d_stripe_run(ge,&blt);
+    if(result<0) {
+        s_blit_failed=true;
+        LV_LOG_ERROR("GE2D blit strip failed");
     }
-    if (mpp_ge_emit(ge) < 0) {
-        s_blit_failed = true;
-        LV_LOG_ERROR("GE2D emit failed");
-        return false;
-    }
-    if (mpp_ge_sync(ge) < 0) {
-        s_blit_failed = true;
-        LV_LOG_ERROR("GE2D sync failed");
-        return false;
-    }
-
-    return true;
+    return result>0;
 }
 
 /* Keep the decoder open across both passes. No tile writes before every
