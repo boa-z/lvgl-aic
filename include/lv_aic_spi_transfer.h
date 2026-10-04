@@ -49,6 +49,15 @@ bool lv_aic_spi_transfer_set_back_buffer(lv_aic_spi_transfer_t *transfer,
  * Defaults to CPU nearest resize/rotation from lv_aic_spi_pack_rgb565. */
 lv_aic_spi_result_t lv_aic_spi_transfer_submit(lv_aic_spi_transfer_t *transfer,
     const lv_aic_spi_rgb565_frame_t *source,unsigned clockwise_degrees);
+/* Same submit, with an optional receipt for the PREVIOUS frame. Initialized to
+ * false even on INVALID/BUSY/FAULT. True only if this call verified an outstanding
+ * DMA completion; it stays true if the NEW frame subsequently fails. False does
+ * not imply failure: conversion may reject the new frame before the wait. The
+ * return value describes new submission, never completion of the new frame.
+ * Receipt storage belongs to the caller, must not alias source/tx or be shared
+ * with a reentrant callback, and must survive this synchronous call. */
+lv_aic_spi_result_t lv_aic_spi_transfer_submit_ex(lv_aic_spi_transfer_t *transfer,
+    const lv_aic_spi_rgb565_frame_t *source,unsigned clockwise_degrees,bool *previous_completed);
 lv_aic_spi_result_t lv_aic_spi_transfer_drain(lv_aic_spi_transfer_t *transfer);
 /* Frees only session metadata after confirmed completion. On BUSY/FAULT the
  * handle and borrowed pixels remain live; there is no force-close/reset API. */

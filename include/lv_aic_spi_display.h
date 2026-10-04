@@ -17,10 +17,27 @@ lv_aic_spi_display_t *lv_aic_spi_display_create(lv_aic_spi_session_t *session,
     uint32_t stack_bytes,uint32_t priority);
 /* Select one or two full draw buffers. Budget covers the sum of pixel spans.
  * Two buffers let LVGL render the next frame while the worker reads the previous
- * one. The transmit session still owns its separate serialized DMA buffer. */
+ * one. This legacy scheduler waits for checked DMA completion on every frame. */
 lv_aic_spi_display_t *lv_aic_spi_display_create_buffered(lv_aic_spi_session_t *session,
     uint32_t width,uint32_t height,unsigned degrees,size_t pixel_budget,
     unsigned buffer_count,uint32_t stack_bytes,uint32_t priority);
+/* Opt-in two-slot pipeline, same draw-buffer/budget arguments as buffered.
+ * Configure session overlap (and optional GE) BEFORE create. Releases LVGL flush
+ * after source conversion; checked transport results remain outstanding and are
+ * collected on later refresh, poll, claim or close. Two tx buffers permit next
+ * conversion during DMA, while two draw buffers also permit concurrent rendering.
+ * With one tx buffer correctness holds but conversion/DMA remain serialized.
+ * Admission blocks at two outstanding results; no dropped accepted frames.
+ * Blit API remains one-frame/checked-completion; claim/close drain all results. */
+lv_aic_spi_display_t *lv_aic_spi_display_create_pipelined(lv_aic_spi_session_t *session,
+    uint32_t width,uint32_t height,unsigned degrees,size_t pixel_budget,
+    unsigned buffer_count,uint32_t stack_bytes,uint32_t priority);
+/* UI-owner only, outside refresh/events: consume LVGL source releases and checked
+ * completions; true once no outstanding frame remains. Call from application
+ * loop/timer to collect the final frame when rendering becomes idle. Never
+ * consumes a pending direct blit; use blit_take for that result. Stats/result
+ * themselves remain non-consuming snapshots. */
+bool lv_aic_spi_display_poll(lv_aic_spi_display_t *display);
 lv_display_t *lv_aic_spi_display_get(lv_aic_spi_display_t *display);
 /* Transport status, not visual acceptance. Initial value OK; updated per frame. */
 lv_aic_spi_result_t lv_aic_spi_display_result(lv_aic_spi_display_t *display);

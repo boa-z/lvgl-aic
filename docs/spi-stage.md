@@ -799,7 +799,7 @@ component partial link **PASS**, with the new API present. Partial-link object
 SHA256: `23d76f1c5e272e7c8df1d79a92382ccf3cc3b6d38e952872445320c585d5bc82`.
 Logs: `output/spi-overlap-{build,tests,target}.log`.
 
-Scope boundary: the existing display worker/handoff still drains each submitted
+Historical boundary at this stage: the existing display worker/handoff drained each submitted
 frame before publishing its checked-completion result. Enabling overlap on its
 session alone therefore does not overlap successive display jobs. Consecutive
 direct session callers can use the new path now; a bounded two-request display
@@ -807,3 +807,88 @@ handoff with separate source-release and verified-completion handling remains
 the next implementation stage. The current firmware predates this increment;
 full final-link/image refresh, physical overlap and measured throughput are
 **NOT_RUN**. No SPI panel or pins are selected automatically.
+
+
+## Per-submit previous-frame receipt (2026-10-04)
+
+`lv_aic_spi_transfer_submit_ex` and `lv_aic_spi_session_submit_ex` preserve
+submission behavior and optionally report whether this call verified completion
+of the previous DMA. The receipt starts false on every call (including rejection
+and reentry), becomes true only after a successful wait on an outstanding DMA,
+and remains true if preparing/starting the new frame subsequently fails. A
+conversion rejection in overlap mode leaves it false and the old DMA outstanding.
+This is the prerequisite for attributing results in a bounded display pipeline;
+legacy submit/drain and the existing display completion contract are unchanged.
+
+Validation: **70/70 host PASS**, including success, invalid conversion, callback
+reentry, transform/wait/start faults and prior success followed by new-frame
+failure. Strict D13x compilation and component partial link PASS; logs
+`output/spi-receipt-{build,tests,target}.log`. No complete firmware refresh or
+board execution in this stage.
+
+
+## Bounded overlap worker (2026-10-04)
+
+`lv_aic_spi_pipeline_create/submit/take/stop/close` provides an opt-in OSAL
+worker with two bounded slots. Each accepted frame produces SOURCE_RELEASED
+(the CPU source can be reused) and COMPLETED (OK means checked SPI completion).
+Each event stream is ordered; later source release need not wait for earlier
+completion. Slots are reusable only after both events have been consumed.
+The previous-frame receipt preserves a successful old frame when the next
+submission fails. A conversion rejection still permits the previous DMA to drain.
+Faults stop session access, release queued sources with FAULT and retain DMA
+storage in the session. Stop processes accepted jobs, drains the final frame,
+and only permits close after worker exit and consumption of all events.
+
+A 10 ms bounded idle semaphore wait lets a successor arrive before draining a
+lone frame. Lost wake notifications still make progress. Enable session overlap
+before creating the worker; a one-buffer session is safe but serializes packing.
+All producer APIs belong to one UI-owner thread; the worker exclusively owns
+session access. Existing single-slot worker APIs remain unchanged. LVGL display
+wiring is the next stage; simply enabling session overlap on a legacy display
+does not switch its scheduler.
+
+Validation: **71/71 host PASS**. New pthread tests use the real transfer/packing
+implementation, hold prior DMA while observing source release, overwrite released
+sources, verify active tx pixels, exercise ring reuse across 256 frames with
+lost wakes, stop with two queued jobs, reject conversion, and inject conversion,
+previous-wait, next-start, final-drain and ownership faults. An initial host
+stress timeout came from counting Windows sleeps as 1 ms; the fake semaphore
+now measures a monotonic deadline and the stress has its own bounded deadline.
+Strict D13x compilation and component partial link PASS. Logs:
+`output/spi-queue-{build,tests,target}.log`. Full firmware and hardware NOT_RUN.
+
+
+## LVGL display pipeline integration (2026-10-04)
+
+`lv_aic_spi_display_create_pipelined` opts into the bounded two-slot worker with
+one or two LVGL draw buffers. Configure `session_enable_overlap` first to use
+two tx frames, and optionally `session_enable_ge2d` before worker creation.
+The application still supplies the initialized session/panel and all budgets.
+LVGL flush becomes ready on SOURCE_RELEASED, so rendering and the next conversion
+can progress while earlier SPI is outstanding. Admission waits when both result
+slots remain held. Only COMPLETED/OK updates the checked `completed` counter.
+Claiming direct blit ownership and closing wait for all outstanding results;
+direct blit retains its original one-frame, checked-completion contract.
+Direct LVGL deletion stops admission but keeps draw storage until worker exit.
+
+`lv_aic_spi_display_poll` collects final-frame events while UI rendering is idle;
+call it on the UI thread outside refresh/events, for example from the application
+loop. It refuses to consume a pending direct-blit result (`blit_take` owns that).
+Stats/result remain passive snapshots. Legacy create/create_buffered retain their
+single-slot checked-completion behavior. `pending` now includes outstanding DMA
+results even after LVGL source release in the opt-in mode.
+
+Validation: **72/72 host PASS**. The new real-LVGL/pthread/transfer contract renders
+a second frame while the first checked transport wait is deliberately held,
+verifies counts remain incomplete, exercises repeated refresh/ring reuse, one/two
+draw buffers, explicit idle polling, direct-blit result ownership, close/direct
+LVGL deletion with outstanding work, and prior-frame success followed by next
+start failure. Hardware/session callbacks are modeled; separate real-component
+GE/session tests cover GE conversion with SPI active. Existing CPU/GE composed
+pipeline and multi-display regressions also pass. Strict D13x compile/component
+partial link PASS, SHA256
+`5c0ffcfe864ccf8950167bfc5001098f401f60e37682917bb3f6e9404388b1f0`.
+Logs: `output/spi-display-overlap-{build,tests,target}.log`.
+Full firmware refresh and physical panel/GE concurrency/throughput acceptance
+are still NOT_RUN at this commit; no panel bindings are inferred.

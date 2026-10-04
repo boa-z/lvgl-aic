@@ -34,6 +34,8 @@ static bool overlap_start(void *context,const uint8_t *pixels,size_t bytes)
 {
     overlap_t *c=context;assert(bytes==12 && !c->active);
     c->active=pixels;memcpy(c->saved,pixels,12);c->starts++;
+    bool receipt=true;
+    assert(lv_aic_spi_transfer_submit_ex(c->s,NULL,0,&receipt)==LV_AIC_SPI_BUSY && !receipt);
     assert(lv_aic_spi_transfer_drain(c->s)==LV_AIC_SPI_BUSY);
     return !c->fail_start;
 }
@@ -68,24 +70,30 @@ static void overlap_contract(void)
         assert(lv_aic_spi_transfer_set_back_buffer(c->s,c->back,12));
         assert(!lv_aic_spi_transfer_set_back_buffer(c->s,c->back,12));
         assert(lv_aic_spi_transfer_set_transform(c->s,overlap_transform,c));
-        assert(lv_aic_spi_transfer_submit(c->s,&frame,0)==LV_AIC_SPI_OK);
+        bool receipt=true;
+        assert(lv_aic_spi_transfer_submit_ex(c->s,&frame,0,&receipt)==LV_AIC_SPI_OK && !receipt);
         assert(c->active==c->front && c->waits==0);
         c->invalid=true;
-        assert(lv_aic_spi_transfer_submit(c->s,&frame,0)==LV_AIC_SPI_INVALID);
+        receipt=true;
+        assert(lv_aic_spi_transfer_submit_ex(c->s,&frame,0,&receipt)==LV_AIC_SPI_INVALID && !receipt);
         assert(c->active==c->front && c->waits==0 && c->transforms==2);
         c->invalid=false;
         if(n) {
             c->fail_transform=n==1;c->fail_wait=n==2;c->fail_start=n==3;
-            assert(lv_aic_spi_transfer_submit(c->s,&frame,180)==LV_AIC_SPI_FAULT);
+            receipt=true;
+            assert(lv_aic_spi_transfer_submit_ex(c->s,&frame,180,&receipt)==LV_AIC_SPI_FAULT);
+            assert(receipt==(n==3)); /* prior completed even though next start failed */
             unsigned transforms=c->transforms,starts=c->starts,waits=c->waits;
-            assert(lv_aic_spi_transfer_submit(c->s,&frame,0)==LV_AIC_SPI_FAULT);
+            receipt=true;
+            assert(lv_aic_spi_transfer_submit_ex(c->s,&frame,0,&receipt)==LV_AIC_SPI_FAULT && !receipt);
             assert(lv_aic_spi_transfer_close(c->s)==LV_AIC_SPI_FAULT);
             assert(c->transforms==transforms && c->starts==starts && c->waits==waits);
             assert(!memcmp(c->active,c->saved,12));
             continue;
         }
         for(unsigned i=0;i<3;i++) {
-            assert(lv_aic_spi_transfer_submit(c->s,&frame,180)==LV_AIC_SPI_OK);
+            receipt=false;
+            assert(lv_aic_spi_transfer_submit_ex(c->s,&frame,180,&receipt)==LV_AIC_SPI_OK && receipt);
             assert(c->active==(i%2?c->front:c->back) && c->waits==i+1);
             assert(c->active[0]==11 && c->active[1]==12);
             /* A wait-before-transform implementation would see active==NULL
@@ -99,6 +107,8 @@ int main(void)
 {
     lv_init();
     overlap_contract();
+    bool receipt=true;
+    assert(lv_aic_spi_transfer_submit_ex(NULL,NULL,0,&receipt)==LV_AIC_SPI_INVALID && !receipt);
     uint8_t pixels[12]={1,2,3,4,5,6,7,8,9,10,11,12};
     lv_aic_spi_rgb565_frame_t frame={pixels,12,6,3,2};
     lv_aic_spi_transfer_ops_t ops={start,wait_done,tx};
@@ -111,7 +121,8 @@ int main(void)
         assert(tx[0]==2 && tx[1]==1);
         assert(lv_aic_spi_transfer_submit(session,&frame,180)==LV_AIC_SPI_OK && waits==old+1);
         assert(tx[0]==12 && tx[1]==11);
-        assert(lv_aic_spi_transfer_submit(session,&frame,45)==LV_AIC_SPI_INVALID && waits==old+2);
+        receipt=false;
+        assert(lv_aic_spi_transfer_submit_ex(session,&frame,45,&receipt)==LV_AIC_SPI_INVALID && waits==old+2 && receipt);
         assert(lv_aic_spi_transfer_close(session)==LV_AIC_SPI_OK && waits==old+2);
     }
     /* Faulted metadata intentionally retained. Never replay or overwrite after

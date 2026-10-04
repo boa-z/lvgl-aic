@@ -1064,7 +1064,7 @@ endif()
 add_test(NAME lvgl_aic_spi_worker_contract COMMAND lvgl_aic_spi_worker_contract)
 set_tests_properties(lvgl_aic_spi_worker_contract PROPERTIES TIMEOUT 30)
 
-add_executable(lvgl_aic_spi_display_contract spi_display_contract.c "${AIC_ROOT}/port/lv_aic_spi_display.c")
+add_executable(lvgl_aic_spi_display_contract spi_display_contract.c spi_pipeline_unused_stub.c "${AIC_ROOT}/port/lv_aic_spi_display.c")
 target_include_directories(lvgl_aic_spi_display_contract PRIVATE "${AIC_ROOT}/include"
     "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/spi_stubs")
 target_compile_definitions(lvgl_aic_spi_display_contract PRIVATE AIC_LVGL_USE_SPI_SDK=1)
@@ -1077,6 +1077,7 @@ set_tests_properties(lvgl_aic_spi_display_contract PROPERTIES TIMEOUT 30)
 
 add_executable(lvgl_aic_spi_pipeline_contract spi_pipeline_contract.c
     "${AIC_ROOT}/port/lv_aic_spi_display.c" "${AIC_ROOT}/port/lv_aic_spi_worker.c"
+    "${AIC_ROOT}/port/lv_aic_spi_pipeline.c"
     "${AIC_ROOT}/port/lv_aic_spi_handoff.c" "${AIC_ROOT}/port/lv_aic_spi_session.c"
     "${AIC_ROOT}/port/lv_aic_spi_panel.c" "${AIC_ROOT}/port/lv_aic_spi_sdk.c"
     "${AIC_ROOT}/common/lv_aic_spi_transfer.c" "${AIC_ROOT}/common/lv_aic_spi_frame.c")
@@ -1104,7 +1105,7 @@ add_test(NAME lvgl_aic_ge2d_address_contract COMMAND lvgl_aic_ge2d_address_contr
 
 endif()
 
-add_executable(lvgl_aic_spi_multidisplay_contract spi_multidisplay_contract.c "${AIC_ROOT}/port/lv_aic_spi_display.c")
+add_executable(lvgl_aic_spi_multidisplay_contract spi_multidisplay_contract.c spi_pipeline_unused_stub.c "${AIC_ROOT}/port/lv_aic_spi_display.c")
 target_include_directories(lvgl_aic_spi_multidisplay_contract PRIVATE "${AIC_ROOT}/include"
     "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/spi_stubs")
 target_compile_definitions(lvgl_aic_spi_multidisplay_contract PRIVATE AIC_LVGL_USE_SPI_SDK=1)
@@ -1137,6 +1138,7 @@ endif()
 if(EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/include/mpp_ge.h")
 add_executable(lvgl_aic_spi_ge_pipeline_contract spi_pipeline_contract.c
     "${AIC_ROOT}/port/lv_aic_spi_display.c" "${AIC_ROOT}/port/lv_aic_spi_worker.c"
+    "${AIC_ROOT}/port/lv_aic_spi_pipeline.c"
     "${AIC_ROOT}/port/lv_aic_spi_handoff.c" "${AIC_ROOT}/port/lv_aic_spi_session.c"
     "${AIC_ROOT}/port/lv_aic_spi_panel.c" "${AIC_ROOT}/port/lv_aic_spi_sdk.c"
     "${AIC_ROOT}/port/lv_aic_spi_ge2d.c" "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_scale.c"
@@ -1177,3 +1179,30 @@ if(AIC_BUILD_MUSIC_DEMO_TESTS)
     add_test(NAME lvgl_aic_music_demo_contract COMMAND lvgl_aic_music_demo_contract)
     set_tests_properties(lvgl_aic_music_demo_contract PROPERTIES TIMEOUT 60)
 endif()
+
+add_executable(lvgl_aic_spi_overlap_worker_contract spi_overlap_worker_contract.c
+    "${AIC_ROOT}/port/lv_aic_spi_pipeline.c" "${AIC_ROOT}/common/lv_aic_spi_transfer.c"
+    "${AIC_ROOT}/common/lv_aic_spi_frame.c")
+target_include_directories(lvgl_aic_spi_overlap_worker_contract PRIVATE "${AIC_ROOT}/include"
+    "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/spi_stubs")
+target_compile_definitions(lvgl_aic_spi_overlap_worker_contract PRIVATE AIC_LVGL_USE_SPI_SDK=1)
+target_link_libraries(lvgl_aic_spi_overlap_worker_contract PRIVATE lvgl Threads::Threads)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_spi_overlap_worker_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_spi_overlap_worker_contract COMMAND lvgl_aic_spi_overlap_worker_contract)
+set_tests_properties(lvgl_aic_spi_overlap_worker_contract PROPERTIES TIMEOUT 30)
+
+add_executable(lvgl_aic_spi_overlap_display_contract spi_overlap_display_contract.c
+    "${AIC_ROOT}/port/lv_aic_spi_display.c" "${AIC_ROOT}/port/lv_aic_spi_pipeline.c"
+    "${AIC_ROOT}/port/lv_aic_spi_worker.c" "${AIC_ROOT}/port/lv_aic_spi_handoff.c"
+    "${AIC_ROOT}/common/lv_aic_spi_transfer.c" "${AIC_ROOT}/common/lv_aic_spi_frame.c")
+target_include_directories(lvgl_aic_spi_overlap_display_contract PRIVATE "${AIC_ROOT}/include"
+    "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/spi_stubs")
+target_compile_definitions(lvgl_aic_spi_overlap_display_contract PRIVATE AIC_LVGL_USE_SPI_SDK=1)
+target_link_libraries(lvgl_aic_spi_overlap_display_contract PRIVATE lvgl Threads::Threads)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_spi_overlap_display_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_spi_overlap_display_contract COMMAND lvgl_aic_spi_overlap_display_contract)
+set_tests_properties(lvgl_aic_spi_overlap_display_contract PROPERTIES TIMEOUT 30)

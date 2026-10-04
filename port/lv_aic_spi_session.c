@@ -144,6 +144,12 @@ bool lv_aic_spi_session_enable_ge2d(lv_aic_spi_session_t *s,uint32_t mw,uint32_t
 lv_aic_spi_result_t lv_aic_spi_session_submit(lv_aic_spi_session_t *s,
     const lv_aic_spi_rgb565_frame_t *source,unsigned degrees)
 { return s ? lv_aic_spi_transfer_submit(s->transfer,source,degrees) : LV_AIC_SPI_INVALID; }
+lv_aic_spi_result_t lv_aic_spi_session_submit_ex(lv_aic_spi_session_t *s,
+    const lv_aic_spi_rgb565_frame_t *source,unsigned degrees,bool *previous_completed)
+{
+    if(previous_completed) *previous_completed=false;
+    return s ? lv_aic_spi_transfer_submit_ex(s->transfer,source,degrees,previous_completed) : LV_AIC_SPI_INVALID;
+}
 lv_aic_spi_result_t lv_aic_spi_session_drain(lv_aic_spi_session_t *s)
 { return s ? lv_aic_spi_transfer_drain(s->transfer) : LV_AIC_SPI_INVALID; }
 lv_aic_spi_result_t lv_aic_spi_session_close(lv_aic_spi_session_t *s)

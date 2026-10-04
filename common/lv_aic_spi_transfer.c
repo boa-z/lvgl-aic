@@ -37,24 +37,26 @@ bool lv_aic_spi_transfer_set_back_buffer(lv_aic_spi_transfer_t *s,uint8_t *pixel
        (address<front+s->capacity && front<address+capacity)) return false;
     s->back=pixels;s->back_capacity=capacity;return true;
 }
-static lv_aic_spi_result_t finish(lv_aic_spi_transfer_t *s)
+static lv_aic_spi_result_t finish(lv_aic_spi_transfer_t *s,bool *previous_completed)
 {
     if(s->fault) return LV_AIC_SPI_FAULT;
     if(s->pending) {
         if(!s->ops.wait(s->ops.context)) { s->fault=true;return LV_AIC_SPI_FAULT; }
         s->pending=false;
+        if(previous_completed) *previous_completed=true;
     }
     return LV_AIC_SPI_OK;
 }
-lv_aic_spi_result_t lv_aic_spi_transfer_submit(lv_aic_spi_transfer_t *s,
-    const lv_aic_spi_rgb565_frame_t *source,unsigned degrees)
+lv_aic_spi_result_t lv_aic_spi_transfer_submit_ex(lv_aic_spi_transfer_t *s,
+    const lv_aic_spi_rgb565_frame_t *source,unsigned degrees,bool *previous_completed)
 {
+    if(previous_completed) *previous_completed=false;
     if(!s) return LV_AIC_SPI_INVALID;
     if(s->busy) return LV_AIC_SPI_BUSY;
     s->busy=true;s->started=true;
     /* With two buffers, convert into the idle one while transport owns active.
      * Panel setup/start remain after verified completion of the previous DMA. */
-    lv_aic_spi_result_t result=s->back ? (s->fault?LV_AIC_SPI_FAULT:LV_AIC_SPI_OK) : finish(s);
+    lv_aic_spi_result_t result=s->back ? (s->fault?LV_AIC_SPI_FAULT:LV_AIC_SPI_OK) : finish(s,previous_completed);
     uint8_t *output=s->back && s->pending && s->active==s->tx ? s->back : s->tx;
     size_t capacity=output==s->tx?s->capacity:s->back_capacity;
     if(result==LV_AIC_SPI_OK) {
@@ -66,7 +68,7 @@ lv_aic_spi_result_t lv_aic_spi_transfer_submit(lv_aic_spi_transfer_t *s,
         if(result!=LV_AIC_SPI_OK && result!=LV_AIC_SPI_INVALID && result!=LV_AIC_SPI_BUSY)
             { s->fault=true;result=LV_AIC_SPI_FAULT; }
         if(result==LV_AIC_SPI_OK) {
-            if(s->back) result=finish(s);
+            if(s->back) result=finish(s,previous_completed);
         }
         if(result==LV_AIC_SPI_OK) {
             s->active=output;
@@ -78,11 +80,14 @@ lv_aic_spi_result_t lv_aic_spi_transfer_submit(lv_aic_spi_transfer_t *s,
     }
     s->busy=false;return result;
 }
+lv_aic_spi_result_t lv_aic_spi_transfer_submit(lv_aic_spi_transfer_t *s,
+    const lv_aic_spi_rgb565_frame_t *source,unsigned degrees)
+{ return lv_aic_spi_transfer_submit_ex(s,source,degrees,NULL); }
 lv_aic_spi_result_t lv_aic_spi_transfer_drain(lv_aic_spi_transfer_t *s)
 {
     if(!s) return LV_AIC_SPI_INVALID;
     if(s->busy) return LV_AIC_SPI_BUSY;
-    s->busy=true;lv_aic_spi_result_t result=finish(s);s->busy=false;return result;
+    s->busy=true;lv_aic_spi_result_t result=finish(s,NULL);s->busy=false;return result;
 }
 lv_aic_spi_result_t lv_aic_spi_transfer_close(lv_aic_spi_transfer_t *s)
 {

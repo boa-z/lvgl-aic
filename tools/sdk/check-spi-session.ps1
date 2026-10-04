@@ -44,7 +44,7 @@ Get-FileHash $output -Algorithm SHA256
 Write-Output 'PASS checked SPI submit/completion compile; no SDK transport link or hardware execution'
 
 $objects=@($output)
-foreach($source in @('draw/ge2d/lv_draw_aic_ge2d_scale.c','port/lv_aic_spi_ge2d.c','port/lv_aic_spi_display.c','port/lv_aic_spi_worker.c','port/lv_aic_spi_handoff.c','port/lv_aic_spi_panel.c','port/lv_aic_spi_session.c','common/lv_aic_spi_transfer.c','common/lv_aic_spi_frame.c')) {
+foreach($source in @('draw/ge2d/lv_draw_aic_ge2d_scale.c','port/lv_aic_spi_ge2d.c','port/lv_aic_spi_display.c','port/lv_aic_spi_worker.c','port/lv_aic_spi_pipeline.c','port/lv_aic_spi_handoff.c','port/lv_aic_spi_panel.c','port/lv_aic_spi_session.c','common/lv_aic_spi_transfer.c','common/lv_aic_spi_frame.c')) {
     $object=Join-Path $sdk ('output/'+[IO.Path]::GetFileNameWithoutExtension($source)+'.o')
     $compileArgs=$arguments+@('-c',(Join-Path $component $source),'-o',$object)
     & (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-gcc.exe') @compileArgs
@@ -57,7 +57,7 @@ $linkArgs=@('-m','elf32lriscv','-r','-o',$combined)+$objects
 if($LASTEXITCODE -ne 0) { throw 'SPI session partial link failed' }
 $symbols=& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-nm.exe') $combined
 if($LASTEXITCODE -ne 0) { throw 'SPI session nm failed' }
-foreach($api in @('open','open_owned','enable_ge2d','enable_overlap','submit','drain','close')) {
+foreach($api in @('open','open_owned','enable_ge2d','enable_overlap','submit_ex','submit','drain','close')) {
     if(-not ($symbols -cmatch ('\bT\s+lv_aic_spi_session_'+$api+'$'))) { throw "Missing session API: $api" }
 }
 if($WithGe) {

@@ -56,6 +56,10 @@ bool lv_aic_spi_session_enable_ge2d(lv_aic_spi_session_t *session,
     uint32_t max_source_width,uint32_t max_source_height,size_t staging_budget);
 lv_aic_spi_result_t lv_aic_spi_session_submit(lv_aic_spi_session_t *session,
     const lv_aic_spi_rgb565_frame_t *source,unsigned clockwise_degrees);
+/* Previous-DMA receipt has exactly the transfer_submit_ex contract. Use this
+ * when attributing completion to separate queued frames in an overlap worker. */
+lv_aic_spi_result_t lv_aic_spi_session_submit_ex(lv_aic_spi_session_t *session,
+    const lv_aic_spi_rgb565_frame_t *source,unsigned clockwise_degrees,bool *previous_completed);
 lv_aic_spi_result_t lv_aic_spi_session_drain(lv_aic_spi_session_t *session);
 lv_aic_spi_result_t lv_aic_spi_session_close(lv_aic_spi_session_t *session);
 #ifdef __cplusplus
