@@ -36,6 +36,9 @@ so enabled floating-point values are printable with `%f`; the RT-Thread formatte
 cannot provide this. A native float-format regression and target C++ probe cover
 that choice.
 
-Logs: `output/svg-{config,build,tests}.log`. Full target compilation/link/image
-validation is pending at this commit. Hardware rendering, memory pressure and
-performance are **NOT_RUN**; no flashing or board configuration changes.
+Logs: `output/svg-{config,build,tests}.log`. Combined D13x target compilation,
+final-link/live-symbol checks, image and clean-source manifest validation **PASS**;
+see [exact source pins and image hash](validation.md). The firmware combines
+GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/demos/music/vector/SVG at
+90-degree rotation. Hardware rendering, memory pressure and performance are
+**NOT_RUN**; no flashing or board configuration changes.

@@ -1,5 +1,33 @@
 # Validation record
 
+## Native SVG resources and floating-point formatting (2026-10-04)
+
+SVG/vector-enabled GE/widget host suite **74/74 PASS**. Real image-widget
+contracts compare FILE and VARIABLE SVG output across 20 lifecycle/cache-drop
+cycles, intrinsic dimensions, custom drawing, pixel rounding and file ownership.
+The native vector test also verifies builtin floating-point formatting, replacing
+the default RT-Thread formatter for vector/SVG configurations.
+
+The combined D13x 90-degree GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/
+widgets-demo/benchmark/music/vector/SVG firmware passes boot/app, final-link/
+live-symbol/static, image and manifest gates. The formatter correction was folded
+into the feature commit before this clean build; no standalone fix commit remains.
+
+- lvgl-aic: `02f00e3020488ec29e44ca5fff416b08b685c0ea` (clean).
+- sdk: `ee18f481e68eb8b54de6786c20fa078f4a7ec0b7` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `7580d5f2837e818b0d5384e07f3076ca2b926cfc237031639b016a7fdb0e569d` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-rotate90/manifest.json`.
+- Component logs: `output/svg-build.log`, `output/svg-tests.log`, `output/svg-firmware.log`.
+
+Source trees contain no LVGL build objects or SDK source modifications. This uses
+LVGL 9.6 native SVG decoding over software vectors; ThorVG SVG/Lottie loaders
+remain excluded. The earlier 72-test vector-disabled baseline was not rerun in
+this stage. Camera remains disabled and no SPI panel is bound. Richer SVG
+transforms/documents, embedded image/font callbacks and animation need further
+coverage. Physical rendering, allocation pressure and performance **NOT_RUN**;
+no flashing. See [SVG configuration and limits](svg-stage.md).
+
 ## Native vector/ThorVG combined firmware (2026-10-04)
 
 Vector-enabled GE/widget host suite **73/73 PASS**; vector-disabled baseline
