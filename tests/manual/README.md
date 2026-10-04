@@ -169,3 +169,18 @@ SDK widgets. Scroll the twelve-item list, open Details in the menu and use its
 back arrow, then use the shared header to change pages. Host pointer hit-testing
 covers entering/leaving Details, repeated shared-header navigation, rendering
 and three create/delete cycles. Physical scrolling/touch/rendering is NOT_RUN.
+
+### Native-plane destination resize
+
+`lv_aic_plane_test size WIDTH HEIGHT` submits checked decimal dimensions
+(1..4096 each) to the LVGL owner thread. For example, after `show`, use
+`pause`, `size 128 96`, `status`, then `resume`. Repeat at `size 96 64`,
+with `rotate` and hide/show toggling. Check that the complete decoded image fills
+the new transparent window, with no stale edges and no FAULT state. `status`
+prints current window dimensions and both LVGL image scales (normally 256).
+Keep the complete transformed window inside its parent/screen clip: dimensions
+being syntactically valid do not establish visibility or hardware support.
+If the geometry faults, close and reopen the test before continuing.
+
+The shell only publishes copied scalar requests. Application and scanout occur
+later on the UI thread; command success alone is not pixel/scanout acceptance.

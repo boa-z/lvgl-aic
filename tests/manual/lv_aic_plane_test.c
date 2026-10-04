@@ -12,7 +12,8 @@ static lv_obj_t *panel,*player;
 static volatile unsigned pending;
 static volatile bool ready;
 static char pending_uri[128];
-enum { NONE,SHOW,PAUSE,RESUME,ROTATE,PIVOT,HIDE,STATUS,CLOSE };
+static uint32_t pending_width,pending_height;
+enum { NONE,SHOW,PAUSE,RESUME,ROTATE,PIVOT,HIDE,STATUS,CLOSE,RESIZE };
 static void close_panel(void)
 {
     if(panel) lv_obj_delete(panel);
@@ -52,9 +53,10 @@ fail:
 }
 void lv_aic_plane_test_poll(void)
 {
-    char uri[128];
+    char uri[128];uint32_t width,height;
     rt_base_t level=rt_hw_interrupt_disable();ready=true;unsigned cmd=pending;
-    memcpy(uri,pending_uri,sizeof(uri));pending=NONE;rt_hw_interrupt_enable(level);
+    memcpy(uri,pending_uri,sizeof(uri));width=pending_width;height=pending_height;
+    pending=NONE;rt_hw_interrupt_enable(level);
     if(!cmd) return;
     lv_result_t result=LV_RESULT_INVALID;
     if(cmd==SHOW) result=show_panel(uri);
@@ -66,6 +68,10 @@ void lv_aic_plane_test_poll(void)
         case ROTATE:lv_image_set_rotation(player,(lv_image_get_rotation(player)+900)%3600);result=LV_RESULT_OK;break;
         case PIVOT:lv_image_set_pivot(player,LV_PCT(25),LV_PCT(25));result=LV_RESULT_OK;break;
         case HIDE:lv_obj_set_hidden(player,!lv_obj_is_hidden(player));result=LV_RESULT_OK;break;
+        case RESIZE:
+            result=lv_aic_player_set_width(player,width);
+            if(result==LV_RESULT_OK) result=lv_aic_player_set_height(player,height);
+            break;
         case STATUS:result=LV_RESULT_OK;break;
         default:break;
         }
@@ -73,23 +79,43 @@ void lv_aic_plane_test_poll(void)
     rt_kprintf("PLANE command=%u result=%d state=%d angle=%d cleanup=%u\n",cmd,result,
         player?(int)lv_aic_player_get_state(player):-1,player?(int)lv_image_get_rotation(player):0,
         (unsigned)lv_aic_player_pending_cleanup());
+    if(player) {
+        lv_obj_update_layout(player);
+        rt_kprintf("PLANE window=%dx%d scale=%dx%d\n",(int)lv_obj_get_width(player),
+            (int)lv_obj_get_height(player),(int)lv_image_get_scale_x(player),(int)lv_image_get_scale_y(player));
+    }
 }
 void lv_aic_plane_test_deinit(void)
 {
     rt_base_t level=rt_hw_interrupt_disable();ready=false;pending=NONE;rt_hw_interrupt_enable(level);
     close_panel();
 }
+/* Parse before publication: no signs, suffixes, zero or overflowing input. */
+static bool parse_extent(const char *text,uint32_t *extent)
+{
+    uint32_t value=0;
+    if(!text || !*text) return false;
+    for(;*text;text++) {
+        if(*text<'0' || *text>'9') return false;
+        value=value*10U+(unsigned)(*text-'0');
+        if(value>4096) return false;
+    }
+    if(!value) return false;
+    *extent=value;return true;
+}
 static void lv_aic_plane_test(int argc,char **argv)
 {
     static const char *const words[]={"show","pause","resume","rotate","pivot","hide","status","close"};
-    unsigned cmd=NONE;
+    unsigned cmd=NONE;uint32_t width=0,height=0;
     if(argc==2 || (argc==3 && !strcmp(argv[1],"show")))
         for(unsigned i=0;i<8;i++) if(!strcmp(argv[1],words[i])) cmd=i+1;
+    if(argc==4 && !strcmp(argv[1],"size") &&
+       parse_extent(argv[2],&width) && parse_extent(argv[3],&height)) cmd=RESIZE;
     const char *uri=argc==3?argv[2]:"/data/mpp_test/apng-loop.png";
     if(cmd==SHOW && (uri[0]!='/' || strlen(uri)>=sizeof(pending_uri))) cmd=NONE;
-    if(!cmd) { rt_kprintf("lv_aic_plane_test show [absolute-path]|pause|resume|rotate|pivot|hide|status|close\n");return; }
+    if(!cmd) { rt_kprintf("lv_aic_plane_test show [absolute-path]|pause|resume|rotate|pivot|hide|status|close|size WIDTH HEIGHT\n");return; }
     rt_base_t level=rt_hw_interrupt_disable();bool ok=ready && pending==NONE;
-    if(ok) { if(cmd==SHOW) { memset(pending_uri,0,sizeof(pending_uri));memcpy(pending_uri,uri,strlen(uri)); } pending=cmd; }
+    if(ok) { if(cmd==SHOW) { memset(pending_uri,0,sizeof(pending_uri));memcpy(pending_uri,uri,strlen(uri)); } pending_width=width;pending_height=height;pending=cmd; }
     rt_hw_interrupt_enable(level);
     rt_kprintf(ok?"PLANE request queued\n":"PLANE busy or UI not ready; retry\n");
 }
