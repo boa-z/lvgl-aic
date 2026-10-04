@@ -1,5 +1,24 @@
 # Validation record
 
+## Independent target music UI firmware (2026-10-04)
+
+Music host render/track/animation/cleanup contract **PASS**; unchanged baseline
+**70/70 PASS**. Strict E907 wrapper compile **PASS**. Independent music target
+configuration (widgets/benchmark off) passes boot/app, final-link/static, image
+and provenance gates. Six native entry/control APIs are live. Includes the GE
+wide-coordinate crop correction; no source-tree objects or SDK source changes.
+
+- lvgl-aic: `5c898239919c97d66bf5934e54e6cc76d8a1dbdd` (clean).
+- sdk: `955f1bec8763701a3bf7851674cbaaf846e33750` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `673f0a1d2c6ae2937f16f8854e3b13a7b1675fc182ef2babe81aa055ee27c77c` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-music-rotate90/manifest.json`.
+
+The image links the demo and keeps smoke UI startup. Upstream music is a visual
+interface with generated animation, not an audio decoder/player integration.
+Hardware **NOT_RUN**. See [target demos](target-demos-stage.md) for activation,
+configuration and evidence limits.
+
 ## Optional target widgets and benchmark demos (2026-10-04)
 
 Baseline host regression **70/70 PASS**. Both new demo contracts **PASS**: widgets renders and cleans its screen;

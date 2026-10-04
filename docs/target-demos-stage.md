@@ -84,6 +84,20 @@ The smoke image links the entry/control APIs and still starts its own UI.
 Host option `AIC_BUILD_MUSIC_DEMO_TESTS=ON` builds the isolated music configuration.
 `lvgl_aic_music_demo_contract` renders a varied 320x480 frame, checks pixel/flush
 changes during track animation and track switching, exercises pause/resume,
-then deletes the page and advances timers before shutdown. Initial host test
-and strict E907 wrapper compilation **PASS**. Full target firmware validation
-is pending at this checkpoint. Physical rendering, touch and timing **NOT_RUN**.
+then deletes the page and advances timers before shutdown. Music host test **PASS**, baseline regression **70/70 PASS**, and strict E907
+wrapper compilation **PASS**. The independent music profile (widgets/benchmark
+disabled) passes full boot/app, final-link/static, image and manifest gates.
+Six entry/control functions are verified live in the final ELF. This image also
+includes the GE wide-coordinate crop correction from `d4fcda9`.
+
+- Component: `5c898239919c97d66bf5934e54e6cc76d8a1dbdd` (clean).
+- SDK: `955f1bec8763701a3bf7851674cbaaf846e33750` (clean).
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `673f0a1d2c6ae2937f16f8854e3b13a7b1675fc182ef2babe81aa055ee27c77c` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-music-rotate90/manifest.json`.
+
+Music UI and widgets/benchmark have independent host/target evidence; the combined
+all-three-demo target configuration has not been built in this checkpoint.
+The image still starts the smoke UI; physical rendering, touch and timing remain
+**NOT_RUN**. Logs are `output/music-demo-{config,build,tests,target,firmware}.log`
+and `output/music-demo-baseline-{build,tests}.log` in the component checkout.

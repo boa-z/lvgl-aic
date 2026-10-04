@@ -49,3 +49,8 @@ Logs: `output/ge-wide-crop-before.log`, `output/ge-wide-crop-build.log`,
 `output/ge-wide-crop-tests.log`, `output/ge-wide-crop-target.log`.
 The current packaged demo firmware predates this correction. Full-firmware
 refresh for this increment and physical hardware execution remain **NOT_RUN**.
+
+Full-firmware follow-up: the clean independent music profile now includes the
+wide-coordinate crop correction and passes boot/app, final-link/static, image
+and manifest gates. See [validation.md](validation.md) for source identities
+and hashes. This supersedes the pending packaging note above; board NOT_RUN.
