@@ -1,5 +1,29 @@
 # Validation record
 
+## Native vector/ThorVG combined firmware (2026-10-04)
+
+Vector-enabled GE/widget host suite **73/73 PASS**; vector-disabled baseline
+**72/72 PASS**. Native canvas pixel contracts cover paths, even-odd fill, opacity,
+gradients, transformed clipping and repeated lifecycle. The combined D13x
+90-degree GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/widgets-demo/benchmark/
+music/vector firmware passes boot/app, final-link/live-symbol/static, image and
+manifest gates. A live C++ configuration probe checks the application custom OS
+bridge, matrix/float/vector settings and absence of loader/worker-thread features.
+
+- lvgl-aic: `c4112b5012414ddea18bcca31224a5898838380c` (clean).
+- sdk: `837ec005cc5a60f1af101d7d6eff794733b02d1a` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `5a2c3b905e2c8dd0961327668ec0456f9b2e4f7b7e6a5b8073e6a4ca8e427237` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-rotate90/manifest.json`.
+- Component logs: `output/vector-all-tests.log`, `output/vector-baseline-tests.log`, `output/vector-firmware.log`.
+
+This enables native software vector drawing and selects the SDK's existing C++
+runtime through Kconfig; no SDK or upstream LVGL source edits. No Lottie/SVG
+loader, automatic vector demo or new GE vector acceleration is claimed. Camera
+is disabled and no SPI panel is bound. Physical vector rendering, allocation
+pressure, throughput and panel coexistence **NOT_RUN**. No flashing.
+See [vector configuration and limits](vector-stage.md).
+
 ## SPI display overlap and combined demos firmware (2026-10-04)
 
 **72/72 host PASS**, strict D13x component compilation/partial link **PASS**.

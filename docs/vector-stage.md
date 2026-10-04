@@ -43,9 +43,17 @@ rounding. No mocked rasterizer or source implementation mirror is used.
 
 The development combined D13x profile passed boot/app, final-link/static, image
 and manifest checks after selecting the SDK C++ runtime. The initial omitted
-runtime failed with `__dso_handle`; no SDK source patch was required. A clean
-commit build, including the new C++ configuration probe, is the next gate.
+runtime failed with `__dso_handle`; no SDK source patch was required. The clean
+commit build, including the new C++ configuration probe, now passes all gates.
 Logs: component `output/vector-{config,build,tests,all-build,all-tests}.log`,
 `output/vector-baseline-{build,tests}.log`, `output/vector-firmware-dev.log`.
 Physical vector rendering, memory pressure, throughput and GE coexistence on
 panel are **NOT_RUN**. Camera/panel setup and flashing are not part of this stage.
+
+
+Clean final firmware: component `c4112b5012414ddea18bcca31224a5898838380c`, SDK
+`837ec005cc5a60f1af101d7d6eff794733b02d1a`, LVGL
+`80ca777e37a2b176770726a02e07a6fb79ef0b39`. Image SHA256:
+`5a2c3b905e2c8dd0961327668ec0456f9b2e4f7b7e6a5b8073e6a4ca8e427237`.
+All checkouts were clean; no generated objects remain in the LVGL source tree.
+See [validation record](validation.md) for the combined profile and manifest.
