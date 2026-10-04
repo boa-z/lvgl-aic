@@ -892,3 +892,16 @@ partial link PASS, SHA256
 Logs: `output/spi-display-overlap-{build,tests,target}.log`.
 Full firmware refresh and physical panel/GE concurrency/throughput acceptance
 are still NOT_RUN at this commit; no panel bindings are inferred.
+
+
+## Final firmware after history consolidation (2026-10-04)
+
+The bounded display pipeline now passes the complete combined target build,
+live-symbol/static checks, image verification and clean-source manifest gates.
+The three implementation commits were consolidated into `557a2ee`; full firmware
+was rebuilt after updating the SDK gitlink. **72/72 host PASS**.
+Image SHA256: `1827fd9d7b163cc2b1d38f6c1ccc0cd504b82789d4705c7f112fef9e70124198`.
+See [current validation](validation.md) for exact source identities and profile.
+This closes the earlier NOT_RUN final-link boundary for session/worker/display
+overlap. Physical SPI panel binding, actual GE/DMA concurrency and measured
+throughput remain **NOT_RUN**. No SPI panel is initialized by this firmware.

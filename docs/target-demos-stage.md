@@ -101,3 +101,16 @@ all-three-demo target configuration has not been built in this checkpoint.
 The image still starts the smoke UI; physical rendering, touch and timing remain
 **NOT_RUN**. Logs are `output/music-demo-{config,build,tests,target,firmware}.log`
 and `output/music-demo-baseline-{build,tests}.log` in the component checkout.
+
+
+## Combined widgets/benchmark/music profile (2026-10-04)
+
+The all-three-demo configuration now passes boot/app, final-link/static, image
+and manifest checks together with GE/fonts/GIF/vendor widgets/AICP/player/APNG/
+barcode/SPI and 90-degree display rotation. Component `557a2ee`, SDK `7cc0503a`;
+all source checkouts clean. Image SHA256:
+`1827fd9d7b163cc2b1d38f6c1ccc0cd504b82789d4705c7f112fef9e70124198`.
+See [current validation](validation.md) for exact pins and the `-demos-music`
+evidence profile. This supersedes the earlier unbuilt-combination boundary.
+Demo activation and physical runtime acceptance remain application/board tasks;
+no auto-launch, music audio playback or benchmark performance claim is added.

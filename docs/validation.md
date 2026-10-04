@@ -1,5 +1,30 @@
 # Validation record
 
+## SPI display overlap and combined demos firmware (2026-10-04)
+
+**72/72 host PASS**, strict D13x component compilation/partial link **PASS**.
+Full 90-degree GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/widgets-demo/
+benchmark/music configuration passes boot/app, final-link/live-symbol/static,
+image and manifest gates. The opt-in display pipeline, previous-DMA receipt,
+worker lifecycle and idle-poll APIs are retained in the final ELF.
+
+The three implementation commits were consolidated into one coherent stage,
+`557a2ee`, with an identical Git source tree before/after history cleanup. The
+full build was then rerun using the consolidated commit and a clean SDK gitlink.
+
+- lvgl-aic: `557a2ee5ea0bf0705a5192873eb4de657a3942e7` (clean).
+- sdk: `7cc0503a48ec341c89c6f35a6a1aa9aeea40d591` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `1827fd9d7b163cc2b1d38f6c1ccc0cd504b82789d4705c7f112fef9e70124198` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-rotate90/manifest.json`.
+- Component logs: `output/spi-display-overlap-{build,tests,target,firmware}.log`.
+
+Camera remains disabled and no SPI panel is bound. The image starts the smoke
+UI; upstream demos need application selection, and music remains a visual UI.
+Physical DMA/cache/GE concurrency, panel output and measured throughput are
+**NOT_RUN**. No flashing. This supersedes the earlier pending final-firmware
+notes for SPI session/worker/display overlap and the combined demo profile.
+
 ## Independent target music UI firmware (2026-10-04)
 
 Music host render/track/animation/cleanup contract **PASS**; unchanged baseline
