@@ -65,6 +65,17 @@ includes = [cwd, os.path.join(cwd, 'include'), os.path.join(cwd, 'compat'),
             os.path.join(lvgl_root, 'src', 'osal'), os.path.join(lvgl_root, 'env_support', 'rt-thread')]
 group = DefineGroup('Application-LVGL-9.6', src, depend=['AIC_LVGL_PORT'],
     CPPPATH=includes, CPPDEFINES=['LV_KCONFIG_IGNORE=1', 'LV_BUILD_EXAMPLES=0', 'LV_BUILD_DEMOS=' + ('1' if demo_enabled else '0')])
+if GetDepend('AIC_LVGL_USE_VECTOR'):
+    # Keep C++ flags local to the pinned software vector backend.
+    vector_src = [source for source in Glob('../lvgl/src/libs/thorvg/*.cpp', ondisk=True, source=True)
+                  if not os.path.basename(str(source)).startswith(('tvgLottie', 'tvgSvg', 'tvgXmlParser'))]
+    vector_src += [File('compat/lvgl_aic_thorvg_probe.cpp')]
+    group += DefineGroup('Application-LVGL-ThorVG', vector_src, depend=['AIC_LVGL_PORT'],
+                         LOCAL_CXXFLAGS=' -std=c++14 -fno-exceptions -fno-rtti -fno-sized-deallocation -include lvgl_aic_thorvg_config.h',
+                         CPPPATH=includes + [os.path.join(lvgl_root, 'src', 'libs', 'thorvg')])
+    if GetDepend('AIC_LVGL_SMOKE_APP'):
+        for api in ('lvgl_aic_thorvg_config_probe', 'lv_draw_vector', 'lv_vector_path_create', 'lv_draw_vector_dsc_create'):
+            Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
 if demo_enabled and GetDepend('AIC_LVGL_SMOKE_APP'):
     if GetDepend('AIC_LVGL_BUILD_DEMO_WIDGETS') or GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
         for api in ('lv_demo_widgets', 'lv_demo_widgets_with_args'):

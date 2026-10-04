@@ -86,6 +86,16 @@ config AIC_LVGL_FREETYPE_GLYPHS
     range 8 512
     depends on AIC_LVGL_USE_FREETYPE
 
+config AIC_LVGL_USE_VECTOR
+    bool "Enable native vector graphics with internal ThorVG software rendering"
+    default n
+    depends on AIC_LVGL_PORT
+    select RT_USING_CPLUSPLUS
+    help
+        Build the pinned LVGL 9.6 vector API, matrices and internal ThorVG C++
+        renderer as application dependencies. Uses one software draw unit.
+        Does not enable Lottie/SVG loaders or GE vector acceleration.
+
 config AIC_LVGL_BUILD_DEMO_WIDGETS
     bool "Build upstream LVGL widgets demo"
     default n

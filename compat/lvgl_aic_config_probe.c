@@ -26,3 +26,8 @@ _Static_assert(LV_USE_DEMO_BENCHMARK && LV_USE_DEMO_WIDGETS && LV_USE_SYSMON &&
 #if defined(AIC_LVGL_BUILD_DEMO_MUSIC) && AIC_LVGL_BUILD_DEMO_MUSIC
 _Static_assert(LV_BUILD_DEMOS && LV_USE_DEMO_MUSIC, "music demo config mismatch");
 #endif
+
+#if AIC_LVGL_USE_VECTOR
+_Static_assert(LV_USE_VECTOR_GRAPHIC && LV_USE_THORVG && LV_USE_THORVG_INTERNAL &&
+               LV_USE_MATRIX && LV_DRAW_SW_DRAW_UNIT_CNT == 1, "vector profile mismatch");
+#endif

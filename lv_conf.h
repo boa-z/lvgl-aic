@@ -23,6 +23,10 @@
  * Every AIC_LVGL_USE_* symbol that is read with `#if` must be listed here:
  * a bare `#define X` makes `#if X` a compile error, not a false branch. */
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
+#ifdef AIC_LVGL_USE_VECTOR
+#undef AIC_LVGL_USE_VECTOR
+#define AIC_LVGL_USE_VECTOR 1
+#endif
 #ifdef AIC_LVGL_BUILD_DEMO_MUSIC
 #undef AIC_LVGL_BUILD_DEMO_MUSIC
 #define AIC_LVGL_BUILD_DEMO_MUSIC 1
@@ -186,14 +190,28 @@
 #ifndef LV_USE_DRAW_SW_ASM
 #define LV_USE_DRAW_SW_ASM LV_DRAW_SW_ASM_NONE
 #endif
+#ifndef AIC_LVGL_USE_VECTOR
+#define AIC_LVGL_USE_VECTOR 0
+#endif
 #ifndef LV_USE_VECTOR_GRAPHIC
-#define LV_USE_VECTOR_GRAPHIC 0
+#define LV_USE_VECTOR_GRAPHIC AIC_LVGL_USE_VECTOR
 #endif
 #ifndef LV_USE_THORVG
-#define LV_USE_THORVG 0
+#define LV_USE_THORVG AIC_LVGL_USE_VECTOR
 #endif
 #ifndef LV_USE_THORVG_INTERNAL
-#define LV_USE_THORVG_INTERNAL 0
+#define LV_USE_THORVG_INTERNAL AIC_LVGL_USE_VECTOR
+#endif
+#if AIC_LVGL_USE_VECTOR
+#ifndef LV_USE_FLOAT
+#define LV_USE_FLOAT 1
+#endif
+#ifndef LV_USE_MATRIX
+#define LV_USE_MATRIX 1
+#endif
+#if LV_DRAW_SW_DRAW_UNIT_CNT != 1
+#error "Application ThorVG profile requires one software draw unit"
+#endif
 #endif
 
 /* Explicit target demos share the ordinary application-owned LVGL build. */

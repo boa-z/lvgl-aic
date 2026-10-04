@@ -245,6 +245,7 @@ def main():
     parser.add_argument("--with-camera", action="store_true")
     parser.add_argument("--with-demos", action="store_true")
     parser.add_argument("--with-music", action="store_true")
+    parser.add_argument("--with-vector", action="store_true")
     parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
@@ -349,6 +350,20 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("Music demo live symbol absent: " + symbol)
         print("Upstream music UI final link: PASS (not audio playback)")
+    feature = "AIC_LVGL_USE_VECTOR"
+    enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
+    defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None
+    if enabled != args.with_vector or defined != args.with_vector:
+        fail("Vector profile mismatch")
+    if args.with_vector:
+        if not re.search(r"^CONFIG_RT_USING_CPLUSPLUS=y$", config, re.MULTILINE):
+            fail("Vector target requires the SDK C++ runtime")
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lvgl_aic_thorvg_config_probe", "cplusplus_system_init", "lv_draw_vector", "lv_draw_sw_vector", "lv_vector_path_create",
+                       "lv_draw_vector_dsc_create", "tvg_swcanvas_create", "tvg_canvas_draw"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("Vector live symbol absent: " + symbol)
+        print("Native vector/ThorVG software final link: PASS (not board execution)")
     spi_enabled = re.search(r"^CONFIG_AIC_LVGL_USE_SPI_SDK=y$", config, re.MULTILINE) is not None
     if spi_enabled != args.with_spi:
         fail("SPI profile mismatch")
