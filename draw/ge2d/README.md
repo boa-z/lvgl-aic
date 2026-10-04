@@ -1,32 +1,39 @@
 # GE2D draw unit
 
-The synchronous backend evaluates FILL, IMAGE and LAYER, not only Phase 3A fills.
+The synchronous backend evaluates FILL, IMAGE and LAYER.
 
-- FILL: solid, unrounded, non-gradient, supported/addressable destination.
-  Partial opacity supports RGB565/RGB888/XRGB8888; partial ARGB8888 stays with
-  software pending alpha-destination validation. Opaque ARGB8888 remains supported.
-  The executor checks buffer size/stride and clips to task, clip and layer bounds.
-- IMAGE: RGB565/RGB888/ARGB8888/XRGB8888, global/per-pixel alpha, bounded scales,
-  right-angle rotation and unscaled arbitrary-angle rotation. Arbitrary-angle
-  plus scale remains software work.
-- LAYER: plain composition, bounded scale/right-angle rotation and unscaled
-  arbitrary angles. Ordinary D13x heap buffers fall back because GE cannot
-  address them. ROTATE requires source and clipped destination sizes 4..4096.
-- YUV, masks, recolor and tiling stay software work. Small or unsafe scale
-  regions and D13x split-risk cases fall back.
+- FILL: solid, unrounded, non-gradient tasks. Partial opacity supports
+  RGB565/RGB888/XRGB8888; partial ARGB8888 remains software work.
+- IMAGE: RGB565/RGB888/ARGB8888/XRGB8888, straight and premultiplied alpha,
+  bounded scale, right-angle rotation plus scale, unscaled arbitrary rotation,
+  clipped transformed tiling and supported exact color keys.
+- LAYER: shares the RGB image executor, including scale and rotation. Default
+  draw buffers can use the bounded CMA allocator; inaccessible/fallback heap
+  storage stays with software.
+- Immutable YUV frames use a separate validated lease/geometry path, including
+  bounded scaling, orthogonal rotation and transformed tiling.
+- Recolor, masks, rounded clips, non-normal blends, arbitrary rotation plus scale
+  and unsafe small/scaler-split geometry stay with software.
 
-No owned render thread or buffers. Submit/emit/sync are synchronous and checked.
-Engine failures are never retried as software blends over possibly modified
-pixels. Cache prep is region-local; no global allocator/handler replacement.
+ROTATE requires source and clipped destination dimensions within 4..4096.
+Its source and crop-relative destination centers use a conservative signed
+14-bit domain. Translation is computed in 64 bits and rejected before cache
+maintenance or submission if it cannot be represented. Native software still
+has its own far-pivot precision limits; see [center checks](../../docs/ge-center-stage.md).
 
-Core evaluation/dispatch is in lv_draw_aic_ge2d.c; fill/image executors have
-namesake files. Scale/rotation helpers are separate, address/cache helpers live
-in lv_draw_aic_ge2d_utils.c, format mapping in common/lv_aic_pixel_format.c.
+Submit/emit/sync are synchronous and checked. An uncertain DMA failure retains
+the affected decoder/source lease and destination/task lifetime until reboot;
+it never replays a software blend over potentially modified pixels. No SDK
+source change is required. Per-buffer CMA handlers preserve allocation ownership.
 
-See [capabilities](../../docs/capabilities.md), [validation](../../docs/validation.md)
-and [transform gates](../../docs/phase3c-transform.md).
+Implementation: evaluation/dispatch in lv_draw_aic_ge2d.c, RGB and YUV executors
+in their corresponding files, scale/rotation helpers separately, cache/address
+guards in lv_draw_aic_ge2d_utils.c, format mapping in common/lv_aic_pixel_format.c.
 
-The new fill path is a development candidate. Host contracts exercise the real
-evaluator/executor with SDK ABI headers and mocked hardware. The optional manual
-check adds 12 offscreen CMA pixel probes (three formats, four opacities), including
-nonzero origins, clipping and padded-stride guards. Board execution is NOT_RUN.
+The supplied board logs passed the original fill/blend/scale/CMA probes, and
+the operator accepted the interface. Subsequent rotation, premultiplication,
+YUV, tiling and other increments require consolidated physical validation.
+Host mocks prove routing and descriptors; they do not prove GE pixel arithmetic.
+
+See [capabilities](../../docs/capabilities.md) and
+[exact validation records](../../docs/validation.md).

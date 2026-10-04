@@ -10,6 +10,15 @@ see [current validation](validation.md). Both the 79-test combined suite and
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
+## GE rotation center increment
+
+ROTATE source and crop-relative destination centers are now checked in a
+conservative signed 14-bit domain after 64-bit translation, before cache/DMA
+and tile preflight. Host **79/79 PASS**; target evidence is pending.
+Native software far-pivot Q10 precision remains a separate observed gap, and
+arbitrary-angle plus scale still needs a multi-pass implementation.
+See [rotation center bounds](ge-center-stage.md).
+
 ## SVG composition increment
 
 Native SVG now composes a premultiplied vector layer before applying image

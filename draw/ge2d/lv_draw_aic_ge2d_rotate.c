@@ -4,6 +4,24 @@
 #if AIC_LVGL_USE_GE2D
 #include <mpp_types.h>
 
+bool lv_aic_ge2d_rotation_center(const lv_point_t *pivot,
+                                  const lv_area_t *image_coords,
+                                  const lv_area_t *destination_clip,
+                                  lv_point_t *destination_center)
+{
+    if (!pivot || !image_coords || !destination_clip || !destination_center)
+        return false;
+    int64_t x = (int64_t)image_coords->x1 + pivot->x - destination_clip->x1;
+    int64_t y = (int64_t)image_coords->y1 + pivot->y - destination_clip->y1;
+    /* Normal HAL and CMDQ both mask center components with 0x3fff. Do not
+     * submit a value that aliases a different signed coordinate. */
+    if (pivot->x < -8192 || pivot->x > 8191 || pivot->y < -8192 || pivot->y > 8191 ||
+        x < -8192 || x > 8191 || y < -8192 || y > 8191)
+        return false;
+    *destination_center = (lv_point_t){(int32_t)x, (int32_t)y};
+    return true;
+}
+
 bool lv_aic_ge2d_rotation_crop(uint32_t src_w, uint32_t src_h,
                                const lv_area_t *dst, const lv_point_t *pivot,
                                int32_t rotation, lv_area_t *src, unsigned *flags)
@@ -106,6 +124,9 @@ bool lv_aic_ge2d_rotation_scale_crop(uint32_t src_w, uint32_t src_h,
     return src->x2 - src->x1 >= 3 && src->y2 - src->y1 >= 3;
 }
 #else
+bool lv_aic_ge2d_rotation_center(const lv_point_t *p, const lv_area_t *a,
+                                  const lv_area_t *b, lv_point_t *c)
+{ (void)p; (void)a; (void)b; (void)c; return false; }
 bool lv_aic_ge2d_rotation_crop(uint32_t src_w, uint32_t src_h,
                                const lv_area_t *dst, const lv_point_t *pivot,
                                int32_t rotation, lv_area_t *src, unsigned *flags)

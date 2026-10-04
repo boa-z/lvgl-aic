@@ -3,7 +3,7 @@
  * @brief ArtInChip GE2D draw unit: registration, evaluation and dispatch.
  *
  * Scope is deliberately narrow. FILL: solid, unrounded, non-gradient tasks.
- * IMAGE: rotated or native-size tiled, unrecolored RGB copies/scales -
+ * IMAGE: rotated or bounded transformed tiled, unrecolored RGB copies/scales -
  * the blit blends, so a partial opacity is supported rather than declined.
  * LAYER: the same blit, fed from a child layer's buffer instead of a decoded
  * image, including bounded scaling, right-angle rotation and unscaled

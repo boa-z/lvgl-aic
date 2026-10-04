@@ -33,6 +33,7 @@ static struct ge_rotation captured_rotation;
 static struct ge_fillrect captured_fill;
 static int fills;
 static int submits, rotate_submits, fail_at, rotate_fail;
+static unsigned cache_prepares;
 static int fail_submission;
 static const void *allowed_src, *allowed_dst;
 static void combined_transform_contract(void)
@@ -111,6 +112,29 @@ static void wide_rotation_contract(void)
     assert(!lv_aic_ge2d_rotation_scale_crop(32,32,&visible,&zero,0,
                                            256,256,&crop,&flags,&px,&py));
 }
+static void rotation_center_contract(void)
+{
+    const int32_t pivots[]={-8193,-8192,-1,0,1,8191,8192,16384,INT32_MIN,INT32_MAX};
+    const int32_t positions[]={INT32_MIN,INT32_MIN+32,-16384,-8192,-1,0,1,8191,16384,INT32_MAX-32,INT32_MAX};
+    for(unsigned p=0;p<sizeof(pivots)/sizeof(pivots[0]);p++)
+    for(unsigned a=0;a<sizeof(positions)/sizeof(positions[0]);a++)
+    for(unsigned b=0;b<sizeof(positions)/sizeof(positions[0]);b++) {
+        lv_point_t pivot={pivots[p],pivots[p]},center={123,456};
+        lv_area_t image={positions[a],positions[b],0,0};
+        lv_area_t clip={positions[b],positions[a],0,0};
+        int64_t x=(int64_t)positions[a]+pivots[p]-positions[b];
+        int64_t y=(int64_t)positions[b]+pivots[p]-positions[a];
+        bool valid=pivots[p]>=-8192 && pivots[p]<=8191 && x>=-8192 && x<=8191 && y>=-8192 && y<=8191;
+        assert(lv_aic_ge2d_rotation_center(&pivot,&image,&clip,&center)==valid);
+        if(valid) assert(center.x==x && center.y==y);
+        else assert(center.x==123 && center.y==456);
+    }
+    lv_point_t pivot={0,0},center;lv_area_t area={0};
+    assert(!lv_aic_ge2d_rotation_center(NULL,&area,&area,&center));
+    assert(!lv_aic_ge2d_rotation_center(&pivot,NULL,&area,&center));
+    assert(!lv_aic_ge2d_rotation_center(&pivot,&area,NULL,&center));
+    assert(!lv_aic_ge2d_rotation_center(&pivot,&area,&area,NULL));
+}
 /* Native YUV executor has its own real-ABI lease/submission contract. */
 int lv_draw_aic_ge2d_yuv(lv_draw_task_t *task) { (void)task; return 0; }
 bool lv_draw_aic_ge2d_yuv_faulted(void) { return false; }
@@ -127,9 +151,9 @@ bool lv_draw_aic_ge2d_buf_address_valid(const lv_draw_buf_t *b)
 bool lv_draw_aic_ge2d_dst_format_supported(lv_color_format_t cf)
 { return lv_aic_pixel_format_is_ge2d_dst(cf); }
 void lv_draw_aic_ge2d_prepare_src_cache(const lv_draw_buf_t *b, const lv_area_t *a)
-{ (void)b; (void)a; }
+{ (void)b; (void)a; cache_prepares++; }
 void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *b, const lv_area_t *a)
-{ (void)b; (void)a; }
+{ (void)b; (void)a; cache_prepares++; }
 int mpp_ge_fillrect(struct mpp_ge *ge, struct ge_fillrect *fill)
 { (void)ge; captured_fill = *fill; fills++; return fail_at == 1 ? -1 : 0; }
 
@@ -233,6 +257,7 @@ int main(void)
 {
     combined_transform_contract();
     wide_rotation_contract();
+    rotation_center_contract();
     static uint8_t pixels[32 * 128], output[128 * 512];
     lv_draw_buf_t src, dst;
     lv_draw_image_dsc_t d;
@@ -406,6 +431,43 @@ int main(void)
                captured_rotation.dst_buf.crop.height == 14);
         assert(captured_rotation.angle_sin > 1190 && captured_rotation.angle_sin < 1210);
         assert(captured_rotation.angle_cos > 3910 && captured_rotation.angle_cos < 3930);
+        /* Both normal HAL and CMDQ pack center coordinates in 14 bits.
+         * Out-of-range centers must be declined before cache work or DMA. */
+        {
+            static const lv_point_t invalid[]={{8192,16},{-8193,16},{16,8192},{16,-8193},
+                                               {16384,16},{INT32_MAX,INT32_MIN}};
+            int old_submits=rotate_submits;unsigned old_cache=cache_prepares;bool old_failure=s_blit_failed;
+            for(unsigned preflight=0;preflight<2;preflight++)
+            for(unsigned i=0;i<sizeof(invalid)/sizeof(invalid[0]);i++) {
+                s_blit_validate_only=preflight;d.pivot=invalid[i];
+                assert(!lv_draw_aic_ge2d_blit(&task,&d,&decoder,&rot_img,&rot_clip));
+                assert(rotate_submits==old_submits && cache_prepares==old_cache && s_blit_failed==old_failure);
+            }
+            s_blit_validate_only=false;d.pivot=(lv_point_t){16,16};
+        }
+        {
+            /* A translated 45-degree image stays visible with a remote pivot.
+             * Hardware would alias 16384 to zero; real SW must render it here. */
+            lv_draw_image_dsc_t saved_d=d;lv_draw_task_t saved_task=task;
+            assert(lv_draw_buf_init(&src,32,32,LV_COLOR_FORMAT_ARGB8888,128,pixels,sizeof pixels)==LV_RESULT_OK);
+            for(unsigned i=0;i<sizeof pixels/4;i++) ((uint32_t *)pixels)[i]=0xff336699U;
+            d.rotation=450;d.pivot=(lv_point_t){16384,16384};d.opa=255;
+            task.area=(lv_area_t){-16240,6982,-16209,7013};task.clip_area=layer.buf_area;
+            int old_submits=rotate_submits;unsigned old_cache=cache_prepares;
+            for(unsigned is_layer=0;is_layer<2;is_layer++) {
+                memset(output,0,sizeof output);
+                task.type=is_layer?LV_DRAW_TASK_TYPE_LAYER:LV_DRAW_TASK_TYPE_IMAGE;
+                d.src=is_layer?(const void *)&child_layer:(const void *)&src;
+                lv_draw_aic_ge2d_outcome_t outcome;
+                assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK);
+                assert(outcome==LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
+                assert(rotate_submits==old_submits && cache_prepares==old_cache);
+                uint32_t sample=((uint32_t *)output)[(226-190)*128+(152-90)];
+                assert((sample&0xffffffU)==0x336699U && (sample>>24)>=254);
+                lv_image_cache_drop(&src);
+            }
+            d=saved_d;task=saved_task;
+        }
         assert(captured_rotation.ctrl.alpha_rules == GE_PD_NONE &&
                captured_rotation.ctrl.src_alpha_mode == 2 &&
                captured_rotation.ctrl.src_global_alpha == 128);

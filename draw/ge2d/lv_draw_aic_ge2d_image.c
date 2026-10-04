@@ -38,13 +38,9 @@
  * the same statement and only the executor can tell them apart. See the note on
  * the sw_fallback counters in lv_draw_aic_ge2d.h.
  *
- * Note on the LAYER source address: LVGL allocates layer buffers with
- * lv_malloc, which on this SDK is rt_malloc, i.e. the RT-Thread system heap.
- * With CONFIG_AIC_DEFAULT_SYS_HEAP_SRAM that heap is at 0x30040000, below the
- * 0x40000000 floor the D13x GE can reach, so a LAYER composite is declined here
- * and composited in software. That is a buffer-placement property, not a defect
- * in this file: moving layer buffers into CMA would make the same code run on
- * the engine, and the address gate already makes the transition safe.
+ * Default draw buffers can use the application's bounded CMA allocation
+ * wrapper. Ordinary fallback heap buffers outside the GE address window still
+ * composite in software; the address gate remains authoritative.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -153,6 +149,12 @@ static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
         return false;
     }
 
+    lv_point_t destination_center;
+    if (!lv_aic_ge2d_rotation_center(&draw_dsc->pivot, img_coords,
+                                     dst_area_abs, &destination_center)) {
+        return false;
+    }
+
     if (s_blit_validate_only) return true;
     lv_draw_aic_ge2d_prepare_src_cache(src, &src_area);
     lv_draw_aic_ge2d_prepare_dst_cache(dst, &dst_area);
@@ -181,8 +183,8 @@ static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
     rot.dst_buf.crop.height = (uint32_t)lv_area_get_height(&dst_area);
 
     /* GE rotation centers are relative to the cropped destination area. */
-    rot.dst_rot_center.x = img_coords->x1 + draw_dsc->pivot.x - dst_area_abs->x1;
-    rot.dst_rot_center.y = img_coords->y1 + draw_dsc->pivot.y - dst_area_abs->y1;
+    rot.dst_rot_center.x = destination_center.x;
+    rot.dst_rot_center.y = destination_center.y;
 
     angle = draw_dsc->rotation % 3600;
     if (angle < 0) angle += 3600;
