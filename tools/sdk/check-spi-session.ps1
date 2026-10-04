@@ -57,7 +57,7 @@ $linkArgs=@('-m','elf32lriscv','-r','-o',$combined)+$objects
 if($LASTEXITCODE -ne 0) { throw 'SPI session partial link failed' }
 $symbols=& (Join-Path $sdk 'toolchain/bin/riscv64-unknown-elf-nm.exe') $combined
 if($LASTEXITCODE -ne 0) { throw 'SPI session nm failed' }
-foreach($api in @('open','open_owned','enable_ge2d','submit','drain','close')) {
+foreach($api in @('open','open_owned','enable_ge2d','enable_overlap','submit','drain','close')) {
     if(-not ($symbols -cmatch ('\bT\s+lv_aic_spi_session_'+$api+'$'))) { throw "Missing session API: $api" }
 }
 if($WithGe) {

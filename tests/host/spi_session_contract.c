@@ -15,7 +15,8 @@ static bool fail_prepare;
 static lv_aic_spi_session_t *preparing_session;
 static unsigned status;
 static int wait_error;
-static uint8_t *tx;
+static uint8_t *tx,*extra_tx;
+static const uint8_t *active_tx;
 static uint8_t saved[12];
 static unsigned allocs,frees;
 static bool fail_alloc,bad_alignment;
@@ -41,15 +42,15 @@ static bool prepare(void *context,uint32_t width,uint32_t height)
 }
 static void present(void) {}
 void aicos_dcache_clean_range(unsigned long *p,unsigned long bytes)
-{ assert((uint8_t *)p==tx && bytes==64);cleans++; }
+{ assert(((uint8_t *)p==tx || (uint8_t *)p==extra_tx) && bytes==64);cleans++; }
 int rt_spi_wait_completion(struct rt_spi_device *d)
-{ assert(d && !memcmp(tx,saved,12));waits++;status=0;return wait_error; }
+{ assert(d && !memcmp(active_tx,saved,12));waits++;status=0;return wait_error; }
 rt_uint32_t rt_spi_get_transfer_status(struct rt_spi_device *d) { assert(d);return status; }
 int rt_spi_nonblock_set(struct rt_spi_device *d,unsigned mode) { assert(d && mode==1);return 0; }
 size_t rt_qspi_transfer_message(struct rt_qspi_device *d,struct rt_qspi_message *m)
 {
-    assert(d && cleans==submits+1 && m->parent.send_buf==tx && m->parent.length==12);
-    memcpy(saved,tx,12);submits++;status=1;return 12;
+    assert(d && cleans==submits+1 && (m->parent.send_buf==tx || m->parent.send_buf==extra_tx) && m->parent.length==12);
+    active_tx=m->parent.send_buf;memcpy(saved,active_tx,12);submits++;status=1;return 12;
 }
 int main(void)
 {
@@ -100,6 +101,21 @@ int main(void)
         assert(lv_aic_spi_session_close(s)==LV_AIC_SPI_OK && frees==before_free+1);
         assert(allocs==frees);
     }
+    /* Extra tx is separately budgeted, claimed across sessions, cleaned at
+     * its actual DMA address and only freed after the outstanding frame drains. */
+    tx=borrowed;c.tx=tx;c.capacity=64;
+    s=lv_aic_spi_session_open(&c);assert(s);
+    assert(!lv_aic_spi_session_enable_overlap(s,63));
+    assert(lv_aic_spi_session_enable_overlap(s,64));extra_tx=owned_pixels;
+    assert(!lv_aic_spi_session_enable_overlap(s,64));
+    c.device=&other;c.tx=extra_tx;
+    assert(!lv_aic_spi_session_open(&c)); /* different bus, active second region */
+    assert(lv_aic_spi_session_submit(s,&f,0)==LV_AIC_SPI_OK && active_tx==tx);
+    assert(lv_aic_spi_session_submit(s,&f,180)==LV_AIC_SPI_OK && active_tx==extra_tx);
+    unsigned extra_free=frees;
+    assert(lv_aic_spi_session_close(s)==LV_AIC_SPI_OK && frees==extra_free+1);
+    assert(allocs==frees);extra_tx=NULL;
+    c.device=&device;c.tx=NULL;c.capacity=0;
     /* Owned fault retains CMA just as borrowed faults retain caller storage. */
     s=lv_aic_spi_session_open_owned(&c,64);assert(s);tx=owned_pixels;
     assert(lv_aic_spi_session_submit(s,&f,0)==LV_AIC_SPI_OK);

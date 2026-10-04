@@ -36,7 +36,16 @@ typedef lv_aic_spi_result_t (*lv_aic_spi_transform_cb_t)(void *context,
     uint32_t width,uint32_t height,unsigned degrees,bool swap_bytes);
 bool lv_aic_spi_transfer_set_transform(lv_aic_spi_transfer_t *transfer,
     lv_aic_spi_transform_cb_t transform,void *context);
-/* Wait previous transfer before repacking; input is borrowed only during call.
+/* Optional second dedicated DMA buffer, configured once before any submit.
+ * Full supplied capacity ranges must not overlap. Both buffers remain borrowed
+ * until successful close (forever on FAULT). The transform can then run before
+ * waiting for active transport, and must not access that transport or its active
+ * buffer. INVALID/BUSY conversion leaves the previous transfer outstanding. */
+bool lv_aic_spi_transfer_set_back_buffer(lv_aic_spi_transfer_t *transfer,
+    uint8_t *pixels,size_t capacity);
+/* Normally wait previous transfer before repacking. With a back buffer, convert
+ * first, then wait previous DMA, then start the new transfer. Input is borrowed
+ * only during this call.
  * Defaults to CPU nearest resize/rotation from lv_aic_spi_pack_rgb565. */
 lv_aic_spi_result_t lv_aic_spi_transfer_submit(lv_aic_spi_transfer_t *transfer,
     const lv_aic_spi_rgb565_frame_t *source,unsigned clockwise_degrees);

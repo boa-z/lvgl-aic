@@ -761,3 +761,49 @@ Validation: **70/70 host PASS**. Logs:
 `output/spi-ge-pipeline-build.log`, `output/spi-ge-pipeline-tests.log`.
 Physical GE/SPI execution and actual panel DMA/TE performance **NOT_RUN**.
 This test-only increment does not refresh the earlier full-firmware artifact.
+
+## Double-buffer session overlap (2026-10-04)
+
+`lv_aic_spi_session_enable_overlap(session, extra_pixel_budget)` allocates one
+additional cache-rounded CMA transmit frame before worker startup/any submit.
+It works with CPU packing or the opt-in GE converter. This budget covers only
+the extra transmit frame; the primary frame and private GE staging retain their
+separate budgets. The low-level transfer also accepts caller-owned dedicated
+storage via `lv_aic_spi_transfer_set_back_buffer` before the first submit.
+Both supplied capacity ranges must be non-overlapping. Session registry claims
+both DMA frame regions, including against different component SPI buses.
+
+On consecutive direct `session_submit` calls, the next frame is converted into
+the idle transmit buffer while SPI may still read the active one. Only after
+conversion succeeds does the session check previous DMA completion, prepare
+the panel and submit the next frame. Cache clean uses the selected transmit
+address. Output buffers alternate while transfers remain outstanding. Explicit
+drain/close checks completion before release. INVALID/BUSY conversion leaves
+previous SPI outstanding; callers still owe a later drain or close.
+
+GE failure during outstanding SPI quarantines both frame regions and both GE
+stages; SPI completion/start faults likewise prevent replay, overwrite or free.
+There is no automatic CPU retry after an actual GE failure. Conversion callbacks
+in overlap mode must not access the active transport or its active buffer.
+Only session-owned tx is exposed to SPI, so producer frames remain synchronous
+CPU borrows even on fault.
+
+Validation: **70/70 host PASS**. Transfer tests verify overlap ordering, alternating
+buffers, invalid conversion without draining the prior frame, callback reentry,
+and transform/wait/start fault retention. Session tests check the extra budget,
+second-region registry exclusion, cache address and drain-before-free. Real
+component GE -> transfer -> SDK bridge contracts (modeled hardware) verify GE
+submission while previous SPI is active, unchanged active pixels, output parity
+and a GE fault while SPI still owns its previous frame. Strict D13x compile and
+component partial link **PASS**, with the new API present. Partial-link object
+SHA256: `23d76f1c5e272e7c8df1d79a92382ccf3cc3b6d38e952872445320c585d5bc82`.
+Logs: `output/spi-overlap-{build,tests,target}.log`.
+
+Scope boundary: the existing display worker/handoff still drains each submitted
+frame before publishing its checked-completion result. Enabling overlap on its
+session alone therefore does not overlap successive display jobs. Consecutive
+direct session callers can use the new path now; a bounded two-request display
+handoff with separate source-release and verified-completion handling remains
+the next implementation stage. The current firmware predates this increment;
+full final-link/image refresh, physical overlap and measured throughput are
+**NOT_RUN**. No SPI panel or pins are selected automatically.

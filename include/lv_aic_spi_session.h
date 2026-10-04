@@ -38,6 +38,13 @@ lv_aic_spi_session_t *lv_aic_spi_session_open(const lv_aic_spi_session_config_t 
  * before freeing. FAULT retains both allocation and bus claim until reboot. */
 lv_aic_spi_session_t *lv_aic_spi_session_open_owned(const lv_aic_spi_session_config_t *config,
     size_t pixel_budget);
+/* Optional overlap before worker startup / any submit attempt. Allocate one
+ * additional cache-rounded CMA tx frame; budget covers this extra frame only.
+ * CPU or GE conversion writes the idle frame while the previous SPI DMA reads
+ * the active frame. Panel prepare/new submission still wait for completion.
+ * Claims both pixel regions, drains before freeing, retains both on any fault.
+ * False leaves configuration unchanged. Single owner, no concurrent setup. */
+bool lv_aic_spi_session_enable_overlap(lv_aic_spi_session_t *session,size_t pixel_budget);
 /* Opt in before worker startup / any submit attempt. Own a dedicated CMDQ GE
  * converter with a separate staging budget (excludes session tx). Returns false
  * if GE/BSP is disabled, unavailable, normal mode, already enabled or too late.

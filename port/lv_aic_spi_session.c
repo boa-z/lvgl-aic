@@ -13,6 +13,7 @@ struct lv_aic_spi_session {
     struct rt_spi_bus *bus;
     size_t cache_bytes;
     bool owns_tx;
+    uint8_t *back;
     lv_aic_spi_transfer_t *transfer;
     lv_aic_spi_ge2d_t *ge;
     struct lv_aic_spi_session *next;
@@ -29,7 +30,7 @@ static bool start(void *context,const uint8_t *pixels,size_t bytes)
             s->config.width,s->config.height)) return false;
     /* A panel callback must not replace the claimed device bus. */
     if(s->config.device->parent.bus!=s->bus) return false;
-    aicos_dcache_clean_range((unsigned long *)s->config.tx,(unsigned long)s->cache_bytes);
+    aicos_dcache_clean_range((unsigned long *)pixels,(unsigned long)s->cache_bytes);
     return lv_aic_spi_sdk_submit_qspi(s->config.device,pixels,bytes,s->config.prefix,
         s->config.prefix_bytes,s->config.prefix_lines,s->config.data_lines);
 }
@@ -57,8 +58,11 @@ lv_aic_spi_session_t *lv_aic_spi_session_open(const lv_aic_spi_session_config_t 
        !bus->ops->nonblock || !bus->ops->wait_completion || !bus->ops->gstatus || !take_registry()) return NULL;
     for(lv_aic_spi_session_t *p=sessions;p;p=p->next) {
         uintptr_t previous=(uintptr_t)p->config.tx;
+        uintptr_t back=(uintptr_t)p->back;
         if(p->bus==bus || ((uint64_t)address<(uint64_t)previous+p->cache_bytes &&
-                          (uint64_t)previous<(uint64_t)address+span)) { release_registry();return NULL; }
+                          (uint64_t)previous<(uint64_t)address+span) ||
+           (back && (uint64_t)address<(uint64_t)back+p->cache_bytes &&
+                    (uint64_t)back<(uint64_t)address+span)) { release_registry();return NULL; }
     }
     rt_uint32_t status=rt_spi_get_transfer_status(&c->device->parent);
     if(status!=HAL_QSPI_STATUS_OK && status!=HAL_QSPI_STATUS_TRAN_DONE) { release_registry();return NULL; }
@@ -86,6 +90,30 @@ lv_aic_spi_session_t *lv_aic_spi_session_open_owned(const lv_aic_spi_session_con
     if(!s) aicos_free_align(MEM_CMA,owned.tx);
     else s->owns_tx=true;
     return s;
+}
+bool lv_aic_spi_session_enable_overlap(lv_aic_spi_session_t *s,size_t budget)
+{
+    if(!s || !s->transfer || s->back || s->cache_bytes>budget) return false;
+    uint8_t *back=aicos_malloc_align(MEM_CMA,s->cache_bytes,64);
+    if(!back) return false;
+    uintptr_t address=(uintptr_t)back;
+    bool valid=!(address&63) && address<=UINT32_MAX &&
+        s->cache_bytes<=(uint64_t)UINT32_MAX+1-address;
+#if defined(AIC_CHIP_D13X) || defined(AIC_CHIP_G73X)
+    valid=valid && address>=0x40000000U;
+#endif
+    if(!valid || !take_registry()) { aicos_free_align(MEM_CMA,back);return false; }
+    for(lv_aic_spi_session_t *p=sessions;p && valid;p=p->next) {
+        uintptr_t regions[2]={(uintptr_t)p->config.tx,(uintptr_t)p->back};
+        for(unsigned i=0;i<2;i++) if(regions[i] &&
+            (uint64_t)address<(uint64_t)regions[i]+p->cache_bytes &&
+            (uint64_t)regions[i]<(uint64_t)address+s->cache_bytes) valid=false;
+    }
+    if(valid) valid=lv_aic_spi_transfer_set_back_buffer(s->transfer,back,s->cache_bytes);
+    if(valid) s->back=back;
+    release_registry();
+    if(!valid) aicos_free_align(MEM_CMA,back);
+    return valid;
 }
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 static lv_aic_spi_result_t transform(void *context,const lv_aic_spi_rgb565_frame_t *source,
@@ -139,6 +167,7 @@ lv_aic_spi_result_t lv_aic_spi_session_close(lv_aic_spi_session_t *s)
     while(*slot && *slot!=s) slot=&(*slot)->next;
     if(*slot) *slot=s->next;
     release_registry();
+    if(s->back) aicos_free_align(MEM_CMA,s->back);
     if(s->owns_tx) aicos_free_align(MEM_CMA,s->config.tx);
     lv_free(s);return LV_AIC_SPI_OK;
 }

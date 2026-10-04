@@ -56,7 +56,7 @@ phase documents are historical; source presence and switches are not board proof
 | Area | Implementation | Remaining scope |
 |---|---|---|
 | Integration | App-owned pins; LV_OS_CUSTOM RT events | Board regression after app/OS refactor |
-| Display | Framebuffer DIRECT/PAN/VSync and whole-screen GE rotation; opt-in SPI full-frame double buffers, worker, blit and GE conversion | Physical GE rotation, SPI panel binding/TE and multi-display acceptance; GE/SPI overlap; see [rotation stage](display-rotation-stage.md) and [SPI stage](spi-stage.md) |
+| Display | Framebuffer DIRECT/PAN/VSync and whole-screen GE rotation; opt-in SPI full-frame double buffers, worker, blit and GE conversion | Physical GE rotation, SPI panel binding/TE and multi-display acceptance; display-worker GE/SPI overlap (double-buffer direct sessions implemented); see [rotation stage](display-rotation-stage.md) and [SPI stage](spi-stage.md) |
 | Touch / input | Touch worker, mapping, diagnostics and optional recovery; application-owned encoder and mouse providers create native LVGL indevs | Board-specific encoder/USB mouse sampling and board acceptance remain application scope |
 | Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership; SDK L-drive .fake pseudo-fills; immutable RGB/YUV frame publication | New AICP/BMP/fake/YUV board probes NOT_RUN; integrated media/APNG workers await physical acceptance |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
@@ -125,8 +125,8 @@ board confirmation remains required. See [font stage](font-stage.md).
    Target widgets/benchmark integration and combined firmware now pass; their
    native entry points still require explicit application startup selection.
    GE rotation, input-provider interfaces and vendor media/resource adapters now
-   have implementations; their physical acceptance remains open. GE/SPI overlap
-   and measured throughput remain implementation/validation work.
+   have implementations; their physical acceptance remains open. Double-buffer direct-session GE/SPI overlap now has host/partial-link coverage;
+   display-worker overlap scheduling and measured throughput remain open.
 7. Player now includes SDK-shaped transform accessors and checked deferred
    width/height scaling for media/APNG; their combined final-link gates pass.
    Keep differences in [player command compatibility](player-command-compat.md)
