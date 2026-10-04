@@ -1,8 +1,8 @@
 # Current capabilities and SDK gaps
 
-Latest host evidence: **83/83 SVG/vector/Lottie-enabled PASS**, **78/78 baseline
-PASS** for YUV stripes and chroma-safe partial clipping. Combined firmware
-validation is pending for this increment. Physical acceptance remains **NOT_RUN**;
+Latest combined evidence: **83/83 SVG/vector/Lottie-enabled host PASS**, **78/78
+baseline PASS**, and full GE/widget/SPI firmware build/link/image/provenance
+**PASS** for YUV stripes and chroma-safe partial clipping. Physical acceptance remains **NOT_RUN**;
 counts below describe historical checkpoints. See [current validation](validation.md).
 
 ## YUV stripe and clipping increment
@@ -153,7 +153,7 @@ phase documents are historical; source presence and switches are not board proof
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
 | GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded transformed tiling, bounded scale, right-angle rotation plus scale, arbitrary-angle rotation plus bounded multipass scale; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, recolor/masks; multipass memory/geometry bounds and physical acceptance; YUV uses the separate frame path below |
-| GE scale | Nominal 1/16..16; pivot/clip/per-axis handling | Small/unsafe geometry and D13x split interval fall back |
+| GE scale | Nominal 1/16..16; pivot/clip/per-axis handling; preflighted RGB/SPI/YUV stripes across the near-unity interval | Small/unsafe geometry retains fallback; YUV scaled odd crops use phase compensation; hardware filter/CSC/performance acceptance pending |
 | GE LAYER | Plain composition, bounded 1/16..16 scale with orthogonal or arbitrary-angle rotation when the child buffer is accessible | Bounded default CMA draw buffers remove the ordinary-heap barrier; allocation fallback and ROTATE regions outside 4..4096 still use software; multipass memory/geometry bounds apply; YUV and general HW layers remain absent |
 | Scheduling | Synchronous, error/task counters, bounded refresh timing | Async work and paired GE ON/OFF board timing |
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |

@@ -51,6 +51,9 @@ work is allowed. Other effects/geometry retain the existing fallback policy.
   independent BT.601 oracle check 512 pixels each plus untouched clip guards,
   with four RGB values of tolerance. No physical execution is claimed.
 
+Full combined D13x boot/app, final-link/static, image and clean-source manifest
+gates also **PASS**.
+
 Host modeling verifies descriptor geometry and lifetime, not real GE filtering,
 CSC precision or performance. Target identities are recorded in
 [validation](validation.md); board execution remains **NOT_RUN**.

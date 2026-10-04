@@ -1,5 +1,43 @@
 # Validation record
 
+## YUV stripes and chroma-safe partial refresh (2026-10-04)
+
+The shared planner now covers all twelve YUV layouts, preserving aligned crops,
+both scaler channels and source leases. Scaled odd crop origins retain their
+sampling coordinate through phase compensation. Chroma filter extents also
+correct the rotated partial-refresh edge-clamping defect. See [implementation
+and boundaries](yuv-stripes-stage.md).
+
+- Combined host **83/83 PASS** (17.61 s); vector/SVG/Lottie-disabled baseline
+  **78/78 PASS** (17.31 s).
+- 7,616 YUV descriptor plans: exact luma/chroma inverse coordinates, aligned
+  extents, preserved CSC/plane storage, complete coverage and invalid-channel
+  preflight. The existing 864 RGB stripe plans still pass.
+- Real YUV executor model: 48 colored-plane scenes / 24,576 independently mapped
+  pixels, both refresh split axes and odd source-Y clipping. Source-Y splits
+  are byte-identical; source-X/odd-crop comparisons allow one RGB value for
+  existing Q16 per-clip rounding. Owner retirement, tiled preflight and all six
+  two-strip DMA failures preserve the frame lease and block replay.
+- Full D13x boot/app, final-link/static, image and clean-source manifest checks
+  **PASS**. All 29 file hashes and three clean source pins independently verified.
+- Thirty-two colored I420 board probes check 512 pixels each, both opacities,
+  all orthogonal rotations, two ratios and whole/split refresh. Hardware
+  filtering, CSC precision, clip seams and performance remain **NOT_RUN**.
+
+Clean build identities (documentation commits are not build pins):
+
+- SDK: `af408e8df250d5d28c8ca2ba905133506c8159d1`.
+- lvgl-aic: `3b853674e2cec1491b190985fc50bc50f7e3fb2e`.
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `155450dc389ee707a39756b6c5a2dbabbd8b667b467ecac4776c5f0d1a982083`.
+- ELF SHA256: `b30a50d6b0f387c48dc7e9c63147db5073629d9bfda36156d8908dba9bd9304f`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-yuv-stripes/manifest.json`.
+- Component logs: `output/yuv-stripes-build.log`, `output/yuv-stripes-tests.log`,
+  `output/yuv-stripes-baseline-tests.log`, `output/yuv-stripes-firmware.log`.
+
+The SDK build commit is retained locally at `refs/lvgl-evidence/yuv-stripes`
+before amending its branch gitlink to the following evidence documentation commit.
+
 ## SPI RGB565 scaler stripes (2026-10-04)
 
 SPI GE conversion now uses the shared RGB strip planner in the near-unity
