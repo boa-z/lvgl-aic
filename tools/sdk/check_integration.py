@@ -244,6 +244,7 @@ def main():
     parser.add_argument("--with-spi", action="store_true")
     parser.add_argument("--with-camera", action="store_true")
     parser.add_argument("--with-demos", action="store_true")
+    parser.add_argument("--with-music", action="store_true")
     parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
@@ -336,6 +337,18 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("Demo live symbol absent: " + symbol)
         print("Upstream widgets/benchmark final link: PASS (not board execution)")
+    feature = "AIC_LVGL_BUILD_DEMO_MUSIC"
+    enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
+    defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None
+    if enabled != args.with_music or defined != args.with_music:
+        fail("Music demo profile mismatch")
+    if args.with_music:
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_demo_music", "lv_demo_music_with_args", "lv_demo_music_play",
+                       "lv_demo_music_pause", "lv_demo_music_resume", "lv_demo_music_album_next"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("Music demo live symbol absent: " + symbol)
+        print("Upstream music UI final link: PASS (not audio playback)")
     spi_enabled = re.search(r"^CONFIG_AIC_LVGL_USE_SPI_SDK=y$", config, re.MULTILINE) is not None
     if spi_enabled != args.with_spi:
         fail("SPI profile mismatch")

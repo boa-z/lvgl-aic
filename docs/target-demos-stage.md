@@ -65,3 +65,25 @@ so all objects stay out of the pinned LVGL source checkout.
 Physical display, input, GE throughput and native benchmark measurements remain
 **NOT_RUN**. The firmware links these entries but still starts the smoke UI;
 an application must select the desired demo at UI startup as described above.
+
+## Independent music UI option
+
+`AIC_LVGL_BUILD_DEMO_MUSIC` / `build.ps1 -WithMusic` adds the upstream music
+interface and assets independently of widgets/benchmark. Evidence uses a
+`-music` suffix. Both options may be combined, but music does not select the
+legacy SDK demo or media/audio player. It is the stock visual music interface
+with generated spectrum/track animations, not audio decoding or playback.
+
+Use `lv_demo_music()` or `lv_demo_music_with_args()` from `demos/lv_demos.h`
+on the UI owner thread after display initialization. The native compact layout
+is the default; native `LV_DEMO_MUSIC_*` layout options remain available to an
+application configuration. Fonts 12/16/22/32 cover compact and large layouts.
+Single active instance follows upstream static state; no autoplay is selected.
+The smoke image links the entry/control APIs and still starts its own UI.
+
+Host option `AIC_BUILD_MUSIC_DEMO_TESTS=ON` builds the isolated music configuration.
+`lvgl_aic_music_demo_contract` renders a varied 320x480 frame, checks pixel/flush
+changes during track animation and track switching, exercises pause/resume,
+then deletes the page and advances timers before shutdown. Initial host test
+and strict E907 wrapper compilation **PASS**. Full target firmware validation
+is pending at this checkpoint. Physical rendering, touch and timing **NOT_RUN**.

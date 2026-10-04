@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
@@ -44,6 +44,7 @@ if ($WithBarcode) { $variant += '-barcode' }
 if ($WithSpi) { $variant += '-spi' }
 if ($WithCamera) { $variant += '-camera' }
 if ($WithDemos) { $variant += '-demos' }
+if ($WithMusic) { $variant += '-music' }
 if ($Rotation) { $variant += "-rotate$Rotation" }
 $evidence=Join-Path $root "output/lvgl-evidence/$variant"
 New-Item -ItemType Directory -Force $evidence | Out-Null
@@ -96,7 +97,7 @@ if ($Phase -eq 'ge2d') {
 $defPath=Join-Path $root "target/configs/$def"
 $originalDef=[IO.File]::ReadAllBytes($defPath)
 try {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos) {
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic) {
         [IO.File]::WriteAllBytes("$evidence/defconfig-original", $originalDef)
         $settings=@("CONFIG_AIC_LVGL_DISPLAY_ROTATION=$([int]($Rotation / 90))")
         if ($WithFonts) { $settings += @('CONFIG_AIC_LVGL_USE_FREETYPE=y', 'CONFIG_LPKG_USING_FREETYPE=y', 'CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64') }
@@ -106,6 +107,7 @@ try {
         if ($WithPlayer) { $settings += @('CONFIG_AIC_LVGL_USE_VIDEO_PLANE=y', 'CONFIG_AIC_LVGL_USE_PLAYER=y', 'CONFIG_AIC_LVGL_USE_PLAYER_SESSION=y', 'CONFIG_AIC_MPP_PLAYER_INTERFACE=y', 'CONFIG_AIC_MPP_PLAYER_VIDEO_EXT_RENDER=y', 'CONFIG_AIC_MPP_H264_DEC_ENABLE=y') }
         if ($WithBarcode) { $settings += 'CONFIG_AIC_LVGL_USE_BARCODE=y' }
         if ($WithSpi) { $settings += 'CONFIG_AIC_LVGL_USE_SPI_SDK=y' }
+        if ($WithMusic) { $settings += 'CONFIG_AIC_LVGL_BUILD_DEMO_MUSIC=y' }
         if ($WithDemos) { $settings += @('CONFIG_AIC_LVGL_BUILD_DEMO_WIDGETS=y','CONFIG_AIC_LVGL_BUILD_DEMO_BENCHMARK=y') }
         if ($WithCamera) { $settings += @('CONFIG_AIC_MPP_VIN=y','CONFIG_AIC_LVGL_USE_VIN=y','CONFIG_AIC_LVGL_USE_CAMERA=y') }
         if ($WithApng) { $settings += @('CONFIG_AIC_LVGL_USE_APNG=y', 'CONFIG_AIC_LVGL_USE_APNG_WIDGET=y') }
@@ -121,7 +123,7 @@ try {
     Run-Step 'app-config' @($scons,"--apply-def=$def")
     Run-Step 'app-build' @($scons,"-j$Jobs")
 } finally {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
 }
 $app='output/'+($def -replace '_defconfig$','')+'/images'
 $checkArgs=@("$PSScriptRoot/check_integration.py",'--root','.', '--map',"$app/d13x.map",'--phase',$Phase)
@@ -136,6 +138,7 @@ if ($WithBarcode) { $checkArgs += '--with-barcode' }
 if ($WithSpi) { $checkArgs += '--with-spi' }
 if ($WithCamera) { $checkArgs += '--with-camera' }
 if ($WithDemos) { $checkArgs += '--with-demos' }
+if ($WithMusic) { $checkArgs += '--with-music' }
 $checkArgs += @('--rotation', "$Rotation")
 Run-Step 'static-check' $checkArgs
 Run-Step 'image-check' @("$PSScriptRoot/verify_image.py",$app,'output/d13x_d50t-2-lite_baremetal_bootloader/images',$Phase)

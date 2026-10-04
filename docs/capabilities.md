@@ -67,7 +67,7 @@ phase documents are historical; source presence and switches are not board proof
 | Scheduling | Synchronous, error/task counters, bounded refresh timing | Async work and paired GE ON/OFF board timing |
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
-| Optional core | Host demo selection and opt-in application-owned target widgets/benchmark sources with required fonts and performance monitoring; vector remains disabled | Target demo full build/link PASS; vector/music and physical benchmark/input acceptance remain; see [target demos](target-demos-stage.md) |
+| Optional core | Host demo selection and opt-in application-owned target widgets/benchmark sources with required fonts and performance monitoring, plus independent music UI; vector remains disabled | Target demo full build/link PASS; music target build pending; vector and physical demo/benchmark/input acceptance remain; see [target demos](target-demos-stage.md) |
 | AIC canvas | Owned ARGB8888 CMA buffer; bounded peak allocation; positioned and clearing centered text; host pixels/lifecycle and target live-link gates | Board CMA/cache/display validation; standalone packed-RGB/linear-YUV fill helper implemented; gradient/CSC numeric probes implemented; physical execution pending |
 | Native widgets | Optional upstream canvas/chart/dropdown/roller/slider/table/tabview/textarea/tileview plus arc/button/buttonmatrix/calendar/checkbox/keyboard/led/line/msgbox/spinbox/switch contracts | Board rendering/input acceptance still pending; deprecated list/menu have host interaction contracts, a manual page and target linkage gates; physical input/rendering and direct video-window composition remain pending; camera/player use separate opt-in adapters |
 
@@ -121,7 +121,7 @@ board confirmation remains required. See [font stage](font-stage.md).
 5. Validate the optional [native GIF stage](gif-stage.md) on board. Its decoding
    and lifecycle host coverage does not establish DMA/cache or panel behavior.
 6. Remaining integration priorities: camera-enabled final firmware linkage,
-   optional target core/vector/music choices and concrete SPI panel binding.
+   optional target core/vector choices and concrete SPI panel binding.
    Target widgets/benchmark integration and combined firmware now pass; their
    native entry points still require explicit application startup selection.
    GE rotation, input-provider interfaces and vendor media/resource adapters now

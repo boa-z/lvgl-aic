@@ -95,6 +95,16 @@ config AIC_LVGL_BUILD_DEMO_WIDGETS
         Call lv_demo_widgets on the LVGL owner thread after display setup.
         This option does not start a demo or replace application screens.
 
+config AIC_LVGL_BUILD_DEMO_MUSIC
+    bool "Build upstream LVGL music interface demo"
+    default n
+    depends on AIC_LVGL_PORT
+    help
+        Application-owned upstream music UI, assets and required fonts.
+        This is a visual/animation demo, not the SDK media/audio player.
+        Call lv_demo_music on the UI owner thread after display setup.
+        Native LV_DEMO_MUSIC layout options apply; nothing starts automatically.
+
 config AIC_LVGL_BUILD_DEMO_BENCHMARK
     bool "Build upstream LVGL rendering benchmark"
     default n

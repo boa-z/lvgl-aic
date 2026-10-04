@@ -22,3 +22,7 @@ _Static_assert(LV_BUILD_DEMOS && LV_USE_DEMO_WIDGETS, "widgets demo config misma
 _Static_assert(LV_USE_DEMO_BENCHMARK && LV_USE_DEMO_WIDGETS && LV_USE_SYSMON &&
                LV_USE_PERF_MONITOR, "benchmark requires native measurements");
 #endif
+
+#if defined(AIC_LVGL_BUILD_DEMO_MUSIC) && AIC_LVGL_BUILD_DEMO_MUSIC
+_Static_assert(LV_BUILD_DEMOS && LV_USE_DEMO_MUSIC, "music demo config mismatch");
+#endif

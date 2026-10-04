@@ -37,10 +37,15 @@ for directory, directories, files in os.walk(os.path.join(lvgl_root, 'src')):
     src += Glob(relative + '/*.c', ondisk=True, source=True)
 if not src:
     raise RuntimeError('Application LVGL sources are missing')
-demo_enabled = GetDepend('AIC_LVGL_BUILD_DEMO_WIDGETS') or GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK')
+demo_enabled = (GetDepend('AIC_LVGL_BUILD_DEMO_WIDGETS') or GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK') or
+                GetDepend('AIC_LVGL_BUILD_DEMO_MUSIC'))
 if demo_enabled:
     src += Glob('../lvgl/demos/lv_demos.c', ondisk=True, source=True)
-    demo_dirs = ['widgets']
+    demo_dirs = []
+    if GetDepend('AIC_LVGL_BUILD_DEMO_WIDGETS') or GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
+        demo_dirs += ['widgets']
+    if GetDepend('AIC_LVGL_BUILD_DEMO_MUSIC'):
+        demo_dirs += ['music']
     if GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
         demo_dirs += ['benchmark']
     for demo in demo_dirs:
@@ -49,8 +54,8 @@ if demo_enabled:
             for name in sorted(files):
                 if not name.endswith('.c'):
                     continue
-                if name == 'lv_demo_' + demo + '.c':
-                    src += [File('compat/lv_aic_demo_' + demo + '.c')]
+                if name in ('lv_demo_widgets.c', 'lv_demo_benchmark.c', 'lv_demo_music.c', 'lv_demo_music_main.c'):
+                    src += [File('compat/' + name.replace('lv_demo_', 'lv_aic_demo_'))]
                 else:
                     relative = os.path.relpath(directory, cwd).replace(os.sep, '/')
                     src += Glob(relative + '/' + name, ondisk=True, source=True)
@@ -61,8 +66,13 @@ includes = [cwd, os.path.join(cwd, 'include'), os.path.join(cwd, 'compat'),
 group = DefineGroup('Application-LVGL-9.6', src, depend=['AIC_LVGL_PORT'],
     CPPPATH=includes, CPPDEFINES=['LV_KCONFIG_IGNORE=1', 'LV_BUILD_EXAMPLES=0', 'LV_BUILD_DEMOS=' + ('1' if demo_enabled else '0')])
 if demo_enabled and GetDepend('AIC_LVGL_SMOKE_APP'):
-    for api in ('lv_demo_widgets', 'lv_demo_widgets_with_args'):
-        Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
+    if GetDepend('AIC_LVGL_BUILD_DEMO_WIDGETS') or GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
+        for api in ('lv_demo_widgets', 'lv_demo_widgets_with_args'):
+            Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
+    if GetDepend('AIC_LVGL_BUILD_DEMO_MUSIC'):
+        for api in ('lv_demo_music', 'lv_demo_music_with_args', 'lv_demo_music_play',
+                    'lv_demo_music_pause', 'lv_demo_music_resume', 'lv_demo_music_album_next'):
+            Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
     if GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
         for api in ('lv_demo_benchmark', 'lv_demo_benchmark_set_end_cb', 'lv_demo_benchmark_summary_display'):
             Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
