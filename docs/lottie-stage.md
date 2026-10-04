@@ -60,5 +60,7 @@ remaining widget animations. Combined SVG/vector/Lottie host suite **75/75 PASS*
 source-drift rejection **PASS**. A GE contract independently checks that explicit
 premultiplied canvas storage takes software composition without a GE submission
 and retains the expected half-opacity red pixel. Logs: `output/lottie-{build,tests}.log`.
-Final target build/link/image validation is pending at this feature commit. Physical display, heap pressure, long-running
+Disabled baseline **72/72 PASS**. Combined D13x 90-degree GE/media/SPI/demos/
+vector/SVG/Lottie firmware passes final-link/static, image and clean-source
+manifest gates. Exact pins and image SHA256 are in [validation](validation.md). Physical display, heap pressure, long-running
 animation timing and GE coexistence are **NOT_RUN**. No flashing.

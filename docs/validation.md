@@ -1,5 +1,41 @@
 # Validation record
 
+## Native Lottie animation and premultiplied composition (2026-10-04)
+
+Combined SVG/vector/Lottie host suite **75/75 PASS**; disabled baseline **72/72
+PASS**. After extending the GE pixel regression, its focused rerun and the full
+disabled baseline both pass. The Lottie test uses the real native widget/parser/
+renderer for FILE/data parity, raw and draw-buffer APIs, copied source lifetime,
+two-second timing, timer progression, pause/resume/reset, half-opacity screen
+pixels and 20 lifecycle cycles. GE submits no DMA for the explicit premultiplied
+canvas and software preserves its expected pixel value.
+
+Two real alpha defects were fixed within one feature commit: the pinned ThorVG
+solid layer applied opacity twice, and the native Lottie draw-buffer API marked
+ordinary ARGB8888 storage without changing the color format used by software
+blending. A source-fingerprinted generated builder corrects the first; a small
+application wrapper normalizes canvas metadata before caching for the second.
+The target gate verifies the generated source, live builder section (including
+GCC's inlined/partitioned helper) and the canvas wrapper's owning object.
+
+Combined D13x 90-degree GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/
+widgets-demo/benchmark/music/vector/SVG/Lottie firmware passes boot/app,
+final-link/static, image and clean-source manifest gates.
+
+- lvgl-aic: `015f01063bd2da83d1190f20a784c6d2bbc0b354` (clean).
+- sdk: `f024c4fa4dcb11043a94f4ce0c673e0b9a82af11` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `d6fa3e0122f995cf729635839f4c96f2389f09ee0528852840110873f3e13dc8` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90/manifest.json`.
+- Component logs: `output/lottie-tests.log`, `output/lottie-ge-test.log`, `output/lottie-disabled-tests.log`, `output/lottie-firmware.log`.
+
+SDK and LVGL source trees remain unmodified and contain no leaked LVGL objects.
+This is native `lv_lottie`, not compatibility with the SDK's old `lv_rlottie` API.
+Checked malformed/resource-failure handling, expressions, external assets and
+allocation budgets remain open. Camera stays disabled and no SPI panel is bound.
+Physical animation timing, heap pressure, rendering and GE coexistence **NOT_RUN**;
+no flashing. See [Lottie configuration and limits](lottie-stage.md).
+
 ## Native SVG resources and floating-point formatting (2026-10-04)
 
 SVG/vector-enabled GE/widget host suite **74/74 PASS**. Real image-widget
