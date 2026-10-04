@@ -119,6 +119,9 @@ unsigned lv_aic_player_pending_cleanup(void);
  * and apply after frame publication, or immediately if a frame is present.
  * Sets object extent and the corresponding scale using native image dimensions;
  * 256-based scale truncates (minimum 1), so exact rendered extent is not promised.
+ * Native video-plane mode instead sets the destination window extent and keeps
+ * the requested axis at unity image scale; DE performs frame scaling. All plane
+ * visibility, rotation and clipping restrictions still apply.
  * No aspect-ratio coupling; a request does not modify the other axis. */
 lv_result_t lv_aic_player_set_width(lv_obj_t *obj,uint32_t width);
 lv_result_t lv_aic_player_set_height(lv_obj_t *obj,uint32_t height);

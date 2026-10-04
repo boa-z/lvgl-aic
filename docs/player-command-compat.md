@@ -198,3 +198,24 @@ Logs: `output/player-frame-size-before.log`, `output/player-frame-size-build.log
 Full-firmware refresh and physical execution for this correction remain pending.
 The plane adapter still rejects non-unity image scales; this fix does not extend
 its supported geometry profile.
+
+## Native-plane destination sizing (2026-10-04)
+
+Player width/height requests now use the native-plane destination window when
+plane output is enabled. The requested axis retains unity LVGL image scale;
+DE scales the decoded frame to that window. This avoids applying the requested
+resize twice and removes the previous non-unity-scale rejection for these APIs.
+Ordinary image playback still derives scale from decoded frame dimensions.
+Explicit image scale transforms remain subject to the strict plane adapter;
+this change does not enable arbitrary transforms or partial clipping. Requests
+apply after first frame publication, including requests made before opening,
+and can resize the current frame while paused. Other-axis state is unchanged.
+
+Regression first failed on paused 4x4-to-8x6 resizing, then passed after the fix.
+Pre-open 8x6 destination sizing is also covered. **70/70 host PASS** (modeled
+plane driver), strict D13x compilation with VIDEO_PLANE enabled **PASS**.
+SDK object `output/player-plane-size-lv_aic_player.o` SHA256:
+`8da5c28b29449ec11253984916ba4ba051e46d966b76b6e79f0f05a47803b350`.
+Logs: `output/player-plane-size-before.log`, `output/player-plane-size-build.log`,
+`output/player-plane-size-tests.log`, `output/player-plane-size-target.log`.
+Full firmware has not been refreshed for this increment; board **NOT_RUN**.

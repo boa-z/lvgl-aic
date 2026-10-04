@@ -426,15 +426,21 @@ static void apply_requested_size(player_binding_t *b)
     if(!image) return;
     uint32_t w=image->header.w,h=image->header.h;
     if(!w || !h) return;
+    bool plane=false;
+#if defined(AIC_LVGL_USE_VIDEO_PLANE) && AIC_LVGL_USE_VIDEO_PLANE
+    plane=b->plane_enabled;
+#endif
+    /* DE scales the decoded frame into the fake destination window. Applying
+     * image scaling too would transform that window a second time. */
     if(b->requested_width) {
-        uint32_t scale=(uint32_t)(((uint64_t)b->requested_width*256)/(uint32_t)w);
+        uint32_t scale=plane?LV_SCALE_NONE:(uint32_t)(((uint64_t)b->requested_width*256)/w);
         lv_image_set_scale_x(b->obj,scale?scale:1);
         if(!b->obj || b->closing) return;
         lv_obj_set_width(b->obj,(int32_t)b->requested_width);
     }
     if(!b->obj || b->closing) return;
     if(b->requested_height) {
-        uint32_t scale=(uint32_t)(((uint64_t)b->requested_height*256)/(uint32_t)h);
+        uint32_t scale=plane?LV_SCALE_NONE:(uint32_t)(((uint64_t)b->requested_height*256)/h);
         lv_image_set_scale_y(b->obj,scale?scale:1);
         if(!b->obj || b->closing) return;
         lv_obj_set_height(b->obj,(int32_t)b->requested_height);

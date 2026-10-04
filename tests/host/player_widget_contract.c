@@ -676,6 +676,22 @@ int main(void)
     assert(lv_aic_player_set_height(o,4)==LV_RESULT_OK);
     assert(lv_image_get_scale_x(o)==256 && lv_image_get_scale_y(o)==256);
     tick();assert(plane_live && plane_w==4 && plane_h==4);
+    assert(lv_aic_player_pause(o)==LV_RESULT_OK);tick();
+    assert(lv_aic_player_set_width(o,8)==LV_RESULT_OK);
+    assert(lv_aic_player_set_height(o,6)==LV_RESULT_OK);
+    tick();assert(plane_live && plane_w==8 && plane_h==6);
+    assert(lv_aic_player_get_state(o)!=LV_AIC_PLAYER_FAULT);
+    assert(lv_image_get_scale_x(o)==256 && lv_image_get_scale_y(o)==256);
+    lv_obj_delete(o);tick();assert(!plane_live && !active);
+    /* Pre-open destination requests use DE scaling on the first frame. */
+    o=make();lv_obj_set_pos(o,0,0);
+    assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_set_width(o,8)==LV_RESULT_OK);
+    assert(lv_aic_player_set_height(o,6)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"plane-sized.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);frames=1;tick();
+    assert(plane_live && plane_w==8 && plane_h==6);
+    assert(lv_image_get_scale_x(o)==256 && lv_image_get_scale_y(o)==256);
     lv_obj_delete(o);tick();assert(!plane_live && !active);
     /* Top/system/bottom layers are visible roots, unlike inactive screens. */
     lv_obj_t *roots[]={lv_display_get_layer_top(d),lv_display_get_layer_sys(d),lv_display_get_layer_bottom(d)};
