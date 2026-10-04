@@ -1,5 +1,39 @@
 # Validation record
 
+## SPI RGB565 scaler stripes (2026-10-04)
+
+SPI GE conversion now uses the shared RGB strip planner in the near-unity
+interval. Explicit phases follow SDK normal/CMDQ rules; a copied final source
+pixel supplies the last filter tap. See [SPI stripe geometry, budget and
+lifetime](spi-stripes-stage.md).
+
+- Combined host **83/83 PASS** (17.68 s); vector/SVG/Lottie-disabled baseline
+  **78/78 PASS** (16.33 s).
+- Real converter CPU model: 44 scenes, 93,328 RGB565 pixels, all four rotations,
+  byte swaps, exact per-pixel coverage, edge replication and 4095-to-4096 width.
+  All nine three-strip DMA failure points retain staging and leave CPU output
+  unchanged. Real session late-strip failure suppresses SPI and retains claims.
+- Full D13x boot/app, final-link/static checks, image and clean-source manifest
+  gates **PASS**; all 29 file hashes and three clean source pins independently
+  verified.
+- Eight offscreen board probes are compiled into the combined image. Each
+  checks 512 converted pixels plus output guards without opening a SPI bus or
+  panel. Physical GE filtering, panel output and throughput remain **NOT_RUN**.
+
+Clean build identities (documentation commits are not build pins):
+
+- SDK: `8b12b0f706e205d2aa3ed09f06a3dd24f531b2ea`.
+- lvgl-aic: `8728db765cda340adf969f853afa79b4d141876a`.
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `746fa0a6dc5a5fb0603006fc128a06f92c3efa339aa94bb291f897d079b63550`.
+- ELF SHA256: `af73b2380ab29fa8c84032416fb7ff1fa6b1f464fbd8b40abbf919c0dfc2a35f`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-spi-stripes/manifest.json`.
+- Component logs: `output/spi-stripes-build.log`, `output/spi-stripes-tests.log`,
+  `output/spi-stripes-baseline-tests.log`, `output/spi-stripes-firmware.log`.
+
+The SDK build pin is retained locally at `refs/lvgl-evidence/spi-stripes` before
+amending its branch gitlink to the following evidence documentation commit.
+
 ## Near-unity RGB GE stripes (2026-10-04)
 
 Balanced RGB commands remove the whole-task near-unity scaler fallback for

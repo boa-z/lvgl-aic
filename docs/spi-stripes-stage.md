@@ -44,6 +44,9 @@ frame through CPU packing. Panel initialization is still an application binding.
   rotations and both byte orders. They need no SPI bus/panel and check 512 pixels
   each plus guards, with one native RGB565 channel step tolerance.
 
+Full combined D13x boot/app, final-link/static, image and clean-source manifest
+gates also **PASS**.
+
 Host modeling is not physical GE filtering evidence. Board execution, SPI panel
 output and GE/SPI concurrency/performance remain **NOT_RUN**. Firmware identities
 are recorded in [validation](validation.md). YUV chroma alignment/phase support

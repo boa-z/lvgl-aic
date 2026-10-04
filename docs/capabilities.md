@@ -1,8 +1,8 @@
 # Current capabilities and SDK gaps
 
-Latest host evidence: **83/83 SVG/vector/Lottie-enabled PASS**, **78/78 baseline
-PASS** for SPI RGB565 stripes. Combined firmware validation for this increment
-is pending. Physical acceptance remains **NOT_RUN**; counts below describe their
+Latest combined evidence: **83/83 SVG/vector/Lottie-enabled host PASS**, **78/78
+baseline PASS**, and full GE/widget/SPI firmware build/link/image/provenance
+**PASS** for SPI RGB565 stripes. Physical acceptance remains **NOT_RUN**; counts below describe their
 historical checkpoints. See [current validation](validation.md).
 
 ## SPI RGB565 stripe increment
