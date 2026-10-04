@@ -1,5 +1,24 @@
 # Validation record
 
+## Player transform/size final-link evidence (2026-10-04)
+
+Combined 90-degree GE/font/GIF/widget/AICP/player/APNG/barcode/SPI firmware:
+boot/app builds, static gates, final-link checks, image verification and manifest
+**PASS**. All 18 new player transform/size APIs are retained and live in the final
+ELF. Includes deferred width/height requests and swipe generation protection.
+
+- lvgl-aic: `ad478d0184508128846b0eb4b676e74471926519` (clean).
+- sdk: `37ff276b12e85d1dd6e6343984143e0494309fa4` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `965105a800aaa8e91988fc614c68e3320b1df7c33af5593a6698ea5f3c6c3e3e`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-rotate90/manifest.json`.
+
+The saved image hash was independently verified. Host regression at the current
+implementation is **70/70 PASS**. Physical execution **NOT_RUN**; no flashing,
+media playback, camera opening or SPI panel initialization was performed.
+This closes pending full-link gates for the player accessors/sizing and swipe
+reentry fix; it does not replace media/GE/video-plane board acceptance.
+
 ## Image roller and SPI GE combined firmware (2026-10-04)
 
 Current clean 90-degree GE/font/GIF/widget/AICP/player/APNG/barcode/SPI profile:

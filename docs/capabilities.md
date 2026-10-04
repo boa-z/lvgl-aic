@@ -114,8 +114,15 @@ board confirmation remains required. See [font stage](font-stage.md).
    Retain complete native FreeType/resource probe logs for numeric acceptance.
 5. Validate the optional [native GIF stage](gif-stage.md) on board. Its decoding
    and lifecycle host coverage does not establish DMA/cache or panel behavior.
-6. Remaining priorities: whole-display GE rotation, board input providers and
-   compressed vendor formats/media widgets as separate scopes.
+6. Remaining integration priorities: camera-enabled final firmware linkage,
+   optional target core/vector/demo choices and concrete SPI panel binding.
+   GE rotation, input-provider interfaces and vendor media/resource adapters now
+   have implementations; their physical acceptance remains open. GE/SPI overlap
+   and measured throughput remain implementation/validation work.
+7. Player now includes SDK-shaped transform accessors and checked deferred
+   width/height scaling for media/APNG; their combined final-link gates pass.
+   Keep differences in [player command compatibility](player-command-compat.md)
+   explicit. Broader GE extensions remain in scope but are not SDK parity claims.
 
 ## SDK parity audit
 

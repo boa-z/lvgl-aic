@@ -172,3 +172,8 @@ compilation PASS; SDK `output/player-size-lv_aic_player.o` SHA256:
 Logs: `output/player-size-build.log`, `output/player-size-tests.log`,
 `output/player-size-target.log`. Full-firmware live-symbol validation and physical
 GE/video-plane rendering remain pending, hardware **NOT_RUN**.
+
+Final firmware update: clean combined build at `ad478d0` passes all 18
+transform/size live-symbol checks, build and image gates. See
+[validation.md](validation.md) for source identities and SHA256. Earlier pending
+final-link statements above are superseded; physical execution remains NOT_RUN.
