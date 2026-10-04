@@ -42,6 +42,26 @@ Widgets renders a varied frame and cleans its screen; benchmark completes all
 16 upstream scenes and checks each received measurement samples. Virtual time
 advances during software rendering: results are not performance measurements.
 
-Initial host evidence: both demo tests PASS. Target build/link verification
-pending at this checkpoint. Physical display, input, GE throughput and native
-benchmark measurements remain **NOT_RUN**.
+Validation: baseline regression **70/70 PASS**, both demo tests **PASS**, and the combined GE/font/GIF/widget/AICP/
+player/APNG/barcode/SPI/demo 90-degree target firmware passes boot/app builds,
+static/live-link gates, image checks and manifest generation. The saved image
+hash was independently verified. Final-map evidence includes both demo entries
+and native `lv_sysmon_builtin_init` / `lv_sysmon_show_performance` functions.
+
+- Component: `2652b94ffe54239d0ba42b7387b9eb07586b8e5f` (clean).
+- SDK: `2f86ec32e17f00d8598987d229ff3c625b455327` (clean).
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `8a64743d82a81373f9da84ba27b3f12937d45cee50dc8b74f01eaf97598fd3c4`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-rotate90/manifest.json`.
+
+The SDK already owns `AIC_LVGL_DEMO_*` choice symbols; the independent
+`AIC_LVGL_BUILD_DEMO_*` names avoid selecting those legacy dependencies.
+Two small component C wrappers include the native private headers via the
+short include-search path before including the unmodified demo sources. This
+avoids an old Windows E907 compiler limit on deeply expanded relative include
+paths. SCons collects demo sources with its normal variant-directory mapping,
+so all objects stay out of the pinned LVGL source checkout.
+
+Physical display, input, GE throughput and native benchmark measurements remain
+**NOT_RUN**. The firmware links these entries but still starts the smoke UI;
+an application must select the desired demo at UI startup as described above.

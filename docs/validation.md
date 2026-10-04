@@ -1,5 +1,26 @@
 # Validation record
 
+## Optional target widgets and benchmark demos (2026-10-04)
+
+Baseline host regression **70/70 PASS**. Both new demo contracts **PASS**: widgets renders and cleans its screen;
+benchmark completes all 16 official scenes with per-scene measurement samples.
+These use software rendering and virtual time, not hardware performance data.
+Strict E907 demo-wrapper compilation and live entry symbols **PASS**.
+
+Combined 90-degree GE/font/GIF/widget/AICP/player/APNG/barcode/SPI/demo firmware
+passes boot/app, final-link/static, image and manifest checks. Source checkouts
+were clean; no objects remain in the LVGL source tree. This is a separate
+`-demos` profile, preserving the prior no-demo evidence directory.
+
+- lvgl-aic: `2652b94ffe54239d0ba42b7387b9eb07586b8e5f`.
+- sdk: `2f86ec32e17f00d8598987d229ff3c625b455327`.
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `8a64743d82a81373f9da84ba27b3f12937d45cee50dc8b74f01eaf97598fd3c4` (independently rechecked).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-rotate90/manifest.json`.
+
+The image does not auto-launch upstream demos; application startup selects them.
+Physical validation **NOT_RUN**. See [target demo use and boundaries](target-demos-stage.md).
+
 ## Native-plane destination resize firmware (2026-10-04)
 
 Clean combined 90-degree GE/font/GIF/widget/AICP/player/APNG/barcode/SPI
