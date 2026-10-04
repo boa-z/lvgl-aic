@@ -1,12 +1,12 @@
 # Current capabilities and SDK gaps
 
-Latest combined evidence: **78/78 SVG/vector/Lottie-enabled host PASS**, **74/74 baseline PASS** and GE/widget/SPI full firmware
+Latest combined evidence: **79/79 SVG/vector/Lottie-enabled host PASS**, **74/74 baseline PASS** and GE/widget/SPI full firmware
 build/link/image/provenance **PASS**, including the two-slot SPI display pipeline
 and widgets/benchmark/music/vector/SVG/Lottie enabled together, plus premultiplied
 GE sources, consistent native software fallback, checked Lottie source loading
-and corrected SVG transforms/clipping;
-see [current validation](validation.md). The 74-test disabled baseline belongs to
-the preceding premultiplied stage; the SVG transform increment ran the 78-test suite.
+and corrected SVG transforms, clipping and image composition;
+see [current validation](validation.md). Both the 79-test combined suite and
+74-test disabled baseline were rerun for the SVG composition increment.
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
@@ -15,8 +15,8 @@ Board acceptance remains scoped to previously supplied logs; the new image is
 Native SVG now composes a premultiplied vector layer before applying image
 opacity/recolor, rounded clips, masks, color keys and tiling. Straight-alpha
 destinations are preserved, and shared software masking scales premultiplied
-RGB with alpha. Host **79/79 PASS**, disabled baseline **74/74 PASS**; target
-evidence is pending. See [composition](svg-composition-stage.md), including the
+RGB with alpha. Host **79/79 PASS**, disabled baseline **74/74 PASS**; combined
+target compilation/link/image/provenance also pass. Physical execution **NOT_RUN**. See [composition](svg-composition-stage.md), including the
 additional temporary pixel memory and native sampling boundaries.
 
 ## SVG transform increment

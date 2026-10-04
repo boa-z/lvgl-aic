@@ -1,5 +1,41 @@
 # Validation record
 
+## SVG composition and premultiplied masks (2026-10-04)
+
+Combined SVG/vector/Lottie host regression **79/79 PASS** (34.90 seconds);
+disabled baseline **74/74 PASS** (27.21 seconds). The new real-renderer contract
+checks nine image-effect scenes across 20 draw lifetimes, independent composed
+pixel arithmetic, nested image/parent opacity, straight-alpha destinations and
+allocation-failure cleanup. It reproduces the old ignored-opacity result
+(expected RGB 136/16/24, got 254/0/0) and confirms the correction. Existing
+48-case SVG geometry checks remain green.
+
+A shared software-mask regression independently verifies centered mask coverage
+0/64/128/255 for straight, explicitly premultiplied and flagged-premultiplied
+layers. Premultiplied RGB and alpha now scale together. Every SVG temporary
+layer is released with its allocation accounting restored after drawing.
+
+The combined D13x 90-degree GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/
+widgets-demo/benchmark/music/vector/SVG/Lottie firmware passes boot/app,
+final-link/static, image and clean-source manifest gates. Generated SVG and
+software-image corrections are verified by source contents and live owners.
+
+- lvgl-aic: `53d76aa5a22e48590735381cc017165a24d160f3` (clean).
+- sdk: `66c9ac9e0738baf1902511356ee8502accc665a6` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `6077767e7f6a3ccdfa23ccbcc7c28c43d84bf3b0e9e9ff6b5b614e3473647b4a` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-svg-compose/manifest.json`.
+- Component logs: `output/svg-effect-before.log`, `output/svg-effect-focus.log`, `output/svg-effect-tests.log`, `output/svg-effect-baseline-tests.log`, `output/svg-effect-firmware.log`.
+
+Build with the combined profile and `-EvidenceTag svg-compose`. This introduces
+a temporary premultiplied image for SVG composition: ordinary images allocate
+the clipped visible area; tiled images allocate intrinsic size. Native sampler
+semantics apply to transformed tiles; blend-mode and combined mask/transform
+coverage is not exhaustive. SDK/LVGL sources remain unchanged. Camera stays
+disabled, no SPI panel is bound and nothing was flashed. Physical rendering,
+memory peak and performance **NOT_RUN**.
+See [composition behavior and resource limits](svg-composition-stage.md).
+
 ## SVG image transforms and clipped child layers (2026-10-04)
 
 Combined SVG/vector/Lottie host regression **78/78 PASS** (32.41 seconds).

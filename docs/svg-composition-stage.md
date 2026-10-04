@@ -50,7 +50,9 @@ independent blend arithmetic (tolerance two). The existing 48-case transform
 oracle and FILE/VARIABLE regressions remain green.
 
 Full combined host **79/79 PASS**; disabled baseline **74/74 PASS**.
-Clean target firmware evidence is pending at this feature commit. Blend modes
+Combined D13x firmware passes boot/app compilation, final-link/live-symbol,
+image and clean-source manifest checks; [validation](validation.md) records
+exact pins and the independently checked image hash. Blend modes
 and transformed tile/mask combinations delegate to native composition but do
 not yet have exhaustive pixel coverage. Rich SVG document semantics, external
 assets/fonts, parser/renderer memory limits and physical performance remain
