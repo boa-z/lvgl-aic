@@ -32,6 +32,7 @@ DISABLED_CONFIG_SYMBOLS = (
 )
 
 REQUIRED_MAP_SYMBOLS = {
+    "lv_draw_sw_image": r"build[\\/]lvgl-sw-image\.o",
     "lv_init": r"third_party[\\/]lvgl[\\/]src",
     "lv_display_create": r"third_party[\\/]lvgl[\\/]src",
     "lv_obj_create": r"third_party[\\/]lvgl[\\/]src",
@@ -277,6 +278,11 @@ def main():
     except ValueError:
         fail("link map is outside the integration checkout: %s" % map_path)
     check_config(root, args.phase, args.with_fonts, args.with_gif, args.with_widgets, args.with_player)
+    from stage_sw_premult import corrected as corrected_sw
+    expected_sw = corrected_sw((upstream / "src/draw/sw/lv_draw_sw_img.c").read_text(encoding="utf-8"))
+    if (root / "build/lvgl-sw-image.c").read_bytes() != expected_sw.encode("utf-8"):
+        fail("Software premultiplied image correction mismatch")
+
     config = (root / ".config").read_text(encoding="utf-8")
     header = (root / "rtconfig.h").read_text(encoding="utf-8")
     for symbol in ("AIC_LVGL_USE_APNG", "AIC_LVGL_USE_APNG_WIDGET"):

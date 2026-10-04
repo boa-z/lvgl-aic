@@ -23,8 +23,9 @@ must preserve that representation. The component wrapper normalizes an accepted
 ARGB8888 draw buffer to `ARGB8888_PREMULTIPLIED` before the native canvas caches
 its header, because this LVGL software renderer selects blending by color format.
 This updates the caller's descriptor metadata, without reallocating storage or
-changing ownership. GE declines that explicit format and native software draws
-it correctly. The GE backend does not claim Lottie rasterization.
+changing ownership. The subsequent [GE premultiplied stage](ge-premult-stage.md)
+adds image/layer composition for addressable storage, with software fallback for
+unsupported requests. The GE backend does not claim Lottie rasterization.
 
 `lv_lottie_set_src_file` uses a C filesystem path through ThorVG `fopen`, not an
 LVGL drive such as `S:/`. The native setters return void and are not a checked
@@ -58,8 +59,9 @@ source-derived two-second timing, native timer progression, pause/resume/reset,
 premultiplied screen composition and 20 create/render/delete cycles with no
 remaining widget animations. Combined SVG/vector/Lottie host suite **75/75 PASS**;
 source-drift rejection **PASS**. A GE contract independently checks that explicit
-premultiplied canvas storage takes software composition without a GE submission
-and retains the expected half-opacity red pixel. Logs: `output/lottie-{build,tests}.log`.
+premultiplied canvas storage originally took software composition without a GE
+submission and retained its half-opacity red pixel. This checkpoint is superseded
+by the GE composition and fallback coverage in the premultiplied stage. Logs: `output/lottie-{build,tests}.log`.
 Disabled baseline **72/72 PASS**. Combined D13x 90-degree GE/media/SPI/demos/
 vector/SVG/Lottie firmware passes final-link/static, image and clean-source
 manifest gates. Exact pins and image SHA256 are in [validation](validation.md). Physical display, heap pressure, long-running

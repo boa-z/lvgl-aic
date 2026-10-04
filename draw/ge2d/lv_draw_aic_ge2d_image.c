@@ -95,6 +95,30 @@ static int lv_draw_aic_ge2d_angle_2_12(int32_t angle, bool cosine)
     return value / 80;
 }
 
+static bool image_is_premultiplied(const lv_draw_buf_t *src)
+{
+    return src->header.cf == LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED ||
+           (src->header.cf == LV_COLOR_FORMAT_ARGB8888 &&
+            (src->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED));
+}
+
+static void image_source_alpha(struct ge_ctrl *ctrl, lv_color_format_t cf,
+                               lv_opa_t opa, bool premultiplied)
+{
+    if (opa >= LV_OPA_COVER && cf != LV_COLOR_FORMAT_ARGB8888) {
+        ctrl->alpha_en = 0U;
+        ctrl->src_alpha_mode = 0U;
+    }
+    else {
+        ctrl->alpha_en = 1U;
+        ctrl->alpha_rules = GE_PD_NONE;
+        /* SDK rewrites the full-opacity premultiplied path to (1, 1-As).
+         * Mixed opacity uses its depremultiply stage plus (As, 1-As). */
+        ctrl->src_alpha_mode = premultiplied && opa >= LV_OPA_COVER ? 0U : 2U;
+        ctrl->src_global_alpha = opa;
+    }
+}
+
 static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
                                     const lv_draw_buf_t *src,
                                     const lv_draw_buf_t *dst,
@@ -139,6 +163,7 @@ static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
     rot.src_buf.size.width = src->header.w;
     rot.src_buf.size.height = src->header.h;
     rot.src_buf.format = src_fmt;
+    if (image_is_premultiplied(src)) rot.src_buf.flags |= MPP_BUF_IS_PREMULTIPLY;
 
     rot.src_rot_center.x = draw_dsc->pivot.x;
     rot.src_rot_center.y = draw_dsc->pivot.y;
@@ -164,16 +189,7 @@ static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
     rot.angle_sin = lv_draw_aic_ge2d_angle_2_12(angle, false);
     rot.angle_cos = lv_draw_aic_ge2d_angle_2_12(angle, true);
 
-    if (draw_dsc->opa >= LV_OPA_COVER && src_cf != LV_COLOR_FORMAT_ARGB8888) {
-        rot.ctrl.alpha_en = 0U;
-        rot.ctrl.src_alpha_mode = 0U;
-    }
-    else {
-        rot.ctrl.alpha_en = 1U;
-        rot.ctrl.alpha_rules = GE_PD_NONE;
-        rot.ctrl.src_alpha_mode = 2U;
-        rot.ctrl.src_global_alpha = draw_dsc->opa;
-    }
+    image_source_alpha(&rot.ctrl, src_cf, draw_dsc->opa, image_is_premultiplied(src));
 
     ge = lv_draw_aic_ge2d_device();
     if (ge == NULL) {
@@ -244,8 +260,12 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     /* Acceptance already checked the destination, but the source format is
      * only known after the decode, so it has to be re-checked here. */
     src_cf = (lv_color_format_t)src->header.cf;
+    /* The MPP layout enum describes channel storage; the separate buffer flag
+     * carries premultiplication. Do not broaden unrelated format consumers. */
+    if (src_cf == LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED) src_cf = LV_COLOR_FORMAT_ARGB8888;
+    if (dst->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED) return false;
     if (draw_dsc->colorkey != NULL &&
-        (src_cf == LV_COLOR_FORMAT_RGB565 ||
+        (image_is_premultiplied(src) || src_cf == LV_COLOR_FORMAT_RGB565 ||
          (src_cf == LV_COLOR_FORMAT_ARGB8888 && draw_dsc->antialias))) {
         /* RGB565 expansion and premultiplied antialias filtering can change
          * the comparison space. Preserve LVGL's key semantics in software. */
@@ -384,6 +404,7 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     blt.src_buf.size.width = src->header.w;
     blt.src_buf.size.height = src->header.h;
     blt.src_buf.format = src_fmt;
+    if (image_is_premultiplied(src)) blt.src_buf.flags |= MPP_BUF_IS_PREMULTIPLY;
     blt.src_buf.crop_en = 1U;
     blt.src_buf.crop.x = src_area.x1;
     blt.src_buf.crop.y = src_area.y1;
@@ -402,55 +423,10 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     blt.dst_buf.crop.width = (uint32_t)lv_area_get_width(&dst_area);
     blt.dst_buf.crop.height = (uint32_t)lv_area_get_height(&dst_area);
 
-    /* Blending is needed when either side can contribute transparency: the
-     * source may carry a per-pixel alpha channel, and the draw descriptor may
-     * carry a partial global opacity. Only a source with neither takes the
-     * plain-copy path and skips the Porter/Duff datapath entirely.
-     *
-     * Note the D13x header comment inverts alpha_en's meaning - the HAL enables
-     * blending when it is non-zero, which is what the vendor port relies on too.
-     * src_alpha_mode 2 is the "mixed" mode, src_alpha = pixel alpha * global
-     * alpha / 255, which is exactly LVGL's own composition rule when both are
-     * present. A source with no alpha channel has an opaque pixel alpha, so the
-     * product reduces to the global value.
-     *
-     * The rule is GE_PD_NONE, and that name is misleading enough to be worth
-     * spelling out, because the obvious-looking alternative is wrong here.
-     *
-     * The GE's blend coefficients (ge_config_blend in hal_ge_hw.h) are
-     * 1: 1.0, 2: As, 3: 1-As, 4: Ad, 5: 1-Ad - coefficient 3 is 1-As, which the
-     * GE_PD_DST_OUT entry (0, 3) confirms. The enum is therefore the
-     * PREMULTIPLIED Porter/Duff table: GE_PD_SRC_OVER is (1, 1-As), which adds
-     * the source colour at full strength and relies on the source already
-     * carrying As. This source does not: the MPP decoder returns PNG/JPEG
-     * output as it found it and nothing in the pipeline sets
-     * MPP_BUF_IS_PREMULTIPLY, so the source is straight alpha and the
-     * premultiplied form over-brightens every partially transparent pixel.
-     * GE_PD_NONE is the pair that matches a straight source, (As, 1-As), i.e.
-     * Cs*As + Cd*(1-As) - what LVGL's own software blend computes.
-     *
-     * The HAL says the same thing from the other side. set_premuliply()
-     * rewrites the GE_PD_NONE pair to the GE_PD_SRC_OVER pair, but only after
-     * turning on the hardware premultiply stage, and only for src_alpha_mode 0.
-     * The mixed mode used here is src_alpha_mode 2, so that rewrite never
-     * applies and the straight pair has to be chosen here. The vendor GE2D port
-     * (lv_draw_ge2d_img.c) and the aic_player PNG backend (png_backend_ops.c)
-     * both leave alpha_rules at GE_PD_NONE for exactly this reason.
-     *
-     * The choice is written out rather than left to the zero-initialised
-     * descriptor, and it is measured rather than argued: the numeric probe in
-     * tests/manual/lv_aic_ge2d_test.c runs the engine against LVGL's arithmetic
-     * under both rules and reports the deviation of each. */
-    if (draw_dsc->opa >= LV_OPA_COVER && src_cf != LV_COLOR_FORMAT_ARGB8888) {
-        blt.ctrl.alpha_en = 0U;
-        blt.ctrl.src_alpha_mode = 0U;
-    }
-    else {
-        blt.ctrl.alpha_en = 1U;
-        blt.ctrl.alpha_rules = GE_PD_NONE;
-        blt.ctrl.src_alpha_mode = 2U;
-        blt.ctrl.src_global_alpha = draw_dsc->opa;
-    }
+    /* Straight sources use (As, 1-As). Premultiplied sources also publish the
+     * MPP flag so SDK normal/CMDQ backends select the required conversion.
+     * Never select SRC_OVER without also accounting for global opacity. */
+    image_source_alpha(&blt.ctrl, src_cf, draw_dsc->opa, image_is_premultiplied(src));
     blt.ctrl.flags = rotation_flags;
     if (draw_dsc->colorkey != NULL) {
         blt.ctrl.ck_en = 1U;

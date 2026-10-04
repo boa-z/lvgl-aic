@@ -64,7 +64,8 @@ static lv_result_t fill_core(lv_draw_task_t *task, bool replace, uint32_t argb)
         return LV_RESULT_OK;
     }
     cf = (lv_color_format_t)draw_buf->header.cf;
-    if (!lv_draw_aic_ge2d_dst_format_supported(cf) ||
+    if ((draw_buf->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED) ||
+        !lv_draw_aic_ge2d_dst_format_supported(cf) ||
         !lv_draw_aic_ge2d_buf_address_valid(draw_buf) ||
         (!replace && dsc->opa < LV_OPA_MAX && cf == LV_COLOR_FORMAT_ARGB8888)) {
         return LV_RESULT_INVALID;

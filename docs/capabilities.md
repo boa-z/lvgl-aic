@@ -6,6 +6,14 @@ and widgets/benchmark/music/vector/SVG/Lottie enabled together; see [current val
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
+## Premultiplied composition increment
+
+GE IMAGE/LAYER now accepts explicit or flagged premultiplied ARGB8888 sources,
+including supported transformed/tiled operations. Native software fallback now
+recognizes flagged sources across plain/rounded/recoloured/transformed drawing.
+See [GE premultiplied stage](ge-premult-stage.md) for configuration, host versus
+hardware evidence and numeric probes; board execution remains **NOT_RUN**.
+
 ## Current player/APNG status (2026-10-04)
 
 Player width/height requests now resize the native DE video window directly,

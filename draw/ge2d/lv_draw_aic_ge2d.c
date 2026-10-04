@@ -94,6 +94,7 @@ static bool lv_draw_aic_ge2d_accepts_dst(const lv_draw_task_t *task)
                lv_draw_aic_ge2d_dst_format_supported(layer->color_format);
     }
     draw_buf = layer->draw_buf;
+    if (draw_buf->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED) return false;
 
     if (!lv_draw_aic_ge2d_dst_format_supported((lv_color_format_t)draw_buf->header.cf)) {
         return false;

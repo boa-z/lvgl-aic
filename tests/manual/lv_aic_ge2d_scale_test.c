@@ -18,9 +18,10 @@
 #define SRC_STRIDE 128
 #define DST_STRIDE (DST_W * 4)
 
-static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
+static int scale_probe(uint16_t sx, uint16_t sy, unsigned source_kind, bool clipped,
                        bool pivoted, bool expect_engine, bool tiled, uint16_t rotation)
 {
+    bool argb = source_kind != 0, premult = source_kind >= 2;
     uint8_t *source = aicos_malloc_align(MEM_CMA, SRC_STRIDE * SRC_W, 32);
     uint8_t *output = aicos_malloc_align(MEM_CMA, DST_STRIDE * DST_W, 32);
     lv_draw_buf_t src, dst;
@@ -38,6 +39,7 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
             uint8_t *p = source + y * SRC_STRIDE + x * (argb ? 4 : 3);
             p[0] = 40 + 2*x + 2*y; p[1] = 30 + 5*y; p[2] = 20 + 6*x;
             if (argb) p[3] = 128;
+            if (premult) for(unsigned c=0;c<3;c++) p[c]=(p[c]*128U+127U)/255U;
         }
     }
     for (int i = 0; i < DST_W * DST_W; i++) {
@@ -45,10 +47,12 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
         output[i*4+2] = 16; output[i*4+3] = 255;
     }
     if (lv_draw_buf_init(&src, SRC_W, SRC_W,
+                         source_kind==2 ? LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED :
                          argb ? LV_COLOR_FORMAT_ARGB8888 : LV_COLOR_FORMAT_RGB888,
                          SRC_STRIDE, source, SRC_STRIDE * SRC_W) != LV_RESULT_OK ||
         lv_draw_buf_init(&dst, DST_W, DST_W, LV_COLOR_FORMAT_ARGB8888,
                          DST_STRIDE, output, DST_STRIDE * DST_W) != LV_RESULT_OK) goto done;
+    if (source_kind==3) src.header.flags |= LV_IMAGE_FLAGS_PREMULTIPLIED;
     lv_draw_image_dsc_init(&d);
     d.src = &src; d.scale_x = sx; d.scale_y = sy;
     d.header = src.header;
@@ -57,6 +61,7 @@ static int scale_probe(uint16_t sx, uint16_t sy, bool argb, bool clipped,
     d.opa = argb ? 128 : LV_OPA_COVER;
     /* Nonzero layer origin catches accidental display-vs-buffer coordinates. */
     layer.draw_buf = &dst;
+    layer.color_format = LV_COLOR_FORMAT_ARGB8888;
     layer.buf_area = (lv_area_t){100, 200, 100 + DST_W - 1, 200 + DST_W - 1};
     task.target_layer = &layer; task.type = LV_DRAW_TASK_TYPE_IMAGE;
     task.draw_dsc = &d; task.area = (lv_area_t){124, 224, 155, 255};
@@ -148,12 +153,85 @@ done:
     return result;
 }
 
+/* Compare real GE output with native SW from the same premultiplied bytes.
+ * Includes alpha zero, partial and opaque pixels, clip guards and global alpha. */
+static int premult_probe(bool flagged, lv_opa_t opacity)
+{
+    const unsigned bytes=16*16*4;
+    uint32_t *source=aicos_malloc_align(MEM_CMA,bytes,32);
+    uint32_t *output=aicos_malloc_align(MEM_CMA,bytes,32);
+    uint32_t *reference=aicos_malloc_align(MEM_CMA,bytes,32);
+    lv_draw_buf_t src,dst,ref;
+    lv_layer_t layer={0},ref_layer={0};
+    lv_draw_task_t task={0},ref_task={0};
+    lv_draw_image_dsc_t d;
+    bool submitted=false;
+    int result=-1,worst=0;
+    if(!source || !output || !reference) goto done;
+    const unsigned alphas[]={0,64,128,255};
+    for(unsigned i=0;i<256;i++) {
+        unsigned a=alphas[i%4];
+        source[i]=(a<<24)|(a<<16)|((a/2)<<8)|(a/4);
+        output[i]=reference[i]=0xff103050;
+    }
+    if(lv_draw_buf_init(&src,16,16,flagged?LV_COLOR_FORMAT_ARGB8888:
+        LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED,64,source,bytes)!=LV_RESULT_OK ||
+       lv_draw_buf_init(&dst,16,16,LV_COLOR_FORMAT_ARGB8888,64,output,bytes)!=LV_RESULT_OK ||
+       lv_draw_buf_init(&ref,16,16,LV_COLOR_FORMAT_ARGB8888,64,reference,bytes)!=LV_RESULT_OK) goto done;
+    if(flagged) src.header.flags|=LV_IMAGE_FLAGS_PREMULTIPLIED;
+    layer.draw_buf=&dst;layer.color_format=LV_COLOR_FORMAT_ARGB8888;
+    layer.buf_area=(lv_area_t){0,0,15,15};
+    lv_draw_image_dsc_init(&d);d.src=&src;d.header=src.header;
+    d.image_area=layer.buf_area;d.opa=opacity;
+    task.type=LV_DRAW_TASK_TYPE_IMAGE;task.draw_dsc=&d;task.target_layer=&layer;
+    task.area=layer.buf_area;task.clip_area=(lv_area_t){3,2,12,13};
+    aicos_dcache_clean_range((unsigned long *)source,bytes);
+    aicos_dcache_clean_invalid_range((unsigned long *)output,bytes);
+    submitted=true;
+    lv_draw_aic_ge2d_outcome_t outcome;
+    if(lv_draw_aic_ge2d_image(&task,&outcome)!=LV_RESULT_OK) {
+        lv_image_cache_drop(&src);
+        AIC_TEST_E("FAIL premult DMA status; retaining probe storage until reboot");
+        return -1;
+    }
+    if(outcome!=LV_DRAW_AIC_GE2D_OUTCOME_ENGINE) goto done;
+    aicos_dcache_invalid_range((unsigned long *)output,bytes);
+    ref_layer=layer;ref_layer.draw_buf=&ref;
+    ref_task=task;ref_task.target_layer=&ref_layer;
+    lv_draw_sw_image(&ref_task,&d,&ref_task.area);
+    for(unsigned y=0;y<16;y++) for(unsigned x=0;x<16;x++) {
+        if(x<3 || x>12 || y<2 || y>13) {
+            if(output[y*16+x]!=0xff103050) goto done;
+        }
+        for(unsigned c=0;c<4;c++) {
+            int delta=((const uint8_t *)output)[y*64+x*4+c]-((const uint8_t *)reference)[y*64+x*4+c];
+            if(delta<0) delta=-delta;
+            if(delta>worst) worst=delta;
+        }
+    }
+    if(worst>3) goto done;
+    result=0;
+done:
+    if(submitted) lv_image_cache_drop(&src);
+    if(source) aicos_free_align(MEM_CMA,source);
+    if(output) aicos_free_align(MEM_CMA,output);
+    if(reference) aicos_free_align(MEM_CMA,reference);
+    if(result==0) AIC_TEST_I("PASS premult flagged=%d opa=%u max_error=%d guards=OK engine=1",flagged,(unsigned)opacity,worst);
+    else AIC_TEST_E("FAIL premult flagged=%d opa=%u max_error=%d",flagged,(unsigned)opacity,worst);
+    return result;
+}
+
 int lv_aic_ge2d_scale_test_run(void)
 {
+    const lv_opa_t opacities[]={64,128,255};
+    for(unsigned flagged=0;flagged<2;flagged++) for(unsigned i=0;i<3;i++) {
+        AIC_TEST_I("BEGIN premult flagged=%u opa=%u",flagged,(unsigned)opacities[i]);
+        if(premult_probe(flagged!=0,opacities[i])) return -1;
+    }
     const uint16_t ratios[] = {128,384,512};
-    for (int argb = 0; argb < 2; argb++) {
+    for (int argb = 0; argb < 4; argb++) {
         for (unsigned i = 0; i < 3; i++) {
-            AIC_TEST_I("BEGIN sx=%u sy=%u argb=%d", (unsigned)ratios[i], (unsigned)ratios[i], argb);
+            AIC_TEST_I("BEGIN sx=%u sy=%u source_kind=%d", (unsigned)ratios[i], (unsigned)ratios[i], argb);
             if (scale_probe(ratios[i], ratios[i], argb, false, false, true, false,0)) return -1;
         }
     }
@@ -166,13 +244,13 @@ int lv_aic_ge2d_scale_test_run(void)
     if (scale_probe(15,256,false,false,false,false,false,0)) return -1;
     if (scale_probe(4097,256,false,true,false,false,false,0)) return -1;
     if (scale_probe(264,256,false,false,false,false,false,0)) return -1;
-    for (int argb = 0; argb < 2; argb++) {
-        AIC_TEST_I("BEGIN native tile argb=%d", argb);
+    for (int argb = 0; argb < 4; argb++) {
+        AIC_TEST_I("BEGIN native tile source_kind=%d", argb);
         if (scale_probe(256,256,argb,true,false,true,true,0)) return -1;
     }
-    for (int argb=0;argb<2;argb++) {
+    for (int argb=0;argb<4;argb++) {
         for (unsigned angle=0;angle<3600;angle+=900) {
-            AIC_TEST_I("BEGIN tile sx=384 sy=512 rot=%u argb=%d",angle/10,argb);
+            AIC_TEST_I("BEGIN tile sx=384 sy=512 rot=%u source_kind=%d",angle/10,argb);
             if (scale_probe(384,512,argb,true,true,true,true,(uint16_t)angle)) return -1;
         }
     }

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithVector, [switch]$WithSvg, [switch]$WithLottie, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithVector, [switch]$WithSvg, [switch]$WithLottie, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT, [ValidatePattern('^[a-z0-9][a-z0-9-]{0,31}$')][string]$EvidenceTag)
 $ErrorActionPreference='Stop'
 if ($WithSvg -or $WithLottie) { $WithVector=$true }
 if (-not $SdkRoot) {
@@ -50,6 +50,7 @@ if ($WithVector) { $variant += '-vector' }
 if ($WithSvg) { $variant += '-svg' }
 if ($WithLottie) { $variant += '-lottie' }
 if ($Rotation) { $variant += "-rotate$Rotation" }
+if ($EvidenceTag) { $variant += "-$EvidenceTag" }
 $evidence=Join-Path $root "output/lvgl-evidence/$variant"
 New-Item -ItemType Directory -Force $evidence | Out-Null
 $env:SCONS_LIB_DIR=Join-Path $root 'tools/env/tools/Python27/Lib/site-packages/scons'
@@ -161,5 +162,6 @@ if ($Phase -eq 'ge2d' -and (Select-String -Path .config -Pattern '^CONFIG_AIC_GE
     Copy-Item build/lvgl-ge-cmdq.c,build/lvgl-ge-cmdq.json "$evidence/"
 }
 if ($WithLottie) { Copy-Item build/lvgl-lottie-builder.cpp "$evidence/" }
+Copy-Item build/lvgl-sw-image.c "$evidence/"
 Run-Step 'manifest' @("$PSScriptRoot/write_manifest.py",$evidence,$variant)
 Write-Host "Verified test image and provenance: $evidence"

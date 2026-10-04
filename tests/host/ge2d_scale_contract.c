@@ -260,23 +260,49 @@ int main(void)
     task.draw_dsc = &d;
     g_ge2d_dev = mpp_ge_open();
     g_ge2d_ready = true;
-    /* The Lottie wrapper publishes explicit premultiplied pixels. Exercise
-     * the real GE rejection and software composition, including the decoder. */
-    {
-        assert(lv_draw_buf_init(&src,32,32,LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED,128,
-                               pixels,sizeof pixels)==LV_RESULT_OK);
-        src.header.flags|=LV_IMAGE_FLAGS_PREMULTIPLIED;
+    /* Both premultiplied representations cross the real decoder for IMAGE,
+     * LAYER, ROTATE, BITBLT and tiling; device calls here only capture commands. */
+    for(unsigned flagged=0;flagged<2;flagged++) {
+        assert(lv_draw_buf_init(&src,32,32,flagged?LV_COLOR_FORMAT_ARGB8888:
+            LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED,128,pixels,sizeof pixels)==LV_RESULT_OK);
+        if(flagged) src.header.flags|=LV_IMAGE_FLAGS_PREMULTIPLIED;
         for(unsigned i=0;i<sizeof pixels/4;i++) ((uint32_t *)pixels)[i]=0x80800000;
+        const unsigned opacities[]={64,128,255};
+        for(unsigned o=0;o<3;o++) for(unsigned mode=0;mode<5;mode++) {
+            lv_draw_image_dsc_init(&d);d.src=&src;d.header=src.header;d.image_area=origin;d.opa=opacities[o];
+            task.type=mode==3?LV_DRAW_TASK_TYPE_LAYER:LV_DRAW_TASK_TYPE_IMAGE;
+            if(mode==3) d.src=&child_layer;
+            task.area=origin;task.clip_area=layer.buf_area;
+            d.rotation=mode==1?900:mode==2?175:0;
+            if(mode==1) { d.scale_x=384;d.scale_y=512; }
+            if(mode==4) d.tile=1;
+            lv_draw_aic_ge2d_outcome_t outcome;
+            assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK);
+            assert(outcome==LV_DRAW_AIC_GE2D_OUTCOME_ENGINE);
+            const struct mpp_buf *source=mode==2?&captured_rotation.src_buf:&captured.src_buf;
+            const struct ge_ctrl *ctrl=mode==2?&captured_rotation.ctrl:&captured.ctrl;
+            assert(source->format==MPP_FMT_ARGB_8888 && (source->flags&MPP_BUF_IS_PREMULTIPLY));
+            assert(ctrl->alpha_en && ctrl->alpha_rules==GE_PD_NONE);
+            assert(ctrl->src_alpha_mode==(o==2?0:2) && ctrl->src_global_alpha==opacities[o]);
+        }
+        /* Key comparison in premultiplied space stays with native software. */
+        lv_draw_image_dsc_init(&d);d.src=&src;
+        lv_image_colorkey_t key={.low=lv_color_hex(0xff0000),.high=lv_color_hex(0xff0000)};
+        d.colorkey=&key;decoder.decoded=&src;
+        int key_submits=submits;
+        assert(!lv_draw_aic_ge2d_blit(&task,&d,&decoder,&origin,&clip));
+        assert(submits==key_submits);
+        /* Unaddressable storage still falls back to correct native pixels. */
+        task.type=LV_DRAW_TASK_TYPE_IMAGE;lv_draw_image_dsc_init(&d);
+        d.src=&src;d.header=src.header;d.image_area=origin;
         for(unsigned i=0;i<sizeof output/4;i++) ((uint32_t *)output)[i]=0xff000000;
-        lv_draw_image_dsc_init(&d);d.src=&src;d.header=src.header;d.image_area=origin;
-        task.area=origin;task.clip_area=layer.buf_area;
-        int count=submits,rot_count=rotate_submits;
+        allowed_src=NULL;int count=submits,rot_count=rotate_submits;
         lv_draw_aic_ge2d_outcome_t outcome;
         assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK);
         assert(outcome==LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
         uint32_t result=*(uint32_t *)(output+10*512+10*4);
         assert(((result>>16)&255)>=127 && ((result>>16)&255)<=128 && !(result&0xffff));
-        assert(submits==count && rotate_submits==rot_count);
+        assert(submits==count && rotate_submits==rot_count);allowed_src=pixels;
         lv_image_cache_drop(&src);
     }
     /* Independent floating-point oracle for every LVGL tenth of a degree.

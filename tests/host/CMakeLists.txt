@@ -52,6 +52,24 @@ set(LV_USE_FIND_PACKAGE OFF CACHE BOOL "" FORCE)
 set(LV_USE_PKG_CONFIG OFF CACHE BOOL "" FORCE)
 
 add_subdirectory("${LVGL_ROOT}" lvgl EXCLUDE_FROM_ALL)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(sw_image_source "${LVGL_ROOT}/src/draw/sw/lv_draw_sw_img.c")
+set(sw_image_generator "${AIC_ROOT}/tools/sdk/stage_sw_premult.py")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${sw_image_source}" "${sw_image_generator}")
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${sw_image_generator}"
+    --source "${sw_image_source}" --output "${CMAKE_CURRENT_BINARY_DIR}/lvgl-sw-image.c"
+    COMMAND_ERROR_IS_FATAL ANY)
+get_target_property(sw_lvgl_sources lvgl SOURCES)
+list(FILTER sw_lvgl_sources EXCLUDE REGEX "draw/sw/lv_draw_sw_img[.]c$")
+list(APPEND sw_lvgl_sources "${CMAKE_CURRENT_BINARY_DIR}/lvgl-sw-image.c")
+set_property(TARGET lvgl PROPERTY SOURCES "${sw_lvgl_sources}")
+target_include_directories(lvgl PRIVATE "${LVGL_ROOT}/src/draw/sw")
+add_executable(lvgl_aic_premult_image_contract premult_image_contract.c)
+target_link_libraries(lvgl_aic_premult_image_contract PRIVATE lvgl)
+target_compile_options(lvgl_aic_premult_image_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+add_test(NAME lvgl_aic_premult_image_contract COMMAND lvgl_aic_premult_image_contract)
+
+
 if(AIC_BUILD_VECTOR_TESTS)
     target_compile_definitions(lvgl PUBLIC AIC_LVGL_USE_VECTOR=1 LV_USE_STDLIB_SPRINTF=LV_STDLIB_BUILTIN)
     target_compile_definitions(lvgl_thorvg PRIVATE AIC_LVGL_USE_VECTOR=1)
@@ -1004,6 +1022,8 @@ endif()
 
 if(EXISTS "${AIC_SDK_ROOT}/packages/artinchip/mpp/ge/cmdq_ops.c")
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME lvgl_aic_ge_premult_sdk_contract COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_LIST_DIR}/ge_premult_sdk_contract.py" "${AIC_SDK_ROOT}" "${CMAKE_C_COMPILER}")
     add_test(NAME lvgl_aic_ge_cmdq_patch_contract COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_LIST_DIR}/ge_cmdq_patch_contract.py" "${AIC_SDK_ROOT}" "${CMAKE_C_COMPILER}")
 endif()
