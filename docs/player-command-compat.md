@@ -177,3 +177,24 @@ Final firmware update: clean combined build at `ad478d0` passes all 18
 transform/size live-symbol checks, build and image gates. See
 [validation.md](validation.md) for source identities and SHA256. Earlier pending
 final-link statements above are superseded; physical execution remains NOT_RUN.
+
+## Native-plane frame dimension correction (2026-10-04)
+
+Deferred scaling now reads dimensions from the current published frame descriptor,
+not `lv_image_t` source dimensions. Native-plane binding replaces the image source
+with a `.fake` destination window, so its width/height need not match decoded
+pixels. Using that window could generate non-unity scale even when the requested
+size exactly matched the decoded frame, causing the strict plane adapter to
+reject presentation.
+
+A regression publishes a 4x4 frame into a 6x5 native window, then requests 4x4.
+It failed before the correction at the unity-scale assertion. Afterward the
+object keeps scale 256 and native scanout updates to 4x4. **70/70 host PASS**;
+the plane driver is modeled, so this is not hardware geometry acceptance.
+D13x strict compilation PASS; SDK `output/player-frame-size-lv_aic_player.o`
+SHA256: `d7aa4489daa3efad97c92fb1a10469a1a1805077bf0c76f80609ec982ad8c3ed`.
+Logs: `output/player-frame-size-before.log`, `output/player-frame-size-build.log`,
+`output/player-frame-size-tests.log`, `output/player-frame-size-target.log`.
+Full-firmware refresh and physical execution for this correction remain pending.
+The plane adapter still rejects non-unity image scales; this fix does not extend
+its supported geometry profile.

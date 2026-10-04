@@ -665,6 +665,18 @@ int main(void)
         assert(!plane_live && alpha_enables==before && plane_presents==submitted);
         lv_obj_delete(o);tick();assert(!active && created==freed && retained==released);
     }
+    /* Native scanout displays a fake window whose size is not the decoded
+     * frame size. Deferred sizing must use frame metadata, not that window. */
+    o=make();lv_obj_set_pos(o,0,0);lv_obj_set_size(o,6,5);
+    assert(lv_aic_player_set_video_plane(o,true)==LV_RESULT_OK);
+    assert(lv_aic_player_set_src(o,"window-sized.mp4")==LV_RESULT_OK);
+    assert(lv_aic_player_start(o)==LV_RESULT_OK);rgb=true;frames=1;tick();
+    assert(plane_live && plane_w==6 && plane_h==5);
+    assert(lv_aic_player_set_width(o,4)==LV_RESULT_OK);
+    assert(lv_aic_player_set_height(o,4)==LV_RESULT_OK);
+    assert(lv_image_get_scale_x(o)==256 && lv_image_get_scale_y(o)==256);
+    tick();assert(plane_live && plane_w==4 && plane_h==4);
+    lv_obj_delete(o);tick();assert(!plane_live && !active);
     /* Top/system/bottom layers are visible roots, unlike inactive screens. */
     lv_obj_t *roots[]={lv_display_get_layer_top(d),lv_display_get_layer_sys(d),lv_display_get_layer_bottom(d)};
     for(unsigned i=0;i<3;i++) {

@@ -420,9 +420,12 @@ static bool present_plane(player_binding_t *b)
 static void apply_requested_size(player_binding_t *b)
 {
     if(!b->obj || b->closing || !b->frame) return;
-    lv_image_t *image=(lv_image_t *)b->obj;
-    int32_t w=image->w,h=image->h;
-    if(w<=0 || h<=0) return;
+    /* Native video-plane output replaces the object's source with a fake
+     * window. That window describes destination geometry, not decoder pixels. */
+    const lv_image_dsc_t *image=lv_aic_player_image_source(&b->frame->image);
+    if(!image) return;
+    uint32_t w=image->header.w,h=image->header.h;
+    if(!w || !h) return;
     if(b->requested_width) {
         uint32_t scale=(uint32_t)(((uint64_t)b->requested_width*256)/(uint32_t)w);
         lv_image_set_scale_x(b->obj,scale?scale:1);
