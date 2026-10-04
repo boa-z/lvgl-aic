@@ -242,6 +242,7 @@ def main():
     parser.add_argument("--with-apng", action="store_true")
     parser.add_argument("--with-barcode", action="store_true")
     parser.add_argument("--with-spi", action="store_true")
+    parser.add_argument("--with-camera", action="store_true")
     parser.add_argument("--with-aicp", action="store_true")
     parser.add_argument("--rotation", type=int, choices=(0, 90, 180, 270), default=0)
     parser.add_argument("--allow-component-dirty", action="store_true",
@@ -303,6 +304,25 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("barcode decoder live symbol absent: " + symbol)
         print("SDK barcode archive and worker adapter live symbols: PASS (not decoder execution)")
+    for feature in ("AIC_LVGL_USE_CAMERA", "AIC_LVGL_USE_VIN"):
+        enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
+        defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None
+        if enabled != args.with_camera or defined != args.with_camera:
+            fail("Camera profile mismatch: " + feature)
+    if args.with_camera:
+        for feature in ("AIC_MPP_VIN", "AIC_DVP_DRV", "AIC_USING_CAMERA", "AIC_I2C_DRV"):
+            if not re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE):
+                fail("Camera dependency missing: " + feature)
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        apis = ("create", "configure", "set_format", "set_channel", "get_channel",
+                "get_channel_status", "set_video_plane", "open", "start", "stop",
+                "pause", "resume", "close", "get_state", "pending_cleanup",
+                "barcode_enable", "barcode_disable", "barcode_only", "barcode_callback",
+                "capture_prepare", "capture_start", "capture_poll", "capture_destroy")
+        for symbol in tuple("lv_aic_camera_" + api for api in apis) + ("mpp_vin2_init", "mpp_vin2_deinit", "mpp_vin2_vb_init", "mpp_vin2_vb_deinit"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("Camera live symbol absent: " + symbol)
+        print("Camera widget/worker/VIN final link: PASS (no device execution)")
     spi_enabled = re.search(r"^CONFIG_AIC_LVGL_USE_SPI_SDK=y$", config, re.MULTILINE) is not None
     if spi_enabled != args.with_spi:
         fail("SPI profile mismatch")

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT)
 $ErrorActionPreference='Stop'
 if (-not $SdkRoot) {
     $candidate=Get-Item $PSScriptRoot
@@ -17,6 +17,22 @@ if ($WithAicp -and $Phase -eq 'gate1') { throw '-WithAicp requires the mpp or ge
 if ($WithGif -and $Phase -eq 'gate1') { throw '-WithGif requires the mpp or ge2d resource profile' }
 if ($WithPlayer -and $Phase -eq 'gate1') { throw '-WithPlayer requires mpp or ge2d' }
 if ($WithApng -and $Phase -eq 'gate1') { throw '-WithApng requires mpp or ge2d' }
+if ($WithCamera) {
+    if ($Phase -eq 'gate1') { throw '-WithCamera requires mpp or ge2d' }
+    $cameraProfile=if ($Phase -eq 'ge2d') { 'ge2d' } else { 'mpp' }
+    $cameraDef=Join-Path $root "target/configs/d13x_d50t-2-lite_rt-thread_lvgl-aic-${cameraProfile}_defconfig"
+    $cameraConfig=[IO.File]::ReadAllText($cameraDef)
+    foreach ($symbol in @('AIC_USING_DVP','AIC_USING_CAMERA')) {
+        if ($cameraConfig -notmatch ('(?m)^CONFIG_'+$symbol+'=y\r?$')) {
+            throw "Camera profile requires reviewed $symbol=y in $cameraDef; no sensor/pin defaults are selected by this script"
+        }
+    }
+    $sensors=[regex]::Matches($cameraConfig,'(?m)^CONFIG_AIC_USING_CAMERA_[A-Z0-9_]+=y\r?$')
+    if ($sensors.Count -ne 1) { throw 'Camera profile must explicitly select exactly one sensor' }
+    foreach ($symbol in @('AIC_CAMERA_I2C_CHAN','AIC_CAMERA_RST_PIN','AIC_CAMERA_PWDN_PIN')) {
+        if ($cameraConfig -notmatch ('(?m)^CONFIG_'+$symbol+'=.+\r?$')) { throw "Camera profile must explicitly supply $symbol" }
+    }
+}
 $variant=$Phase
 if ($WithFonts) { $variant += '-fonts' }
 if ($WithGif) { $variant += '-gif' }
@@ -26,6 +42,7 @@ if ($WithPlayer) { $variant += '-player' }
 if ($WithApng) { $variant += '-apng' }
 if ($WithBarcode) { $variant += '-barcode' }
 if ($WithSpi) { $variant += '-spi' }
+if ($WithCamera) { $variant += '-camera' }
 if ($Rotation) { $variant += "-rotate$Rotation" }
 $evidence=Join-Path $root "output/lvgl-evidence/$variant"
 New-Item -ItemType Directory -Force $evidence | Out-Null
@@ -78,7 +95,7 @@ if ($Phase -eq 'ge2d') {
 $defPath=Join-Path $root "target/configs/$def"
 $originalDef=[IO.File]::ReadAllBytes($defPath)
 try {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi) {
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera) {
         [IO.File]::WriteAllBytes("$evidence/defconfig-original", $originalDef)
         $settings=@("CONFIG_AIC_LVGL_DISPLAY_ROTATION=$([int]($Rotation / 90))")
         if ($WithFonts) { $settings += @('CONFIG_AIC_LVGL_USE_FREETYPE=y', 'CONFIG_LPKG_USING_FREETYPE=y', 'CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64') }
@@ -88,6 +105,7 @@ try {
         if ($WithPlayer) { $settings += @('CONFIG_AIC_LVGL_USE_VIDEO_PLANE=y', 'CONFIG_AIC_LVGL_USE_PLAYER=y', 'CONFIG_AIC_LVGL_USE_PLAYER_SESSION=y', 'CONFIG_AIC_MPP_PLAYER_INTERFACE=y', 'CONFIG_AIC_MPP_PLAYER_VIDEO_EXT_RENDER=y', 'CONFIG_AIC_MPP_H264_DEC_ENABLE=y') }
         if ($WithBarcode) { $settings += 'CONFIG_AIC_LVGL_USE_BARCODE=y' }
         if ($WithSpi) { $settings += 'CONFIG_AIC_LVGL_USE_SPI_SDK=y' }
+        if ($WithCamera) { $settings += @('CONFIG_AIC_MPP_VIN=y','CONFIG_AIC_LVGL_USE_VIN=y','CONFIG_AIC_LVGL_USE_CAMERA=y') }
         if ($WithApng) { $settings += @('CONFIG_AIC_LVGL_USE_APNG=y', 'CONFIG_AIC_LVGL_USE_APNG_WIDGET=y') }
         $content=[IO.File]::ReadAllText($defPath)
         foreach ($setting in $settings) {
@@ -101,7 +119,7 @@ try {
     Run-Step 'app-config' @($scons,"--apply-def=$def")
     Run-Step 'app-build' @($scons,"-j$Jobs")
 } finally {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
 }
 $app='output/'+($def -replace '_defconfig$','')+'/images'
 $checkArgs=@("$PSScriptRoot/check_integration.py",'--root','.', '--map',"$app/d13x.map",'--phase',$Phase)
@@ -114,6 +132,7 @@ if ($WithPlayer) { $checkArgs += '--with-player' }
 if ($WithApng) { $checkArgs += '--with-apng' }
 if ($WithBarcode) { $checkArgs += '--with-barcode' }
 if ($WithSpi) { $checkArgs += '--with-spi' }
+if ($WithCamera) { $checkArgs += '--with-camera' }
 $checkArgs += @('--rotation', "$Rotation")
 Run-Step 'static-check' $checkArgs
 Run-Step 'image-check' @("$PSScriptRoot/verify_image.py",$app,'output/d13x_d50t-2-lite_baremetal_bootloader/images',$Phase)

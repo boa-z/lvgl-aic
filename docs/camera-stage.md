@@ -390,3 +390,35 @@ the widget; cleanup reaches zero. **57/57 host PASS**, log
 `output/camera-barcode-recovery-tests.log`. VIN and decoder remain mocked;
 physical error recovery, input-switch timing and actual decoder restart behavior
 remain **NOT_RUN**. No runtime code or firmware configuration changed.
+
+## Explicit camera firmware profile (2026-10-04)
+
+`tools/sdk/build.ps1 -WithCamera` now enables component camera/VIN and MPP VIN
+for mpp/ge2d builds, adding `-camera` to the evidence variant. It does not select
+a sensor, bus or GPIOs. Before any boot/config build it requires the selected
+D50T smoke defconfig to explicitly contain `AIC_USING_DVP=y`,
+`AIC_USING_CAMERA=y`, exactly one `AIC_USING_CAMERA_<sensor>=y`, and
+`AIC_CAMERA_I2C_CHAN`, `AIC_CAMERA_RST_PIN`, `AIC_CAMERA_PWDN_PIN` values.
+Supply these from the reviewed board configuration; SDK defaults are not evidence
+of the connected sensor. Empty GPIO strings, when appropriate, must be explicit.
+
+The application component roots camera widget lifecycle/channel/plane/barcode
+entry points in smoke links. `check_integration.py --with-camera` requires camera
+and VIN configuration/header agreement, MPP VIN/DVP/I2C/camera dependencies, live
+widget/capture APIs and actual `mpp_vin2_*` pool/device lifecycle symbols. The
+build still restores the smoke defconfig after completion or failure. No camera
+widget creation or capture start is added. Normal board driver initialization
+remains the SDK's behavior when a camera-enabled image is later booted.
+
+Validation: Python/SCons and PowerShell syntax checks PASS. With the current
+non-camera smoke defconfig, `-WithCamera` correctly rejects missing explicit DVP
+configuration before boot/config mutation. Updated static integration checks
+PASS against the existing non-camera combined firmware (development check with
+`--allow-component-dirty`; log `output/camera-disabled-static.log`). This is not
+a new clean firmware build or an enabled-camera link result.
+
+Current D50T smoke profiles contain no reviewed camera sensor/bus/pin selection.
+Enabled camera full-link evidence therefore remains **NOT_RUN / configuration
+required**, pending the user's camera-enabled D50T defconfig or confirmed wiring.
+Host/standalone camera evidence remains valid within its recorded scope; it does
+not satisfy this gate. Other GE/widget work can proceed independently.

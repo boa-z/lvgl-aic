@@ -145,7 +145,8 @@ config AIC_LVGL_USE_CAMERA
     help
         Camera control with worker-owned VIN capture and immutable YUV images.
         Explicit application colorimetry and YUV decoder initialization required.
-        Uses LVGL composition, not the SDK lower video plane or barcode backend.
+        Defaults to LVGL composition; optional video-plane output and barcode
+        decoding require their explicit component features and configuration.
 
 config AIC_LVGL_USE_APNG
     bool "Build asynchronous application-owned APNG playback"

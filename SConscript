@@ -162,4 +162,12 @@ if GetDepend('AIC_LVGL_USE_GE2D') and GetDepend('AIC_GE_CMDQ'):
                          CPPPATH=ge_paths)
     Env.AppendUnique(LINKFLAGS=['-Wl,--wrap=ge_cmdq_ops'])
 
+# Camera smoke roots verify closure without creating a widget or starting VIN.
+if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_CAMERA'):
+    for api in ('create', 'configure', 'set_format', 'set_channel', 'get_channel',
+                'get_channel_status', 'set_video_plane', 'open', 'start', 'stop',
+                'pause', 'resume', 'close', 'get_state', 'pending_cleanup',
+                'barcode_enable', 'barcode_disable', 'barcode_only', 'barcode_callback'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_camera_' + api])
+
 Return('group')
