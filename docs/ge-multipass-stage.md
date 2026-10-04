@@ -48,7 +48,7 @@ of copy/premultiply, bilinear scale and rotation/composition. It exercises 288
 IMAGE/LAYER combinations (RGB565/RGB888/XRGB8888, straight and both premultiplied
 ARGB encodings), nonuniform/fractional scales, three angles and two opacities.
 104,520 interior pixels are compared against an independent inverse transform
-and alpha blend, with a two-channel-value tolerance. Full and split refreshes
+and alpha blend, with a tolerance of two values per color channel. Full and split refreshes
 are byte-identical. Nine tiles share one preparation; a later one-pixel cell
 declines before any allocation or command. Both allocations, address rejection
 and all nine submit/emit/sync failure points are exercised. Geometry probes also
@@ -66,5 +66,7 @@ require an engine outcome, independent ramp pixels and intact clipping guards.
 They run with the existing GE scale probes in the smoke firmware. Physical
 execution remains **NOT_RUN** and is deferred with the other acceptance work.
 
-Host/full firmware results and clean source/image identities are recorded in
+Combined host **81/81 PASS** and vector/SVG/Lottie-disabled baseline **76/76
+PASS**. Full D13x boot/app compilation, live-symbol checks, image and clean-source
+manifest gates also pass. Exact source/image identities are recorded in
 [validation](validation.md). No SDK or upstream LVGL source is modified.

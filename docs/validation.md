@@ -1,5 +1,41 @@
 # Validation record
 
+## GE arbitrary-angle scaled rotation (2026-10-04)
+
+The RGB executor now combines padded premultiplied copy, raw-channel scaling and
+rotation/composition with bounded shared scratch storage. Tiling validates every
+cell before commands and shares preparation. See [multipass implementation and
+limits](ge-multipass-stage.md).
+
+- Combined host **81/81 PASS** (16.29 s); vector/SVG/Lottie-disabled baseline
+  **76/76 PASS** (15.75 s).
+- New real-executor CPU model: 288 IMAGE/LAYER scenes, 104,520 independent
+  interior pixels, full/partial equality, nine tiles sharing one preparation,
+  late-cell preflight rejection, allocation/address failures and nine uncertain
+  DMA failure points. Both scaled-buffer borders remain transparent.
+- Actual SDK normal/CMDQ alpha helpers pass preparation/raw-scale/final-opacity
+  control-state checks. Neither test is hardware arithmetic evidence.
+- Full D13x boot/app build, live planner/executor linkage, image and clean-source
+  manifest checks **PASS**. Effective scratch budget verified as **2097152 bytes**.
+- Eight additional board ramp/clip probes are compiled into the smoke image.
+  Physical pixels, alpha/filtering edges and performance remain **NOT_RUN**.
+
+Clean build identities (subsequent documentation commits are not build pins):
+
+- SDK: `efe13454366fb835a219d1f2add4e39d8c2104da`.
+- lvgl-aic: `dfa662ee33be52de572f34021537e358dc6de2e7`.
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `f5780df98c1fc7183f2d79586b6fc6f858b5b9fde2f0e8fcf527e9ec822252c9`.
+- ELF SHA256: `e288a9264d1b4e5e972b012aa2c7af98fd5f98a66014aec62fa1b3a8590a66d0`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-ge-multipass/manifest.json`.
+- Component logs: `output/ge-multipass-focus.log`, `output/ge-multipass-tests.log`,
+  `output/ge-multipass-baseline-tests.log`, `output/ge-multipass-firmware.log`.
+
+Use the combined build profile with `-EvidenceTag ge-multipass`. Image and ELF
+hashes were independently verified against the manifest. The SDK build commit
+is retained locally at `refs/lvgl-evidence/ge-multipass` when its branch gitlink
+is amended to the following documentation commit.
+
 ## Software rotation precision (2026-10-04)
 
 Matched Q15 forward geometry and inverse software sampling correct the remote

@@ -25,7 +25,9 @@ Optional backends include FILE and RAW/RAW_ALPHA memory JPEG/PNG decoding,
 a bounded decoded-image cache (512 KiB default), and synchronous GE2D
 FILL/IMAGE/LAYER dispatch. FILL includes partial opacity on RGB565/RGB888/XRGB8888
 (12 numeric board probes and operator visual acceptance passed in the resource stage). IMAGE supports bounded scaling, orthogonal
-rotation and combined transforms. Ordinary D13x heap layers fall back to software.
+rotation and bounded arbitrary-angle scale/rotation through shared scratch
+passes. Ordinary D13x heap layers fall back to software. See the
+[multipass stage](docs/ge-multipass-stage.md) for budgets and pending hardware acceptance.
 
 Target OS integration is LV_OS_CUSTOM with RT event-based binary notifications.
 No semaphore-value-limit kernel backport is required. Encoder and USB mouse

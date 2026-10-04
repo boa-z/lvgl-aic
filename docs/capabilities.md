@@ -1,12 +1,13 @@
 # Current capabilities and SDK gaps
 
-Latest combined evidence: **80/80 SVG/vector/Lottie-enabled host PASS**, **75/75 baseline PASS** and GE/widget/SPI full firmware
+Latest combined evidence: **81/81 SVG/vector/Lottie-enabled host PASS**, **76/76 baseline PASS** and GE/widget/SPI full firmware
 build/link/image/provenance **PASS**, including the two-slot SPI display pipeline
 and widgets/benchmark/music/vector/SVG/Lottie enabled together, plus premultiplied
 GE sources, checked Lottie source loading, corrected SVG transforms/composition,
-checked GE rotation centers and matched Q15 software fallback geometry/sampling;
+checked GE rotation centers, matched Q15 software fallback geometry/sampling
+and bounded GE arbitrary-angle scale/rotation;
 see [current validation](validation.md). Both host configurations were rerun for
-the software rotation increment.
+the multipass transform increment.
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
@@ -17,7 +18,9 @@ copy, raw-channel scale, final rotate/composite. IMAGE/LAYER and tiled requests
 share scratch ownership and all-tile preflight. A combined 2 MiB default budget
 limits allocation; uncertain DMA retains both scratch buffers. Eight numeric
 board probes are included, with physical execution **NOT_RUN**. See
-[multipass geometry, alpha, limits and evidence](ge-multipass-stage.md).
+[multipass geometry, alpha, limits and evidence](ge-multipass-stage.md). Host **81/81 PASS**,
+vector/SVG/Lottie-disabled baseline **76/76 PASS**, and full D13x compilation,
+final-link, image and clean-source manifest gates **PASS**.
 
 ## Software rotation precision increment
 
@@ -129,9 +132,9 @@ phase documents are historical; source presence and switches are not board proof
 | Image resources | FILE/RAW JPEG/PNG; optional SDK AICP; software BMP RGB555/RGB565/24/32-bit; shared CMA/cache ownership; SDK L-drive .fake pseudo-fills; immutable RGB/YUV frame publication | New AICP/BMP/fake/YUV board probes NOT_RUN; integrated media/APNG workers await physical acceptance |
 | Image cache | Component LRU, byte/entry bounds, decode-option keys, referenced-reader lifetime and explicit invalidation | Resource success inferred; direct cache-hit log pending; not transparent generic LVGL cache invalidation |
 | GE FILL | Solid rectangles; partial opacity on RGB565/RGB888/XRGB8888, no radius/gradient | 12 board numeric probes and operator visual acceptance PASS; partial ARGB8888 still software |
-| GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded transformed tiling, bounded scale, right-angle rotation plus scale, unscaled arbitrary-angle rotation; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, arbitrary-angle plus scale, recolor/masks; YUV uses the separate frame path below |
+| GE IMAGE | Four RGB/ARGB/XRGB formats, alpha, bounded transformed tiling, bounded scale, right-angle rotation plus scale, arbitrary-angle rotation plus bounded multipass scale; exact color key for RGB888/XRGB8888 and non-antialiased ARGB8888 without scaling or arbitrary rotation | Color-key ranges/RGB565/filtering, recolor/masks; multipass memory/geometry bounds and physical acceptance; YUV uses the separate frame path below |
 | GE scale | Nominal 1/16..16; pivot/clip/per-axis handling | Small/unsafe geometry and D13x split interval fall back |
-| GE LAYER | Plain composition, bounded 1/16..16 scale with right-angle rotation, and unscaled arbitrary-angle rotation when the child buffer is accessible | Bounded default CMA draw buffers remove the ordinary-heap barrier; allocation fallback and ROTATE regions outside 4..4096 still use software; arbitrary-angle plus scale, YUV and general HW layers remain absent |
+| GE LAYER | Plain composition, bounded 1/16..16 scale with orthogonal or arbitrary-angle rotation when the child buffer is accessible | Bounded default CMA draw buffers remove the ordinary-heap barrier; allocation fallback and ROTATE regions outside 4..4096 still use software; multipass memory/geometry bounds apply; YUV and general HW layers remain absent |
 | Scheduling | Synchronous, error/task counters, bounded refresh timing | Async work and paired GE ON/OFF board timing |
 | Fonts | Optional native FreeType bitmap fonts: dynamic sizes/styles, Chinese fallback and native glyph LRU; real host render/lifecycle tests | New font image needs board validation; vendor AIC cache and global font-byte budget absent |
 | GIF | Optional native LVGL 9.6 widget; FILE/RAW playback, pause/resume/restart; host pixel/lifecycle tests; board CLI panel | Default off; new GIF candidate needs board acceptance; no general GIF byte budget |
@@ -210,7 +213,7 @@ not from assumptions that every LVGL draw feature is hardware accelerated.
 | Image tiling | lv_ge2d/lv_draw_ge2d_img.c calls the tiled image helper | Clipped IMAGE tiles with bounded scale/rotation and whole-task preflight implemented; native-size target probes exist; transformed probes and board validation remain; see [tiling stage](ge-tiling-stage.md) |
 | YUV image input | lv_ge2d/lv_draw_ge2d.c accepts YUV with orthogonal rotations | Bounded 12-format views, CPU conversion, immutable image publication and native-size GE orthogonal rendering implemented; bounded GE scaling plus orthogonal rotation and transformed tiling implemented; board acceptance pending; see [YUV stage](yuv-stage.md) |
 | fake image | aic_ui.h encodes dimensions/blend/color in a .fake path; GE turns it into a fill | Implemented bounded parser, LVGL 9.6 virtual-file bridge and GE/CPU replacement/blend; board pending; see [fake stage](fake-image-stage.md) |
-| Arbitrary rotation plus scale | ge2d_draw_img_supported explicitly rejects it | Future extension beyond this SDK baseline |
+| Arbitrary rotation plus scale | ge2d_draw_img_supported explicitly rejects it | Bounded multipass implementation beyond this SDK baseline; board acceptance NOT_RUN |
 | Recolor / bitmap mask | ge2d_draw_img_supported explicitly rejects both | Software fallback is consistent with SDK; GE support is an extension |
 | Screen rotation | SDK submits a synchronous rotated bitblt | Port implemented, 90-degree target build passes; board acceptance pending |
 | AICP / BMP | SDK codec / custom software BMP paths | Port implemented and target-built with resource probes; hardware results pending |
