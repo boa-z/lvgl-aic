@@ -724,8 +724,9 @@ is still NOT_RUN, with no physical SPI panel instantiated.
 Follow-up preflight now matches the draw backend's bounded 1/16..16 per-axis
 scale policy and reuses `lv_aic_ge2d_scale_split_risk` for SDK split geometry.
 Horizontal scaler output is selected before rotation (destination height for
-90/270). Out-of-bound ratios or split-risk cases return INVALID before cache or
-GE commands; the session then uses CPU packing. This prevents the new SPI path
+90/270). Out-of-bound ratios return INVALID before cache or GE commands; the session
+then uses CPU packing. The subsequent [SPI stripe increment](spi-stripes-stage.md)
+replaces split-risk rejection with SDK-phase-preserving RGB565 commands. This prevents the new SPI path
 from bypassing existing draw-backend hardware limits.
 
 Validation: **69/69 host PASS**, including 65-to-4 rejection, 64-to-4 acceptance,

@@ -31,8 +31,9 @@ RGB565/RGB888/XRGB8888/ARGB8888, a fractional initial phase in [0,65535] and
 orthogonal rotation flags. Other intervals retain their original descriptor.
 Existing source sampling, dimensions, physical address and task guards still
 apply. Fractional outer samples outside the source can still require software.
-YUV/chroma and the separate SPI conversion planner retain their split-risk
-fallback; this stage does not relax their alignment or phase contracts.
+YUV/chroma retains its split-risk fallback. The subsequent
+[SPI converter increment](spi-stripes-stage.md) adds its own phase/edge-storage
+contract on top of this planner.
 
 ## Verification
 

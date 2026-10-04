@@ -3,6 +3,7 @@
 #if AIC_LVGL_USE_SPI_SDK && AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 #include "lv_aic_spi_ge2d.h"
 #include "lv_draw_aic_ge2d_scale.h"
+#include "lv_draw_aic_ge2d_stripes.h"
 #include "lvgl.h"
 #include <aic_osal.h>
 #include <mpp_ge.h>
@@ -29,7 +30,7 @@ lv_aic_spi_ge2d_t *lv_aic_spi_ge2d_create(uint32_t mw,uint32_t mh,
     uint32_t w,uint32_t h,size_t budget)
 {
     if(!mw || !mh || !w || !h || mw>4096 || mh>4096 || w>4096 || h>4096) return NULL;
-    size_t ss=((size_t)mw*2+63)&~(size_t)63,ds=((size_t)w*2+63)&~(size_t)63;
+    size_t ss=((size_t)(mw+1)*2+63)&~(size_t)63,ds=((size_t)w*2+63)&~(size_t)63;
     size_t sb=ss*mh,db=ds*h;
     if(sb+db>budget) return NULL;
     lv_aic_spi_ge2d_t *s=lv_malloc_zeroed(sizeof(*s));
@@ -70,9 +71,10 @@ lv_aic_spi_result_t lv_aic_spi_ge2d_convert(lv_aic_spi_ge2d_t *s,
     /* Match the draw backend's bounded scale and vendor split-risk policy.
      * The scaler runs before rotation: its horizontal destination is swapped. */
     uint32_t ow=rotated?s->height:s->width,oh=rotated?s->width:s->height;
-    if(ow>f.width*16 || oh>f.height*16 || f.width>ow*16 || f.height>oh*16 ||
-       lv_aic_ge2d_scale_split_risk((int32_t)((f.width*65536U)/ow),(int32_t)ow))
+    if(ow>f.width*16 || oh>f.height*16 || f.width>ow*16 || f.height>oh*16)
         return LV_AIC_SPI_INVALID;
+    int32_t dx=(int32_t)((f.width*65536U)/ow),dy=(int32_t)((f.height*65536U)/oh);
+    bool striped=lv_aic_ge2d_scale_split_risk(dx,(int32_t)ow);
     size_t row=(size_t)f.width*2,bytes=(size_t)s->width*s->height*2;
     if(f.height>1 && f.stride>(SIZE_MAX-row)/(f.height-1)) return LV_AIC_SPI_INVALID;
     size_t span=f.stride*(f.height-1)+row;
@@ -83,12 +85,6 @@ lv_aic_spi_result_t lv_aic_spi_ge2d_convert(lv_aic_spi_ge2d_t *s,
        overlaps(in,span,(uintptr_t)s->dst,s->dst_bytes) ||
        overlaps(out,bytes,(uintptr_t)s->src,s->src_bytes) ||
        overlaps(out,bytes,(uintptr_t)s->dst,s->dst_bytes)) return LV_AIC_SPI_INVALID;
-    s->busy=true;
-    /* Zero row padding too: GE filtering must never read stale staging pixels. */
-    memset(s->src,0,s->src_bytes);
-    for(uint32_t y=0;y<f.height;y++) memcpy(s->src+y*s->src_stride,f.data+y*f.stride,row);
-    aicos_dcache_clean_range((unsigned long *)s->src,(unsigned long)s->src_bytes);
-    aicos_dcache_clean_invalid_range((unsigned long *)s->dst,(unsigned long)s->dst_bytes);
     struct ge_bitblt blt={0};
     blt.ctrl.flags=degrees==90?MPP_ROTATION_90:degrees==180?MPP_ROTATION_180:
                    degrees==270?MPP_ROTATION_270:0;
@@ -99,7 +95,30 @@ lv_aic_spi_result_t lv_aic_spi_ge2d_convert(lv_aic_spi_ge2d_t *s,
     blt.src_buf.size.width=(int)f.width;blt.src_buf.size.height=(int)f.height;
     blt.dst_buf.size.width=(int)s->width;blt.dst_buf.size.height=(int)s->height;
     blt.src_buf.format=blt.dst_buf.format=MPP_FMT_RGB_565;
-    if(mpp_ge_bitblt(s->ge,&blt)<0 || mpp_ge_emit(s->ge)<0 || mpp_ge_sync(s->ge)<0) {
+    if(striped) {
+        /* Match SDK normal/CMDQ INIT_PHASE exactly. Its final upscaled sample
+         * extends past the last source center. Duplicate that edge in our
+         * owned stage so all strip filter footprints remain addressable. */
+        blt.src_buf.size.width++;
+        blt.scale_phase.scale_phase_en=blt.scale_phase.scaler_en=1;
+        blt.scale_phase.channel_num=1;
+        blt.scale_phase.dx_16[0]=dx;blt.scale_phase.dy_16[0]=dy;
+        blt.scale_phase.h_phase_16[0]=dx/2;
+        blt.scale_phase.v_phase_16[0]=dy/2-(dy>=65536?32768:0);
+    }
+    unsigned commands;
+    if(!lv_aic_ge2d_stripe_count(&blt,&commands)) return LV_AIC_SPI_INVALID;
+    s->busy=true;
+    /* Zero padding and unused rows; retain source ownership through staging. */
+    memset(s->src,0,s->src_bytes);
+    for(uint32_t y=0;y<f.height;y++) {
+        uint8_t *p=s->src+y*s->src_stride;
+        memcpy(p,f.data+y*f.stride,row);
+        if(striped) memcpy(p+row,p+row-2,2);
+    }
+    aicos_dcache_clean_range((unsigned long *)s->src,(unsigned long)s->src_bytes);
+    aicos_dcache_clean_invalid_range((unsigned long *)s->dst,(unsigned long)s->dst_bytes);
+    if(lv_aic_ge2d_stripe_run(s->ge,&blt)!=1) {
         s->fault=true;s->busy=false;return LV_AIC_SPI_FAULT;
     }
     aicos_dcache_invalid_range((unsigned long *)s->dst,(unsigned long)s->dst_bytes);

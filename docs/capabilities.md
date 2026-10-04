@@ -1,18 +1,26 @@
 # Current capabilities and SDK gaps
 
-Latest combined evidence: **82/82 SVG/vector/Lottie-enabled host PASS**, **77/77
-baseline PASS**, and full GE/widget/SPI firmware build/link/image/provenance
-**PASS** for near-unity RGB stripes, including demos/music/vector/SVG/Lottie,
-fonts and codecs together. See [current validation](validation.md). Physical
-acceptance remains **NOT_RUN**; milestone counts below are historical checkpoints.
+Latest host evidence: **83/83 SVG/vector/Lottie-enabled PASS**, **78/78 baseline
+PASS** for SPI RGB565 stripes. Combined firmware validation for this increment
+is pending. Physical acceptance remains **NOT_RUN**; counts below describe their
+historical checkpoints. See [current validation](validation.md).
+
+## SPI RGB565 stripe increment
+
+The owned SPI GE converter now uses the RGB stripe planner with SDK phases and
+a replicated final source pixel. Every strip completes before output packing;
+uncertain completion suppresses SPI and retains the existing session claims.
+The source budget includes one extra edge pixel per aligned row. Eight offscreen
+board probes require no panel binding. See [SPI stripe geometry, budget and
+validation](spi-stripes-stage.md).
 
 ## GE near-unity RGB stripe increment
 
 Ordinary IMAGE/LAYER, orthogonal transforms, tiles and multipass preparation now
 avoid the vendor scaler split-risk interval using balanced 16..31-pixel RGB
 commands. Every strip is preflighted and retains the original sampling phase;
-uncertain DMA blocks replay. Forty board probes are included. YUV and the
-separate SPI planner retain their existing fallback. See [stripe geometry,
+uncertain DMA blocks replay. Forty board probes are included. YUV retains its existing fallback; the subsequent SPI increment extends the
+separate RGB565 converter. See [stripe geometry,
 limits and host evidence](ge-stripes-stage.md).
 
 ## GE multipass transform increment

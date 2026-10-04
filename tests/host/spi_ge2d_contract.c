@@ -55,10 +55,10 @@ void aicos_dcache_clean_range(unsigned long *p,unsigned long bytes)
 void aicos_dcache_clean_invalid_range(unsigned long *p,unsigned long bytes)
 { assert(p && bytes && stage++==1); }
 void aicos_dcache_invalid_range(unsigned long *p,unsigned long bytes)
-{ assert(p && bytes && stage++==5); }
+{ assert(p && bytes && stage++>=5 && (stage-6)%3==0); }
 int mpp_ge_bitblt(struct mpp_ge *g,struct ge_bitblt *b)
 {
-    assert(g && stage++==2);calls++;command=*b;
+    assert(g && stage++>=2 && (stage-3)%3==0);calls++;command=*b;
     if(status) {
         overlap_calls++;assert(active_tx && !memcmp(active_tx,submitted,56));
         assert((uintptr_t)active_tx!=b->src_buf.phy_addr[0] &&
@@ -74,10 +74,10 @@ int mpp_ge_bitblt(struct mpp_ge *g,struct ge_bitblt *b)
     return fail_at==1?-1:0;
 }
 int mpp_ge_emit(struct mpp_ge *g)
-{ assert(g && stage++==3);return fail_at==2?-1:0; }
+{ assert(g && stage++>=3 && (stage-4)%3==0);return fail_at==2?-1:0; }
 int mpp_ge_sync(struct mpp_ge *g)
 {
-    assert(g && stage++==4);
+    assert(g && stage++>=4 && (stage-5)%3==0);
     if(fail_at==3) return -1;
     /* Model the engine only: validate command geometry/cache order, then
      * generate deterministic pixels. Physical filtering is not tested here. */
@@ -152,9 +152,9 @@ int main(void)
     assert(lv_aic_spi_ge2d_close(active)==LV_AIC_SPI_OK);
     for(unsigned rotated=0;rotated<2;rotated++) {
         active=lv_aic_spi_ge2d_create(64,4,rotated?4:64,rotated?64:4,8192);assert(active);
-        geometry.width=63;before=calls;
-        assert(lv_aic_spi_ge2d_convert(active,&geometry,small,sizeof(small),rotated?90:0,false)==LV_AIC_SPI_INVALID);
-        assert(calls==before);geometry.width=64;stage=0;
+        geometry.width=63;before=calls;stage=0;
+        assert(lv_aic_spi_ge2d_convert(active,&geometry,small,sizeof(small),rotated?90:0,false)==LV_AIC_SPI_OK);
+        assert(calls==before+3);geometry.width=64;stage=0;
         assert(lv_aic_spi_ge2d_convert(active,&geometry,small,sizeof(small),rotated?90:0,false)==LV_AIC_SPI_OK);
         assert(lv_aic_spi_ge2d_close(active)==LV_AIC_SPI_OK);
     }

@@ -237,6 +237,60 @@ done:
     return result;
 }
 
+#if AIC_LVGL_USE_SPI_SDK
+#include "lv_aic_spi_ge2d.h"
+/* Tests only the owned GE conversion stage: no SPI bus or panel is opened. */
+static unsigned spi_channel(uint16_t p,unsigned c)
+{ return c==0?p&31:c==1?(p>>5)&63:p>>11; }
+static int spi_stripe_probe(unsigned rotation,bool swap)
+{
+    enum { SOURCE_BYTES=63*8*2,OUTPUT_BYTES=64*8*2+2 };
+    uint8_t *storage=lv_malloc(SOURCE_BYTES+OUTPUT_BYTES);
+    if(!storage) return -1;
+    uint16_t *source=(uint16_t *)storage;
+    uint8_t *output=storage+SOURCE_BYTES;
+    for(unsigned y=0;y<8;y++) for(unsigned x=0;x<63;x++)
+        source[y*63+x]=((x/3)<<11)|((y*5+x/4)<<5)|(x/4+y);
+    lv_aic_spi_rgb565_frame_t frame={.data=(const uint8_t *)source,.capacity=SOURCE_BYTES,
+        .width=63,.height=8,.stride=126};
+    unsigned w=rotation&1?8:64,h=rotation&1?64:8;
+    lv_aic_spi_ge2d_t *g=lv_aic_spi_ge2d_create(63,8,w,h,8192);
+    if(!g) { lv_free(storage);return -1; }
+    lv_memset(output,0xa5,OUTPUT_BYTES);
+    lv_aic_spi_result_t converted=lv_aic_spi_ge2d_convert(g,&frame,output+1,OUTPUT_BYTES-2,rotation*90,swap);
+    if(converted!=LV_AIC_SPI_OK) {
+        /* Converter retains its own DMA storage on FAULT; borrowed CPU
+         * source/output are reusable after any synchronous return. */
+        (void)lv_aic_spi_ge2d_close(g);lv_free(storage);
+        AIC_TEST_E("FAIL SPI GE stripe conversion result=%d",(int)converted);return -1;
+    }
+    int worst=0;
+    for(unsigned y=0;y<h;y++) for(unsigned x=0;x<w;x++) {
+        unsigned u=rotation==0?x:rotation==1?y:rotation==2?w-1-x:h-1-y;
+        unsigned v=rotation==0?y:rotation==1?w-1-x:rotation==2?h-1-y:x;
+        /* SDK 63-to-64 step=64512, initial half-step=32256. */
+        unsigned q=32256+u*64512,a=LV_MIN(q/65536,62U),b=LV_MIN(a+1,62U),f=q%65536;
+        unsigned pos=1+2*(y*w+x);
+        uint16_t actual=output[pos+(swap?1:0)]+256U*output[pos+(swap?0:1)];
+        for(unsigned c=0;c<3;c++) {
+            unsigned want=(spi_channel(source[v*63+a],c)*(65536-f)+
+                           spi_channel(source[v*63+b],c)*f+32768)/65536;
+            int delta=(int)spi_channel(actual,c)-(int)want;
+            if(delta<0) delta=-delta;
+            if(delta>worst) worst=delta;
+        }
+    }
+    bool guards=output[0]==0xa5 && output[OUTPUT_BYTES-1]==0xa5;
+    lv_free(storage);
+    if(lv_aic_spi_ge2d_close(g)!=LV_AIC_SPI_OK || !guards || worst>1) {
+        AIC_TEST_E("FAIL SPI GE stripes rot=%u swap=%d max_native_error=%d guards=%d",rotation*90,swap,worst,guards);
+        return -1;
+    }
+    AIC_TEST_I("PASS SPI GE stripes rot=%u swap=%d pixels=512 max_native_error=%d",rotation*90,swap,worst);
+    return 0;
+}
+#endif
+
 int lv_aic_ge2d_scale_test_run(void)
 {
     const lv_opa_t opacities[]={64,128,255};
@@ -286,6 +340,10 @@ int lv_aic_ge2d_scale_test_run(void)
         AIC_TEST_I("BEGIN multipass tiled sx=512 sy=512 rot=45 kind=%u",kind);
         if(scale_probe(512,512,kind,true,true,true,true,450)) return -1;
     }
+#if AIC_LVGL_USE_SPI_SDK
+    for(unsigned rotation=0;rotation<4;rotation++) for(unsigned swap=0;swap<2;swap++)
+        if(spi_stripe_probe(rotation,swap!=0)) return -1;
+#endif
     AIC_TEST_I("PASS 3C2 numeric probes; panel edges/touch still require confirmation");
     return 0;
 }
