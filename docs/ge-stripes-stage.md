@@ -55,4 +55,5 @@ hardware filtering or timing. Forty additional offscreen board probes cover
 32 ordinary stripe cases and eight striped multipass cases, including both
 premultiplied encodings. They require GE outcomes, independent gradient pixels
 and untouched clip guards. Physical execution remains **NOT_RUN**. Target build
-identities and final image evidence belong in [validation](validation.md).
+boot/app compilation, live preflight/runner linkage, image and clean-source
+manifest gates all **PASS**. Exact identities are in [validation](validation.md).

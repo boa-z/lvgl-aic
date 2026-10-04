@@ -1,5 +1,43 @@
 # Validation record
 
+## Near-unity RGB GE stripes (2026-10-04)
+
+Balanced RGB commands remove the whole-task near-unity scaler fallback for
+ordinary and orthogonal IMAGE/LAYER, tiled requests and multipass preparation.
+All descriptors are preflighted and retain the original sampling phase. See
+[stripe geometry, ownership and limitations](ge-stripes-stage.md).
+
+- Combined host **82/82 PASS** (17.38 s); vector/SVG/Lottie-disabled baseline
+  **77/77 PASS** (16.61 s).
+- 864 independent descriptor plans, including widths through 4096, and every
+  submit/emit/sync failure in a 133-strip plan. Late geometry failure submits
+  nothing. Real executor CPU model: 36 direct scenes / 90,528 ramp pixels and
+  432 multipass scenes / 138,576 interior pixels; exact full/partial refresh,
+  shared tiled preparation and failure quarantine all pass.
+- Full D13x boot/app compilation, live stripe preflight/runner linkage, image
+  and clean-source manifest gates **PASS**. The private descriptor helper is
+  compiler-partitioned as `lv_aic_ge2d_stripe.part.0`; the linkage gate checks
+  its live public callers rather than requiring the discarded wrapper symbol.
+- Forty new board probes are compiled in: 32 direct and eight multipass stripe
+  cases. Physical filtering, seams, clip guards, alpha and timing **NOT_RUN**.
+- YUV and the separate SPI GE conversion planner keep their split-risk fallback.
+
+Clean build identities (the following documentation commit is not a build pin):
+
+- SDK: `771b22ab0966d10bbf133137008fd770ddb04f23`.
+- lvgl-aic: `6df093902e132499ff77d1c7ec9ca1ecaba4bb47`.
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `2e0caa7b9f306c197a71cb37e12555c8d9166da3481b1f57f86e2a3281a5f392`.
+- ELF SHA256: `e281f0f286ddf86d4ff11fd862ba8fd178dc3d2993a97a2b33d06ecd53e060e6`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-ge-stripes/manifest.json`.
+- Component logs: `output/ge-stripes-build.log`, `output/ge-stripes-tests.log`,
+  `output/ge-stripes-baseline-tests.log`, `output/ge-stripes-firmware.log`.
+
+All 29 manifest file hashes and three clean source pins were independently
+verified. Board identity is d13x/d50t-2-lite, scratch budget 2097152 bytes.
+The SDK build commit is retained locally at `refs/lvgl-evidence/ge-stripes`
+before amending its branch gitlink to the evidence documentation commit.
+
 ## GE arbitrary-angle scaled rotation (2026-10-04)
 
 The RGB executor now combines padded premultiplied copy, raw-channel scaling and

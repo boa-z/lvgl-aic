@@ -1,10 +1,10 @@
 # Current capabilities and SDK gaps
 
-Latest host evidence: **82/82 SVG/vector/Lottie-enabled PASS** and **77/77 baseline
-PASS** for near-unity RGB stripes. The previous multipass combined firmware has
-passed build/link/image/provenance gates; the new stripe image is pending its
-build. See [current validation](validation.md). Physical acceptance of these
-increments remains **NOT_RUN**; milestone counts below are historical checkpoints.
+Latest combined evidence: **82/82 SVG/vector/Lottie-enabled host PASS**, **77/77
+baseline PASS**, and full GE/widget/SPI firmware build/link/image/provenance
+**PASS** for near-unity RGB stripes, including demos/music/vector/SVG/Lottie,
+fonts and codecs together. See [current validation](validation.md). Physical
+acceptance remains **NOT_RUN**; milestone counts below are historical checkpoints.
 
 ## GE near-unity RGB stripe increment
 
