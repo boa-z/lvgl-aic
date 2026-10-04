@@ -9,6 +9,14 @@ the preceding premultiplied stage; this Lottie-only increment reran the 77-test 
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
+## SVG transform increment
+
+Native SVG custom drawing now preserves image origin, pivot, per-axis scale and
+rotation through clipping and offset child layers. Canvas drawing without an
+object is supported. The independent pixel regression covers 48 canvas/widget/
+layer combinations; full host suite **78/78 PASS**. See the
+[transform stage](svg-transforms-stage.md); its target evidence is pending.
+
 ## Checked Lottie resources increment
 
 Native Lottie now has component loaders with explicit errors, encoded/staging

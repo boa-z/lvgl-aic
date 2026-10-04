@@ -46,6 +46,12 @@ generated_sw = stage_sw['generate'](
 src = [source for source in src if os.path.basename(str(source)) != 'lv_draw_sw_img.c']
 src += [File(generated_sw)]
 
+if GetDepend('AIC_LVGL_USE_SVG'):
+    stage_svg = runpy.run_path(os.path.join(cwd, 'tools', 'sdk', 'stage_svg.py'))
+    generated_svg = stage_svg['generate'](lvgl_root, os.path.join(AIC_ROOT, 'build'))
+    src = [source for source in src if os.path.basename(str(source)) not in ('lv_draw_image.c', 'lv_svg_decoder.c')]
+    src += [File(path) for path in generated_svg]
+
 demo_enabled = (GetDepend('AIC_LVGL_BUILD_DEMO_WIDGETS') or GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK') or
                 GetDepend('AIC_LVGL_BUILD_DEMO_MUSIC'))
 if demo_enabled:
@@ -72,7 +78,8 @@ if GetDepend('AIC_LVGL_USE_LOTTIE'):
     src = [source for source in src if os.path.basename(str(source)) != 'lv_lottie.c']
     src += [File('compat/lv_aic_lottie.c'), File('widgets/lv_aic_lottie_resource.c')]
 src += [File('compat/lvgl_aic_config_probe.c'), File('compat/lv_aic_rtthread_os.c')]
-includes = [os.path.join(lvgl_root, 'src', 'draw', 'sw'), cwd, os.path.join(cwd, 'include'), os.path.join(cwd, 'compat'),
+includes = [os.path.join(lvgl_root, 'src', 'draw'), os.path.join(lvgl_root, 'src', 'image', 'svg'),
+            os.path.join(lvgl_root, 'src', 'draw', 'sw'), cwd, os.path.join(cwd, 'include'), os.path.join(cwd, 'compat'),
             lvgl_root, os.path.join(lvgl_root, 'include'), os.path.join(lvgl_root, 'include', 'lvgl'),
             os.path.join(lvgl_root, 'src', 'osal'), os.path.join(lvgl_root, 'env_support', 'rt-thread')]
 group = DefineGroup('Application-LVGL-9.6', src, depend=['AIC_LVGL_PORT'],

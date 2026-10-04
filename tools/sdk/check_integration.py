@@ -382,7 +382,19 @@ def main():
         for symbol in ("lv_svg_decoder_init", "lv_svg_load_data", "lv_svg_render_create", "lv_draw_svg_render"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("SVG live symbol absent: " + symbol)
-        print("Native SVG decoder/parser/render final link: PASS (not board execution)")
+        from stage_svg import SOURCES, corrected as svg_corrected
+        for kind, (relative, _) in SOURCES.items():
+            expected = svg_corrected((upstream / relative).read_text(encoding="utf-8"), kind)
+            if (root / ("build/lvgl-svg-" + kind + ".c")).read_bytes() != expected.encode("utf-8"):
+                fail("Generated SVG source mismatch: " + kind)
+        lines = text.splitlines()
+        for symbol, owner in (("lv_draw_image", "lvgl-svg-draw.o"),
+                              ("lv_svg_decoder_init", "lvgl-svg-decoder.o")):
+            live = [i for i, line in enumerate(lines)
+                    if re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", line)]
+            if not live or not any(owner in "\n".join(lines[max(0, i-4):i+1]) for i in live):
+                fail("SVG correction does not own live symbol: " + symbol)
+        print("Native SVG corrected coordinates/parser/render final link: PASS (not board execution)")
     enabled = re.search(r"^CONFIG_AIC_LVGL_USE_LOTTIE=y$", config, re.MULTILINE) is not None
     defined = re.search(r"^#define AIC_LVGL_USE_LOTTIE(?:\s|$)", header, re.MULTILINE) is not None
     if enabled != args.with_lottie or defined != args.with_lottie:

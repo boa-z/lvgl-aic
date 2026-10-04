@@ -18,8 +18,10 @@ The source must start with `<svg` or `<?xml` as required by the native decoder.
 
 The native decoder publishes `LV_IMAGE_FLAGS_CUSTOM_DRAW`; LVGL expands it to
 vector tasks before GE image scheduling, so the parser's internal representation
-is not submitted as GE pixel storage. Image transforms, richer SVG documents,
-embedded bitmap/font callbacks and animation require further coverage; this
+is not submitted as GE pixel storage. Image transforms and clipped/offset child
+layers are now corrected and covered by the [transform stage](svg-transforms-stage.md).
+Image-specific opacity/recolor/tiling, richer SVG documents, embedded bitmap/font
+callbacks and animation require further work; this
 stage does not claim complete browser SVG compatibility, SVG animation, a new
 GE rasterizer or a bounded SVG allocation budget.
 
