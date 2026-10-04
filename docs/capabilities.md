@@ -11,14 +11,24 @@ subsequent GE center increment reran the 79-test suite.
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
+## Software rotation precision increment
+
+Forward bounds and native software inverse sampling now retain matched Q15
+coefficients. Independent geometry/pixel tests cover remote pivots, negative
+angles, per-axis scale and exact full/partial rendering. Host **80/80 PASS**;
+vector/SVG/Lottie-disabled baseline **75/75 PASS**. Physical execution is
+**NOT_RUN**. See [software rotation](sw-rotation-stage.md) for finite precision
+and coordinate limits; target evidence is recorded in [validation](validation.md).
+
 ## GE rotation center increment
 
 ROTATE source and crop-relative destination centers are now checked in a
 conservative signed 14-bit domain after 64-bit translation, before cache/DMA
 and tile preflight. Host **79/79 PASS**; combined target build/link/image/manifest
 checks also pass. Physical center-limit verification remains **NOT_RUN**.
-Native software far-pivot Q10 precision remains a separate observed gap, and
-arbitrary-angle plus scale still needs a multi-pass implementation.
+The subsequent [software rotation increment](sw-rotation-stage.md) addresses the
+far-pivot Q10 fallback defect. Hardware arbitrary-angle plus scale still needs
+a multi-pass implementation.
 See [rotation center bounds](ge-center-stage.md).
 
 ## SVG composition increment

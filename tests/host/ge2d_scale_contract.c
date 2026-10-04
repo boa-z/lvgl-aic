@@ -451,10 +451,13 @@ int main(void)
             lv_draw_image_dsc_t saved_d=d;lv_draw_task_t saved_task=task;
             assert(lv_draw_buf_init(&src,32,32,LV_COLOR_FORMAT_ARGB8888,128,pixels,sizeof pixels)==LV_RESULT_OK);
             for(unsigned i=0;i<sizeof pixels/4;i++) ((uint32_t *)pixels)[i]=0xff336699U;
-            d.rotation=450;d.pivot=(lv_point_t){16384,16384};d.opa=255;
-            task.area=(lv_area_t){-16240,6982,-16209,7013};task.clip_area=layer.buf_area;
+            d.pivot=(lv_point_t){16384,16384};d.opa=255;
+            task.clip_area=layer.buf_area;
             int old_submits=rotate_submits;unsigned old_cache=cache_prepares;
+            for(unsigned angle=0;angle<2;angle++)
             for(unsigned is_layer=0;is_layer<2;is_layer++) {
+                d.rotation=angle?450:1;
+                task.area=angle?(lv_area_t){-16240,6982,-16209,7013}:(lv_area_t){100,230,131,261};
                 memset(output,0,sizeof output);
                 task.type=is_layer?LV_DRAW_TASK_TYPE_LAYER:LV_DRAW_TASK_TYPE_IMAGE;
                 d.src=is_layer?(const void *)&child_layer:(const void *)&src;
@@ -462,7 +465,7 @@ int main(void)
                 assert(lv_draw_aic_ge2d_image(&task,&outcome)==LV_RESULT_OK);
                 assert(outcome==LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE);
                 assert(rotate_submits==old_submits && cache_prepares==old_cache);
-                uint32_t sample=((uint32_t *)output)[(226-190)*128+(152-90)];
+                uint32_t sample=((uint32_t *)output)[(218-190)*128+(144-90)];
                 assert((sample&0xffffffU)==0x336699U && (sample>>24)>=254);
                 lv_image_cache_drop(&src);
             }

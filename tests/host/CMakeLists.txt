@@ -70,6 +70,23 @@ target_compile_options(lvgl_aic_premult_image_contract PRIVATE -Wall -Wextra -We
 add_test(NAME lvgl_aic_premult_image_contract COMMAND lvgl_aic_premult_image_contract)
 
 
+set(rotation_generator "${AIC_ROOT}/tools/sdk/stage_sw_rotation.py")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${rotation_generator}"
+    "${LVGL_ROOT}/src/misc/lv_area.c" "${LVGL_ROOT}/src/draw/sw/lv_draw_sw_transform.c")
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${rotation_generator}"
+    --root "${LVGL_ROOT}" --output "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMAND_ERROR_IS_FATAL ANY)
+get_target_property(rotation_sources lvgl SOURCES)
+list(FILTER rotation_sources EXCLUDE REGEX "(misc/lv_area|draw/sw/lv_draw_sw_transform)[.]c$")
+list(APPEND rotation_sources "${CMAKE_CURRENT_BINARY_DIR}/lvgl-sw-area.c"
+    "${CMAKE_CURRENT_BINARY_DIR}/lvgl-sw-transform.c")
+set_property(TARGET lvgl PROPERTY SOURCES "${rotation_sources}")
+target_include_directories(lvgl PRIVATE "${LVGL_ROOT}/src/misc")
+add_executable(lvgl_aic_sw_rotation_contract sw_rotation_contract.c)
+target_link_libraries(lvgl_aic_sw_rotation_contract PRIVATE lvgl)
+target_compile_options(lvgl_aic_sw_rotation_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+add_test(NAME lvgl_aic_sw_rotation_contract COMMAND lvgl_aic_sw_rotation_contract)
+
 if(AIC_BUILD_VECTOR_TESTS)
     target_compile_definitions(lvgl PUBLIC AIC_LVGL_USE_VECTOR=1 LV_USE_STDLIB_SPRINTF=LV_STDLIB_BUILTIN)
     target_compile_definitions(lvgl_thorvg PRIVATE AIC_LVGL_USE_VECTOR=1)

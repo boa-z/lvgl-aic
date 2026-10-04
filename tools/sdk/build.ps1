@@ -163,6 +163,6 @@ if ($Phase -eq 'ge2d' -and (Select-String -Path .config -Pattern '^CONFIG_AIC_GE
 }
 if ($WithLottie) { Copy-Item build/lvgl-lottie-builder.cpp "$evidence/" }
 if ($WithSvg) { Copy-Item build/lvgl-svg-draw.c,build/lvgl-svg-decoder.c "$evidence/" }
-Copy-Item build/lvgl-sw-image.c "$evidence/"
+Copy-Item build/lvgl-sw-image.c,build/lvgl-sw-area.c,build/lvgl-sw-transform.c "$evidence/"
 Run-Step 'manifest' @("$PSScriptRoot/write_manifest.py",$evidence,$variant)
 Write-Host "Verified test image and provenance: $evidence"

@@ -283,6 +283,20 @@ def main():
     if (root / "build/lvgl-sw-image.c").read_bytes() != expected_sw.encode("utf-8"):
         fail("Software premultiplied image correction mismatch")
 
+    from stage_sw_rotation import SOURCES as rotation_sources, corrected as rotation_corrected
+    for kind, (relative, _) in rotation_sources.items():
+        expected = rotation_corrected((upstream / relative).read_text(encoding="utf-8"), kind)
+        if (root / ("build/lvgl-sw-" + kind + ".c")).read_bytes() != expected.encode("utf-8"):
+            fail("Software Q15 rotation correction mismatch: " + kind)
+    lines = map_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    for symbol, owner in (("lv_point_array_transform", "lvgl-sw-area.o"),
+                          ("lv_draw_sw_transform", "lvgl-sw-transform.o")):
+        live = [i for i, line in enumerate(lines)
+                if re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", line)]
+        if not live or not any(owner in "\n".join(lines[max(0, i-4):i+1]) for i in live):
+            fail("Software Q15 correction does not own live symbol: " + symbol)
+    print("Software Q15 geometry/sampling final link: PASS (not board execution)")
+
     config = (root / ".config").read_text(encoding="utf-8")
     header = (root / "rtconfig.h").read_text(encoding="utf-8")
     for symbol in ("AIC_LVGL_USE_APNG", "AIC_LVGL_USE_APNG_WIDGET"):

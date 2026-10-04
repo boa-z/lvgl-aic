@@ -27,15 +27,16 @@ Arbitrary-angle scaling cannot be enabled by relaxing the evaluator alone;
 it still needs a checked multi-pass geometry, alpha, buffer-budget and DMA
 lifetime design. This stage does not add that capability.
 
-Native LVGL software also quantizes forward/inverse rotation to Q10. With very
+At this historical checkpoint, native LVGL software also quantized forward/inverse rotation to Q10. With very
 remote pivots its bounds and sampled pixels can diverge. An exploratory 0.1
 degree case with pivot (16384,16384), source 32x32 and origin (100,230) produced
 no visible software pixels despite an ideal visible transform. A 45-degree
 case with origin (-16240,6982) rendered, but its central ideal sample differed
 from the actual sampled region. The regression verifies handoff and an
 interior pixel shared by the ideal/native footprints; it does not prove
-whole-domain software accuracy. Higher-precision native fallback is a remaining
-gap and must not be hidden by the GE command guard.
+whole-domain software accuracy. The subsequent [software rotation stage](sw-rotation-stage.md)
+addresses these reproducers with matched Q15 geometry/sampling and records its
+finite tested coordinate domain; the original stage evidence below is unchanged.
 
 Combined host **79/79 PASS**. D13x boot/app compilation, final-link (including
 the new center helper), image and clean-source manifest checks pass.

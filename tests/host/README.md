@@ -20,6 +20,14 @@ Without AIC_SDK_ROOT, five tests cover OS notifications, platform lifecycle,
 manual pages and disabled features. With SDK ABI headers, eight tests run.
 AIC BSP/board validation remains a separate pending step.
 
+## Software rotation regression
+
+The always-built `lvgl_aic_sw_rotation_contract` compares real software image
+pixels and point geometry against independent trigonometric references. It
+covers 420 scenes, every tenth-degree geometry angle, remote pivots and exact
+partial-refresh equivalence. CMake stages the same fingerprinted geometry and
+sampling corrections used by SCons. See [precision limits](../../docs/sw-rotation-stage.md).
+
 ## Interactive SDL2 smoke window
 
 The optional `lvgl-aic-sdl-smoke` target reuses the same
