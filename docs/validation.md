@@ -1,5 +1,31 @@
 # Validation record
 
+## Native-plane destination resize firmware (2026-10-04)
+
+Clean combined 90-degree GE/font/GIF/widget/AICP/player/APNG/barcode/SPI
+firmware: boot/app, final-link/static gates, image verification and manifest
+**PASS**. Includes decoded-frame dimension correction, native-plane width/height
+requests using DE destination scaling, and UI-thread `size WIDTH HEIGHT` controls.
+
+- lvgl-aic: `5f6f8a036f19a213639d72fc5ea4db1b507563c7` (clean).
+- sdk: `f3864b79c73d536efe3aef5a3e46d9aa0bc8d4b2` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `556b01d11855dd64eb3e6d077e5d948de4855450b7b73c3029d11832aa79b325`.
+- ELF SHA256: `701395d22ea1cd1959a482f6e2c85c76a48acf9d41408715edf62ea7f17b09bf`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-rotate90/manifest.json`.
+
+Image hash independently rechecked. All 18 player transform/size APIs and the
+plane manual command remain live in the final ELF. The player implementation
+passed **70/70 host tests**; the new shell source passed strict E907 compilation
+with its registration, poll/deinit definitions and both size API references
+verified. Shell mailbox execution is not covered by those host tests.
+
+Physical execution **NOT_RUN**. Camera is disabled and no SPI panel is bound.
+This supersedes pending full-firmware notes for the frame-dimension/native-plane
+size changes. See [manual controls](../tests/manual/README.md) for deferred board
+acceptance. Evidence directories are reused per profile; older hashes below
+refer to historical images, not the current files in that directory.
+
 ## Player transform/size final-link evidence (2026-10-04)
 
 Combined 90-degree GE/font/GIF/widget/AICP/player/APNG/barcode/SPI firmware:

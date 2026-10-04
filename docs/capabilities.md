@@ -7,6 +7,12 @@ Board acceptance remains scoped to previously supplied logs; the new image is
 
 ## Current player/APNG status (2026-10-04)
 
+Player width/height requests now resize the native DE video window directly,
+including pre-open and paused requests, while ordinary image playback derives
+scale from actual decoded frame dimensions. Manual `lv_aic_plane_test size`
+controls are packaged in the current combined firmware. Strict image transform,
+visibility and clipping restrictions still apply; physical scaling is NOT_RUN.
+
 The unified player now routes native `.png`/`.apng` sources to the bounded
 APNG worker and other suffixes to SDK media, retaining the same image object,
 transforms and slave bindings across drained source replacement. APNG rate,

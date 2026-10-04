@@ -219,3 +219,9 @@ SDK object `output/player-plane-size-lv_aic_player.o` SHA256:
 Logs: `output/player-plane-size-before.log`, `output/player-plane-size-build.log`,
 `output/player-plane-size-tests.log`, `output/player-plane-size-target.log`.
 Full firmware has not been refreshed for this increment; board **NOT_RUN**.
+
+Full-firmware follow-up: clean native-plane resize firmware now passes boot/app,
+final-link, image and manifest gates. The source identities, ELF/image hashes
+and limits are recorded at the top of [validation.md](validation.md).
+This supersedes the pending full-firmware notes for both dimension corrections
+above. Physical execution and shell mailbox runtime remain **NOT_RUN**.
