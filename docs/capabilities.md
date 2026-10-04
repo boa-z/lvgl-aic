@@ -10,6 +10,15 @@ the software rotation increment.
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
+## GE multipass transform increment
+
+Arbitrary-angle scale now has a bounded three-command path: padded premultiplied
+copy, raw-channel scale, final rotate/composite. IMAGE/LAYER and tiled requests
+share scratch ownership and all-tile preflight. A combined 2 MiB default budget
+limits allocation; uncertain DMA retains both scratch buffers. Eight numeric
+board probes are included, with physical execution **NOT_RUN**. See
+[multipass geometry, alpha, limits and evidence](ge-multipass-stage.md).
+
 ## Software rotation precision increment
 
 Forward bounds and native software inverse sampling now retain matched Q15
@@ -27,8 +36,8 @@ conservative signed 14-bit domain after 64-bit translation, before cache/DMA
 and tile preflight. Host **79/79 PASS**; combined target build/link/image/manifest
 checks also pass. Physical center-limit verification remains **NOT_RUN**.
 The subsequent [software rotation increment](sw-rotation-stage.md) addresses the
-far-pivot Q10 fallback defect. Hardware arbitrary-angle plus scale still needs
-a multi-pass implementation.
+far-pivot Q10 fallback defect. Hardware arbitrary-angle plus scale is implemented by the subsequent
+[bounded multipass increment](ge-multipass-stage.md); physical acceptance remains pending.
 See [rotation center bounds](ge-center-stage.md).
 
 ## SVG composition increment

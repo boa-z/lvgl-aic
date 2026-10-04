@@ -24,8 +24,9 @@ orthogonal scale/crop contracts remain in place.
 
 The SDK ROTATE implementation explicitly calls ge_scaler0_enable(..., 0).
 Arbitrary-angle scaling cannot be enabled by relaxing the evaluator alone;
-it still needs a checked multi-pass geometry, alpha, buffer-budget and DMA
-lifetime design. This stage does not add that capability.
+this historical stage did not add it. The later [multipass stage](ge-multipass-stage.md)
+implements separate padded conversion, scale and rotation commands with bounded
+geometry, memory and DMA lifetime. Its hardware acceptance is pending.
 
 At this historical checkpoint, native LVGL software also quantized forward/inverse rotation to Q10. With very
 remote pivots its bounds and sampled pixels can diverge. An exploratory 0.1

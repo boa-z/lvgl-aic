@@ -56,6 +56,15 @@ config AIC_LVGL_USE_GE2D
     depends on AIC_LVGL_PORT
     depends on LPKG_MPP
 
+config AIC_LVGL_GE2D_TRANSFORM_BYTES
+    int "Combined GE scale/rotate scratch budget (bytes; zero disables)"
+    default 2097152
+    range 0 8388608
+    depends on AIC_LVGL_USE_GE2D
+    help
+        Combined limit for both padded ARGB buffers used by arbitrary-angle
+        scaling. Unsupported geometry/allocation falls back before target DMA.
+
 config AIC_LVGL_USE_MPP_DEC
     bool "Enable ArtInChip MPP image decoder"
     default n

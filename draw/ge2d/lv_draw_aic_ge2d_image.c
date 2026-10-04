@@ -3,7 +3,7 @@
  * @brief RGB copy/scale through the ArtInChip GE2D engine.
  *
  * Supports unrotated copies, bounded RGB scaling with explicit inverse-map
- * phases, and unscaled arbitrary-angle IMAGE rotation through mpp_ge_rotate.
+ * phases, arbitrary-angle rotation, and bounded multi-pass scaled rotation.
  * Unsupported geometry falls back before submission; a hardware failure never
  * retries blending on a potentially partly written target.
  *
@@ -54,12 +54,14 @@
 #include "lv_aic_pixel_format.h"
 #include "lv_draw_aic_ge2d_scale.h"
 #include "lv_draw_aic_ge2d_rotate.h"
+#include "lv_draw_aic_ge2d_transform.h"
 
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 
 #include "lvgl_aic_private.h"
 
 #include <aic_core.h>
+#include <aic_osal.h>
 #include <mpp_ge.h>
 #include <limits.h>
 
@@ -78,6 +80,57 @@ bool lv_draw_aic_ge2d_image_faulted(void)
     return rgb_quarantined != NULL || decoder_quarantined;
 }
 static bool s_blit_validate_only;
+
+/* One synchronous operation owns both scratch buffers. On uncertain DMA the
+ * decoder and destination are already quarantined; retain these buffers too. */
+static lv_aic_ge2d_transform_plan_t transform_plan;
+static lv_draw_buf_t transform_padded, transform_scaled;
+static bool transform_active;
+#ifndef AIC_LVGL_GE2D_TRANSFORM_BYTES
+#define AIC_LVGL_GE2D_TRANSFORM_BYTES (2U * 1024U * 1024U)
+#endif
+
+static void transform_release(void)
+{
+    if(transform_padded.data) aicos_free_align(MEM_CMA,transform_padded.data);
+    if(transform_scaled.data) aicos_free_align(MEM_CMA,transform_scaled.data);
+    lv_memzero(&transform_padded,sizeof transform_padded);
+    lv_memzero(&transform_scaled,sizeof transform_scaled);
+}
+
+static bool transform_buffer(lv_draw_buf_t *buf, uint32_t w, uint32_t h,
+                             uint32_t stride, uint32_t bytes)
+{
+    void *data = aicos_malloc_align(MEM_CMA,bytes,64);
+    if(!data) return false;
+    if(((uintptr_t)data & 63U) ||
+       lv_draw_buf_init(buf,w,h,LV_COLOR_FORMAT_ARGB8888,stride,data,bytes) != LV_RESULT_OK ||
+       !lv_draw_aic_ge2d_buf_address_valid(buf)) {
+        aicos_free_align(MEM_CMA,data); lv_memzero(buf,sizeof *buf); return false;
+    }
+    buf->header.flags |= LV_IMAGE_FLAGS_PREMULTIPLIED;
+    return true;
+}
+
+static struct mpp_buf transform_mpp(const lv_draw_buf_t *buf, enum mpp_pixel_format cf)
+{
+    struct mpp_buf m = {0};
+    m.buf_type = MPP_PHY_ADDR; m.phy_addr[0] = (uint32_t)(uintptr_t)buf->data;
+    m.stride[0] = buf->header.stride; m.size.width = buf->header.w; m.size.height = buf->header.h;
+    m.format = cf;
+    return m;
+}
+
+static bool transform_submit(struct mpp_ge *ge, struct ge_bitblt *blt)
+{
+    if(mpp_ge_bitblt(ge,blt) < 0 || mpp_ge_emit(ge) < 0 || mpp_ge_sync(ge) < 0) {
+        s_blit_failed = true;
+        LV_LOG_ERROR("GE2D transform preparation failed; retaining scratch DMA buffers");
+        return false;
+    }
+    return true;
+}
+
 
 static int lv_draw_aic_ge2d_angle_2_12(int32_t angle, bool cosine)
 {
@@ -113,6 +166,56 @@ static void image_source_alpha(struct ge_ctrl *ctrl, lv_color_format_t cf,
         ctrl->src_alpha_mode = premultiplied && opa >= LV_OPA_COVER ? 0U : 2U;
         ctrl->src_global_alpha = opa;
     }
+}
+
+/* Copy/convert to padded premultiplied pixels, then scale their stored
+ * channels without another alpha operation. Apply global opacity only at the
+ * final rotation. No CPU access to either buffer follows a DMA write. */
+static bool transform_prepare(const lv_draw_buf_t *src)
+{
+    const lv_aic_ge2d_transform_plan_t *p = &transform_plan;
+    enum mpp_pixel_format fmt;
+    lv_color_format_t cf = src->header.cf == LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED ?
+                          LV_COLOR_FORMAT_ARGB8888 : src->header.cf;
+    struct mpp_ge *ge = lv_draw_aic_ge2d_device();
+    if(!ge || !lv_aic_pixel_format_to_mpp(cf,&fmt)) return false;
+    if(!transform_buffer(&transform_padded,p->padded_w,p->padded_h,p->padded_stride,p->padded_bytes) ||
+       !transform_buffer(&transform_scaled,p->scaled_w,p->scaled_h,p->scaled_stride,p->scaled_bytes)) return false;
+    lv_memzero(transform_padded.data,p->padded_bytes);
+    /* Explicit output padding remains transparent even for strong downscale,
+     * where two input border pixels occupy less than one scaled pixel. */
+    lv_memzero(transform_scaled.data,p->scaled_bytes);
+    lv_area_t source = {0,0,(int32_t)src->header.w-1,(int32_t)src->header.h-1};
+    lv_area_t padded = {0,0,p->padded_w-1,p->padded_h-1};
+    lv_area_t scaled = {0,0,p->scaled_w-1,p->scaled_h-1};
+    struct ge_bitblt copy = {0};
+    copy.src_buf = transform_mpp(src,fmt);
+    copy.dst_buf = transform_mpp(&transform_padded,MPP_FMT_ARGB_8888);
+    copy.dst_buf.crop_en = 1;
+    copy.dst_buf.crop = (struct mpp_rect){2,2,src->header.w,src->header.h};
+    if(!image_is_premultiplied(src)) {
+        copy.dst_buf.flags = MPP_BUF_IS_PREMULTIPLY;
+        copy.ctrl.alpha_en = 1; copy.ctrl.alpha_rules = GE_PD_SRC;
+        copy.ctrl.src_alpha_mode = 0; copy.ctrl.src_global_alpha = 255;
+    }
+    /* Existing premultiplied storage can be copied bit-for-bit. */
+    lv_draw_aic_ge2d_prepare_src_cache(src,&source);
+    lv_draw_aic_ge2d_prepare_dst_cache(&transform_padded,&padded);
+    if(!transform_submit(ge,&copy)) return false;
+    struct ge_bitblt scale = {0};
+    scale.src_buf = transform_mpp(&transform_padded,MPP_FMT_ARGB_8888);
+    scale.src_buf.crop_en = 1;
+    scale.src_buf.crop = (struct mpp_rect){p->crop_x,p->crop_y,p->padded_w-p->crop_x,p->padded_h-p->crop_y};
+    scale.dst_buf = transform_mpp(&transform_scaled,MPP_FMT_ARGB_8888);
+    scale.dst_buf.crop_en = 1;
+    scale.dst_buf.crop = (struct mpp_rect){2,2,p->scaled_w-4,p->scaled_h-4};
+    scale.scale_phase.scale_phase_en = 1; scale.scale_phase.scaler_en = 1;
+    scale.scale_phase.channel_num = 1;
+    scale.scale_phase.dx_16[0] = p->step_x; scale.scale_phase.dy_16[0] = p->step_y;
+    scale.scale_phase.h_phase_16[0] = p->phase_x; scale.scale_phase.v_phase_16[0] = p->phase_y;
+    lv_draw_aic_ge2d_prepare_src_cache(&transform_padded,&padded);
+    lv_draw_aic_ge2d_prepare_dst_cache(&transform_scaled,&scaled);
+    return transform_submit(ge,&scale);
 }
 
 static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
@@ -302,9 +405,20 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     if (!lv_area_intersect(&dst_area, clipped_img_area, &layer->buf_area)) {
         return false;
     }
-    /* AIC_GE_ROTATE handles arbitrary angles, but it does not combine them
-     * with the scaler. Right-angle scale paths continue through GE_BITBLT;
-     * arbitrary-angle scale requests are rejected by evaluate(). */
+    /* The bounded scratch path separates scale and rotation. Destination
+     * centers keep the ORIGINAL pivot; the source center belongs to the
+     * resampled integer grid. Reject translations before any target write. */
+    if (scaled && draw_dsc->rotation % 900 != 0) {
+        if(!transform_active) return false;
+        int64_t x = (int64_t)img_coords->x1 + draw_dsc->pivot.x - transform_plan.pivot.x;
+        int64_t y = (int64_t)img_coords->y1 + draw_dsc->pivot.y - transform_plan.pivot.y;
+        if(x < INT32_MIN || y < INT32_MIN || x > INT32_MAX || y > INT32_MAX) return false;
+        lv_area_t origin = {(int32_t)x,(int32_t)y,(int32_t)x,(int32_t)y};
+        lv_draw_image_dsc_t rotate = *draw_dsc;
+        rotate.pivot = transform_plan.pivot; rotate.scale_x = rotate.scale_y = LV_SCALE_NONE;
+        return lv_draw_aic_ge2d_rotate(layer,&transform_scaled,dst,LV_COLOR_FORMAT_ARGB8888,
+                                       MPP_FMT_ARGB_8888,dst_fmt,&rotate,&origin,&dst_area);
+    }
     if (!scaled && draw_dsc->rotation % 900 != 0) {
         return lv_draw_aic_ge2d_rotate(layer, src, dst, src_cf, src_fmt, dst_fmt,
                                        draw_dsc, img_coords, &dst_area);
@@ -463,7 +577,7 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
  * clipped tile has passed geometry/address checks; never replay a partial
  * blend through software after an engine failure. */
 static int lv_draw_aic_ge2d_tiles(lv_draw_task_t *task, const lv_draw_image_dsc_t *dsc,
-                                 const lv_image_decoder_dsc_t *decoder)
+                                 const lv_image_decoder_dsc_t *decoder, bool validate_only)
 {
     int32_t w = dsc->header.w, h = dsc->header.h;
     lv_area_t visible;
@@ -481,7 +595,7 @@ static int lv_draw_aic_ge2d_tiles(lv_draw_task_t *task, const lv_draw_image_dsc_
     if (x0 + w - 1 < visible.x1) x0 += ((visible.x1 - x0) / w) * w;
     if (y0 + h - 1 < visible.y1) y0 += ((visible.y1 - y0) / h) * h;
     if (x0 > visible.x2 || y0 > visible.y2) return 2;
-    for (int pass = 0; pass < 2; pass++) {
+    for (int pass = 0; pass < (validate_only ? 1 : 2); pass++) {
         s_blit_validate_only = pass == 0;
         for (int64_t y = y0; y <= visible.y2; y += h) {
             for (int64_t x = x0; x <= visible.x2; x += w) {
@@ -661,21 +775,50 @@ static lv_result_t image_draw(lv_draw_task_t *task,
     }
     if (!lv_area_intersect(&clipped, &draw_area, &task->clip_area)) return LV_RESULT_OK;
     if (lv_image_decoder_open(&image_decoder, blit_dsc->src, &decoder_args) == LV_RESULT_OK) {
-        if (blit_dsc->tile) {
-            int tiled = lv_draw_aic_ge2d_tiles(task, blit_dsc, &image_decoder);
+        bool prepared = true;
+        if(blit_dsc->rotation % 900 != 0 &&
+           (blit_dsc->scale_x != LV_SCALE_NONE || blit_dsc->scale_y != LV_SCALE_NONE)) {
+            const lv_draw_buf_t *source = image_decoder.decoded;
+            prepared = source && lv_aic_ge2d_transform_plan(source->header.w,source->header.h,
+                           blit_dsc,AIC_LVGL_GE2D_TRANSFORM_BYTES,&transform_plan);
+            if(prepared) {
+                /* Header-only preflight: no allocation, cache or DMA yet. */
+                transform_scaled.header.w = transform_plan.scaled_w;
+                transform_scaled.header.h = transform_plan.scaled_h;
+                transform_active = true;
+                s_blit_validate_only = true;
+                if(blit_dsc->tile) {
+                    int preflight = lv_draw_aic_ge2d_tiles(task,blit_dsc,&image_decoder,true);
+                    if(preflight == 2) {
+                        s_blit_validate_only = transform_active = false;
+                        transform_release(); lv_image_decoder_close(&image_decoder);
+                        return LV_RESULT_OK;
+                    }
+                    prepared = preflight > 0;
+                }
+                else prepared = lv_draw_aic_ge2d_blit(task,blit_dsc,&image_decoder,&task->area,&clipped);
+                s_blit_validate_only = false;
+                if(prepared) prepared = transform_prepare(source);
+            }
+        }
+        if (prepared && blit_dsc->tile) {
+            int tiled = lv_draw_aic_ge2d_tiles(task, blit_dsc, &image_decoder, false);
             s_blit_called = tiled != 2;
             s_blit_ok = tiled > 0;
             s_blit_failed = tiled < 0;
             if (tiled == 2) {
+                transform_active = false; transform_release();
                 lv_image_decoder_close(&image_decoder);
                 return LV_RESULT_OK;
             }
         }
-        else if (image_decoder.decoded) {
+        else if (prepared && image_decoder.decoded) {
             s_blit_called = true;
             s_blit_ok = lv_draw_aic_ge2d_blit(task, blit_dsc, &image_decoder,
                                             &task->area, &clipped);
         }
+        transform_active = false;
+        if(!s_blit_failed) transform_release();
         if (s_blit_failed) {
             /* Retain decoder-owned pixels, cache references and file state.
              * Dispatcher retains the task and destination until reboot. */

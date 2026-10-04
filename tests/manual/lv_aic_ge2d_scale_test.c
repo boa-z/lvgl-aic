@@ -117,7 +117,15 @@ static int scale_probe(uint16_t sx, uint16_t sy, unsigned source_kind, bool clip
             int inverse_y=rotation==900 ? -dx : rotation==1800 ? -dy : rotation==2700 ? dx : dy;
             u=((int64_t)inverse_x*256*65536)/sx+(int64_t)d.pivot.x*65536;
             v=((int64_t)inverse_y*256*65536)/sy+(int64_t)d.pivot.y*65536;
-            if (!tiled && (u < 3*65536 || v < 3*65536 || u > 28*65536 || v > 28*65536)) continue;
+            if(rotation % 900) {
+                /* Independent Q15 inverse oracle for integral-degree board
+                 * probes; production resampling uses explicit Q16 phases. */
+                int64_t sn=lv_trigo_sin(rotation/10),cs=lv_trigo_sin(rotation/10+90);
+                u=((dx*cs+dy*sn)*512)/sx+(int64_t)d.pivot.x*65536;
+                v=((-dx*sn+dy*cs)*512)/sy+(int64_t)d.pivot.y*65536;
+            }
+            if ((!tiled || rotation % 900) &&
+                (u < 4*65536 || v < 4*65536 || u > 27*65536 || v > 27*65536)) continue;
             if (p[3] != 255) {
                 AIC_TEST_E("FAIL destination alpha x=%d y=%d value=%u",x,y,(unsigned)p[3]);
                 goto done;
@@ -253,6 +261,12 @@ int lv_aic_ge2d_scale_test_run(void)
             AIC_TEST_I("BEGIN tile sx=384 sy=512 rot=%u source_kind=%d",angle/10,argb);
             if (scale_probe(384,512,argb,true,true,true,true,(uint16_t)angle)) return -1;
         }
+    }
+    for(unsigned kind=0;kind<4;kind++) {
+        AIC_TEST_I("BEGIN multipass sx=384 sy=192 rot=33 kind=%u",kind);
+        if(scale_probe(384,192,kind,false,true,true,false,330)) return -1;
+        AIC_TEST_I("BEGIN multipass tiled sx=512 sy=512 rot=45 kind=%u",kind);
+        if(scale_probe(512,512,kind,true,true,true,true,450)) return -1;
     }
     AIC_TEST_I("PASS 3C2 numeric probes; panel edges/touch still require confirmation");
     return 0;

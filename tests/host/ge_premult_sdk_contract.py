@@ -52,6 +52,17 @@ int main(void) {
         assert(set_premuliply(&data,MPP_FMT_ARGB_8888,MPP_FMT_ARGB_8888,0,0,0,&ctrl)==0);
         assert(data.src_de_premul_en==0 && data.src_premul_en==(opacity==255));
     }
+    /* Multipass preparation: SRC into a premultiplied destination converts
+     * straight channels exactly once; the following raw scale converts none. */
+    struct ge_data data={0};
+    struct ge_ctrl ctrl={.alpha_en=1,.alpha_rules=GE_PD_SRC,.src_alpha_mode=0,.src_global_alpha=255};
+    set_alpha_rules(&data,ctrl.alpha_rules);
+    assert(set_premuliply(&data,MPP_FMT_ARGB_8888,MPP_FMT_ARGB_8888,0,1,0,&ctrl)==0);
+    assert(data.src_alpha_coef==1 && data.dst_alpha_coef==0);
+    assert(data.src_premul_en==0 && data.src_de_premul_en==0 && data.out_premul_en==1);
+    ctrl.alpha_en=0;
+    assert(set_premuliply(&data,MPP_FMT_ARGB_8888,MPP_FMT_ARGB_8888,0,0,0,&ctrl)==0);
+    assert(data.src_premul_en==0 && data.src_de_premul_en==0 && data.out_premul_en==0);
     return 0;
 }
 """

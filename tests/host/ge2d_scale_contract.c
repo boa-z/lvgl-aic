@@ -10,6 +10,10 @@
 #include "../../draw/ge2d/lv_draw_aic_ge2d_image.c"
 #include "../../draw/ge2d/lv_draw_aic_ge2d_fill.c"
 
+void *aicos_malloc_align(unsigned int type,size_t size,size_t align)
+{ (void)type;(void)size;(void)align;return NULL; }
+void aicos_free_align(unsigned int type,void *p) { (void)type;(void)p;assert(false); }
+
 static struct ge_bitblt captured, tile_history[16];
 static int rgb_retained,rgb_released;
 static bool rgb_retain(void *p) { (void)p; rgb_retained++; return true; }
@@ -490,7 +494,7 @@ int main(void)
         d.scale_x = 0; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.scale_x = 15; assert(!lv_draw_aic_ge2d_accepts_image(&task));
         d.scale_x = 4097; assert(!lv_draw_aic_ge2d_accepts_image(&task));
-        d.scale_x = 384; d.scale_y = 384; d.rotation = 170; assert(!lv_draw_aic_ge2d_accepts_image(&task));
+        d.scale_x = 384; d.scale_y = 384; d.rotation = 170; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.scale_x = d.scale_y = LV_SCALE_NONE; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 900; assert(lv_draw_aic_ge2d_accepts_image(&task));
         d.rotation = 0; d.tile = 1; assert(lv_draw_aic_ge2d_accepts_image(&task));
@@ -561,7 +565,7 @@ int main(void)
             assert(rotate_submits == before);
         }
         d.scale_x = 384;
-        assert(!lv_draw_aic_ge2d_accepts_layer(&task));
+        assert(lv_draw_aic_ge2d_accepts_layer(&task));
         d.scale_x = LV_SCALE_NONE;
         d.skew_x = 1;
         assert(!lv_draw_aic_ge2d_accepts_layer(&task));
@@ -664,15 +668,15 @@ int main(void)
         allowed_src = pixels; allowed_dst = output;
         fail_at = 0;
         int before = submits;
-        assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder) == 1);
+        assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder, false) == 1);
         assert(submits == before + 4);
         assert(captured.src_buf.crop.width == 27 && captured.src_buf.crop.height == 27);
         assert(captured.ctrl.src_global_alpha == 128);
         before = submits; fail_at = 1;
-        assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder) == -1);
+        assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder, false) == -1);
         assert(submits == before + 1 && !s_blit_validate_only);
         fail_at = 0; before = submits; allowed_src = NULL;
-        assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder) == 0);
+        assert(lv_draw_aic_ge2d_tiles(&task, &d, &decoder, false) == 0);
         assert(submits == before && !s_blit_validate_only);
         /* Public executor with the real LVGL bin decoder, including failures
          * after earlier alpha tiles have already reached the engine. */
@@ -740,7 +744,7 @@ int main(void)
         /* Earlier cells are supported, but the last is narrower than scaler
          * limits. Preflight must decline before writing those earlier cells. */
         task.area.x2=154; task.clip_area.x2=154; before=submits;
-        assert(lv_draw_aic_ge2d_tiles(&task,&d,&decoder)==0 && submits==before);
+        assert(lv_draw_aic_ge2d_tiles(&task,&d,&decoder,false)==0 && submits==before);
         task.area.x2=153; task.clip_area.x2=148;
         d.scale_x=d.scale_y=256;
         /* A huge task with a tiny visible clip must skip invisible tiles. */

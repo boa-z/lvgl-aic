@@ -43,4 +43,5 @@ image and clean-source manifest gates also pass; exact pins and hashes are in
 Hardware execution remains **NOT_RUN**; target timing and numeric/visual rotation
 acceptance are deferred. This change does not establish an unbounded int32
 coordinate/scale domain, change GE Q2.12 arithmetic, or implement hardware
-arbitrary-angle scaling. The latter still requires a bounded multi-pass design.
+arbitrary-angle scaling. That capability is added by the subsequent
+[bounded multipass stage](ge-multipass-stage.md), with separate acceptance evidence.

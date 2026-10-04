@@ -5,15 +5,15 @@ The synchronous backend evaluates FILL, IMAGE and LAYER.
 - FILL: solid, unrounded, non-gradient tasks. Partial opacity supports
   RGB565/RGB888/XRGB8888; partial ARGB8888 remains software work.
 - IMAGE: RGB565/RGB888/ARGB8888/XRGB8888, straight and premultiplied alpha,
-  bounded scale, right-angle rotation plus scale, unscaled arbitrary rotation,
+  bounded scale, right-angle and arbitrary-angle rotation plus scale,
   clipped transformed tiling and supported exact color keys.
 - LAYER: shares the RGB image executor, including scale and rotation. Default
   draw buffers can use the bounded CMA allocator; inaccessible/fallback heap
   storage stays with software.
 - Immutable YUV frames use a separate validated lease/geometry path, including
   bounded scaling, orthogonal rotation and transformed tiling.
-- Recolor, masks, rounded clips, non-normal blends, arbitrary rotation plus scale
-  and unsafe small/scaler-split geometry stay with software.
+- Recolor, masks, rounded clips, non-normal blends and unsafe small/scaler-split
+  geometry stay with software.
 
 ROTATE requires source and clipped destination dimensions within 4..4096.
 Its source and crop-relative destination centers use a conservative signed
@@ -21,7 +21,9 @@ Its source and crop-relative destination centers use a conservative signed
 maintenance or submission if it cannot be represented. Native software still
 has its own far-pivot precision limits; see [center checks](../../docs/ge-center-stage.md).
 
-Submit/emit/sync are synchronous and checked. An uncertain DMA failure retains
+Arbitrary rotation plus scale uses [bounded multipass preparation](../../docs/ge-multipass-stage.md)
+with a shared 2 MiB scratch budget, transparent input/output borders, Q16
+phase planning and all-tile preflight. Submit/emit/sync are synchronous and checked. An uncertain DMA failure retains
 the affected decoder/source lease and destination/task lifetime until reboot;
 it never replays a software blend over potentially modified pixels. No SDK
 source change is required. Per-buffer CMA handlers preserve allocation ownership.

@@ -6,8 +6,8 @@
  * IMAGE: rotated or bounded transformed tiled, unrecolored RGB copies/scales -
  * the blit blends, so a partial opacity is supported rather than declined.
  * LAYER: the same blit, fed from a child layer's buffer instead of a decoded
- * image, including bounded scaling, right-angle rotation and unscaled
- * arbitrary-angle rotation. Everything else is declined, and a declined task
+ * image, including bounded scaling and arbitrary-angle scaled rotation.
+ * Everything else is declined, and a declined task
  * simply stays with the software renderer.
  * The unit runs synchronously on the dispatching thread -
  * there is no render thread, no task queue and no saved layer/clip state, which
@@ -106,14 +106,12 @@ static bool lv_draw_aic_ge2d_accepts_dst(const lv_draw_task_t *task)
 /**
  * True when @p dsc carries a supported IMAGE or LAYER transform.
  *
- * Arbitrary angles use ROTATE without scaling; orthogonal transforms use BITBLT.
+ * Arbitrary scaled angles use bounded scratch passes; orthogonal transforms
+ * use BITBLT.
  */
 static bool lv_draw_aic_ge2d_dsc_is_supported_transform(const lv_draw_image_dsc_t *dsc)
 {
-    return ((dsc->rotation == 0 || dsc->rotation == 900 ||
-             dsc->rotation == 1800 || dsc->rotation == 2700) ||
-            (dsc->scale_x == LV_SCALE_NONE && dsc->scale_y == LV_SCALE_NONE)) &&
-           dsc->scale_x >= LV_SCALE_NONE / 16 &&
+    return dsc->scale_x >= LV_SCALE_NONE / 16 &&
            dsc->scale_x <= LV_SCALE_NONE * 16 &&
            dsc->scale_y >= LV_SCALE_NONE / 16 &&
            dsc->scale_y <= LV_SCALE_NONE * 16 &&
