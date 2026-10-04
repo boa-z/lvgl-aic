@@ -566,6 +566,7 @@ if(AIC_SDK_ROOT)
     add_test(NAME lvgl_aic_camera_capture_contract COMMAND lvgl_aic_camera_capture_contract)
     set_tests_properties(lvgl_aic_camera_capture_contract PROPERTIES TIMEOUT 15)
     add_executable(lvgl_aic_ge2d_yuv_contract ge2d_yuv_contract.c
+        "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_stripes.c"
         "${AIC_ROOT}/draw/ge2d/lv_draw_aic_ge2d_scale.c"
         "${AIC_ROOT}/common/lv_aic_yuv.c" "${AIC_ROOT}/common/lv_aic_yuv_mpp.c"
         "${AIC_ROOT}/common/lv_aic_pixel_format.c" "${AIC_ROOT}/image/mpp/lv_aic_yuv_image.c"

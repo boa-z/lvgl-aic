@@ -47,7 +47,7 @@ native frame lease before opening the decoder and submit its original planes.
 
 ## Direct GE path
 
-Native-size IMAGE tasks support the eight frame layouts and 0/90/180/270
+Native-size IMAGE tasks support the twelve frame layouts and 0/90/180/270
 rotation with aligned clipping and global alpha. The path preserves explicit
 CSC flags and independent plane addresses, cleans source planes, prepares the
 destination cache and waits for GE completion before releasing its frame lease.
@@ -56,10 +56,11 @@ Source/destination aliasing, inaccessible planes, geometry below the SDK's
 any cache operation or submission. Bounded scaling with orthogonal rotation configures
 one luma channel and, except I400, one chroma channel using SDK Q16 phase rules.
 Subsampled axes round the luma step/phase down to even before halving for UV.
-Filter footprints can expand to complete chroma samples within the source;
-odd crop origins, out-of-source filter samples and the known GE split-risk
-interval decline before submission. Transformed tiles and
-arbitrary rotations retain the RGB conversion/rendering fallback.
+Filter footprints now retain adjacent taps for both luma and chroma. Scaled
+odd crop origins back up to full chroma samples with phase compensation, and
+the near-unity interval uses preflighted strips. See the subsequent
+[YUV stripe increment](yuv-stripes-stage.md). Transformed tiles share the direct
+path; arbitrary rotations retain the RGB conversion/rendering fallback.
 
 Host scaling coverage includes all eight layouts at 0.5x, 1.5x and 2x,
 fractional-phase clipping, channel dimensions, source bounds and nonzero-pivot

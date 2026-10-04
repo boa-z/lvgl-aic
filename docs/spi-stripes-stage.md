@@ -49,5 +49,5 @@ gates also **PASS**.
 
 Host modeling is not physical GE filtering evidence. Board execution, SPI panel
 output and GE/SPI concurrency/performance remain **NOT_RUN**. Firmware identities
-are recorded in [validation](validation.md). YUV chroma alignment/phase support
-is the next separate stripe-planner extension.
+are recorded in [validation](validation.md). The subsequent [YUV increment](yuv-stripes-stage.md) adds chroma alignment/phase
+support to the shared stripe planner.

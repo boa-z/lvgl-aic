@@ -2,14 +2,51 @@
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include <assert.h>
 #include <stdint.h>
+#include <math.h>
+#include <stdio.h>
 #include <string.h>
 #include "../../draw/ge2d/lv_draw_aic_ge2d_yuv.c"
 
 static struct ge_bitblt captured;
 static struct ge_bitblt history[32];
-static int fail_submission;
+static int fail_submission,fail_event,event;
 static int calls, emits, syncs, src_caches, dst_caches, fail_at, live;
 static lv_aic_yuv_image_t *retire_on_sync;
+static bool pixel_model;
+static uint32_t rendered[128*128],whole[128*128];
+static unsigned pixel_scenes,pixel_count;
+static int clamp_color(double value) { return (int)fmax(0,fmin(255,lround(value))); }
+static uint32_t composite(double yy,double u,double v)
+{
+    double rgb[]={yy+1.8556*(u-128),yy-0.187324*(u-128)-0.468124*(v-128),yy+1.5748*(v-128)};
+    uint32_t out=0;
+    for(unsigned c=0;c<3;c++) out|=(uint32_t)((clamp_color(rgb[c])*128+165*127+127)/255)<<(c*8);
+    return out;
+}
+static void model(const struct ge_bitblt *b)
+{
+    bool mono=b->src_buf.format==MPP_FMT_YUV400;
+    unsigned subx=!mono && b->src_buf.format!=MPP_FMT_YUV444P;
+    unsigned suby=b->src_buf.format==MPP_FMT_YUV420P || b->src_buf.format==MPP_FMT_NV12 || b->src_buf.format==MPP_FMT_NV21;
+    int w=b->dst_buf.crop.width,h=b->dst_buf.crop.height,r=MPP_ROTATION_GET(b->ctrl.flags);
+    for(int y=0;y<h;y++) for(int x=0;x<w;x++) {
+        int u=r==0?x:r==1?y:r==2?w-1-x:h-1-y;
+        int v=r==0?y:r==1?w-1-x:r==2?h-1-y:x;
+        double coords[2][2];
+        for(int ch=0;ch<(mono?1:2);ch++) {
+            unsigned sx=ch?subx:0,sy=ch?suby:0;
+            double xx=(b->src_buf.crop.x>>sx)+(b->scale_phase.h_phase_16[ch]+(int64_t)u*b->scale_phase.dx_16[ch])/65536.0;
+            double yy=(b->src_buf.crop.y>>sy)+(b->scale_phase.v_phase_16[ch]+(int64_t)v*b->scale_phase.dy_16[ch])/65536.0;
+            coords[ch][0]=fmin(xx,((b->src_buf.crop.x+b->src_buf.crop.width)>>sx)-1);
+            coords[ch][1]=fmin(yy,((b->src_buf.crop.y+b->src_buf.crop.height)>>sy)-1);
+        }
+        double yy=40+2*coords[0][0]+coords[0][1];
+        double uu=mono?128:80+2*coords[1][0]+3*coords[1][1];
+        double vv=mono?128:150+coords[1][0]-2*coords[1][1];
+        int pos=(b->dst_buf.crop.y+y)*128+b->dst_buf.crop.x+x;
+        assert(rendered[pos]==0xa5a5a5);rendered[pos]=composite(yy,uu,vv);
+    }
+}
 struct mpp_ge *lv_draw_aic_ge2d_device(void) { return (void *)(uintptr_t)1; }
 bool lv_draw_aic_ge2d_buf_address_valid(const lv_draw_buf_t *b)
 { return b && b->data && (uintptr_t)b->data>=0x40000000; }
@@ -22,13 +59,17 @@ int mpp_ge_bitblt(struct mpp_ge *ge, struct ge_bitblt *blt)
     (void)ge; captured=*blt;
     if(calls<32) history[calls]=*blt;
     calls++;
-    return fail_at==1 || calls==fail_submission ? -1 : 0;
+    if(++event==fail_event) return -1;
+    if(fail_at==1 || calls==fail_submission) return -1;
+    if(pixel_model) model(blt);
+    return 0;
 }
 int mpp_ge_emit(struct mpp_ge *ge)
-{ (void)ge; emits++; return fail_at==2 ? -1 : 0; }
+{ (void)ge; emits++; if(++event==fail_event) return -1; return fail_at==2 ? -1 : 0; }
 int mpp_ge_sync(struct mpp_ge *ge)
 {
     (void)ge; syncs++;
+    if(++event==fail_event) return -1;
     if (retire_on_sync) {
         lv_aic_yuv_image_destroy(retire_on_sync); retire_on_sync=NULL;
         assert(live==1);
@@ -37,7 +78,8 @@ int mpp_ge_sync(struct mpp_ge *ge)
 }
 static bool retain(void *context) { (void)context; live++; return true; }
 static void release(void *context) { (void)context; live--; }
-static void reset(void) { calls=emits=syncs=src_caches=dst_caches=0; }
+static void reset(void) { calls=emits=syncs=src_caches=dst_caches=event=0;
+    for(unsigned i=0;i<128*128;i++) rendered[i]=0xa5a5a5; }
 int main(void)
 {
     const lv_aic_yuv_format_t formats[]={LV_AIC_YUV_YVYU,LV_AIC_YUV_VYUY,LV_AIC_YUV_NV16,LV_AIC_YUV_NV61,LV_COLOR_FORMAT_I420,LV_COLOR_FORMAT_I422,
@@ -141,6 +183,80 @@ int main(void)
             assert(captured.scale_phase.dx_16[0]==43690 && captured.scale_phase.dy_16[0]==32768);
             assert(captured.scale_phase.h_phase_16[0]==0 && captured.scale_phase.v_phase_16[0]==0);
         }
+        d.pivot=(lv_point_t){0,0};d.scale_x=264;d.scale_y=256;
+        const lv_area_t stripe_clips[]={{64,64,95,79},{49,64,64,95},{33,49,64,64},{64,33,79,64}};
+        for(unsigned a=0;a<4;a++) {
+            pixel_model=true;
+            d.rotation=a*900;task.clip_area=stripe_clips[a];reset();
+            assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==2 && syncs==2 && src_caches==1 && dst_caches==1);
+            bool sub_x=formats[f]!=LV_COLOR_FORMAT_I400 && formats[f]!=LV_COLOR_FORMAT_I444;
+            for(unsigned strip=0;strip<2;strip++) {
+                assert(history[strip].ctrl.flags==rotations[a]);
+                assert(!sub_x || !(history[strip].src_buf.crop.x&1));
+            }
+            bool sub_y=formats[f]==LV_COLOR_FORMAT_I420 || formats[f]==LV_COLOR_FORMAT_NV12 || formats[f]==LV_COLOR_FORMAT_NV21;
+            for(int y=0;y<128;y++) for(int x=0;x<128;x++) {
+                int xx=x+10,yy=y+20;
+                if(xx<task.clip_area.x1 || xx>task.clip_area.x2 || yy<task.clip_area.y1 || yy>task.clip_area.y2) {
+                    assert(rendered[y*128+x]==0xa5a5a5);continue;
+                }
+                int dx=xx-64,dy=yy-64;
+                double u=(a==0?dx:a==1?dy:a==2?-dx:-dy)*256.0/264;
+                double v=a==0?dy:a==1?-dx:a==2?-dy:dx;
+                double cx=fmin(u/(sub_x?2:1),(32>>sub_x)-1),cy=fmin(v/(sub_y?2:1),(16>>sub_y)-1);
+                bool mono=formats[f]==LV_COLOR_FORMAT_I400;
+                uint32_t expected=composite(40+2*u+v,mono?128:80+2*cx+3*cy,mono?128:150+cx-2*cy);
+                for(unsigned c=0;c<3;c++)
+                    assert(abs((int)((rendered[y*128+x]>>(c*8))&255)-(int)((expected>>(c*8))&255))<=1);
+                pixel_count++;
+            }
+            memcpy(whole,rendered,sizeof whole);reset();
+            /* Split along the unscaled source-Y axis at an aligned row. */
+            for(unsigned half=0;half<2;half++) {
+                task.clip_area=stripe_clips[a];
+                if(a&1) {
+                    int middle=(task.clip_area.x1+task.clip_area.x2)/2;
+                    if(half) task.clip_area.x1=middle+1;else task.clip_area.x2=middle;
+                } else {
+                    int middle=(task.clip_area.y1+task.clip_area.y2)/2;
+                    if(half) task.clip_area.y1=middle+1;else task.clip_area.y2=middle;
+                }
+                assert(lv_draw_aic_ge2d_yuv(&task)==1);
+            }
+            assert(!memcmp(whole,rendered,sizeof whole));
+            /* Source-X split begins inside a chroma pair; retain that sample
+             * by backing the crop up and carrying a whole luma pixel in phase. */
+            reset();
+            for(unsigned half=0;half<2;half++) {
+                task.clip_area=stripe_clips[a];
+                if(a&1) {
+                    int middle=(task.clip_area.y1+task.clip_area.y2)/2;
+                    if(half) task.clip_area.y1=middle+1;else task.clip_area.y2=middle;
+                } else {
+                    int middle=(task.clip_area.x1+task.clip_area.x2)/2;
+                    if(half) task.clip_area.x1=middle+1;else task.clip_area.x2=middle;
+                }
+                assert(lv_draw_aic_ge2d_yuv(&task)==1);
+            }
+            for(unsigned i=0;i<128*128;i++) for(unsigned c=0;c<3;c++)
+                assert(abs((int)((whole[i]>>(c*8))&255)-(int)((rendered[i]>>(c*8))&255))<=1);
+            reset();task.clip_area=stripe_clips[a];
+            if(a&1) { task.clip_area.x1++;task.clip_area.x2--; }
+            else { task.clip_area.y1++;task.clip_area.y2--; }
+            assert(lv_draw_aic_ge2d_yuv(&task)==1);
+            for(int y=0;y<128;y++) for(int x=0;x<128;x++) {
+                bool inside=x+10>=task.clip_area.x1 && x+10<=task.clip_area.x2 &&
+                            y+20>=task.clip_area.y1 && y+20<=task.clip_area.y2;
+                if(!inside) assert(rendered[y*128+x]==0xa5a5a5);
+                else for(unsigned c=0;c<3;c++)
+                    assert(abs((int)((whole[y*128+x]>>(c*8))&255)-(int)((rendered[y*128+x]>>(c*8))&255))<=1);
+            }
+            pixel_scenes++;pixel_model=false;
+        }
+        d.rotation=0;d.tile=1;task.area=(lv_area_t){64,64,127,95};task.clip_area=layer.buf_area;
+        reset();assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==8 && syncs==8 && src_caches==4);
+        task.area.x2=128;reset();assert(lv_draw_aic_ge2d_yuv(&task)==0 && !calls && !src_caches);
+        task.area=(lv_area_t){64,64,95,79};d.tile=0;
         d.rotation=0; d.pivot=(lv_point_t){0,0};
         d.scale_x=d.scale_y=256; task.clip_area=layer.buf_area;
         d.tile=1; task.area=(lv_area_t){64,64,127,95};
@@ -172,7 +288,7 @@ int main(void)
     assert(lv_draw_aic_ge2d_yuv(&task)==1);
     assert(captured.src_buf.crop.x==2 && captured.src_buf.crop.y==2);
     assert(captured.src_buf.crop.width==24 && captured.src_buf.crop.height==12);
-    d.scale_x=384; reset(); assert(lv_draw_aic_ge2d_yuv(&task)==0 && !calls);
+    d.scale_x=384; reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==1);
     d.scale_x=256; d.tile=1;
     task.area=(lv_area_t){64,64,127,95}; task.clip_area=layer.buf_area;
     reset(); assert(lv_draw_aic_ge2d_yuv(&task)==1);
@@ -229,6 +345,19 @@ int main(void)
     lv_aic_yuv_image_destroy(image); assert(live==1);
     lv_aic_yuv_image_release_lease(quarantined); quarantined=NULL;
     assert(live==0); fail_submission=0; d.tile=0; task.area=(lv_area_t){64,64,95,79};
+    /* Owner retirement during the first strip must not release its planes.
+     * Every failure position also retains the same lease across all strips. */
+    d.scale_x=264;task.clip_area=task.area;
+    image=lv_aic_yuv_image_create(&frame,retain,release,NULL);d.src=lv_aic_yuv_image_source(image);
+    retire_on_sync=image;reset();assert(lv_draw_aic_ge2d_yuv(&task)==1 && calls==2 && live==0);
+    for(fail_event=1;fail_event<=6;fail_event++) {
+        image=lv_aic_yuv_image_create(&frame,retain,release,NULL);d.src=lv_aic_yuv_image_source(image);
+        reset();assert(lv_draw_aic_ge2d_yuv(&task)==-1 && event==fail_event);
+        assert(lv_draw_aic_ge2d_yuv(&task)==-1 && event==fail_event);
+        lv_aic_yuv_image_destroy(image);assert(live==1);
+        lv_aic_yuv_image_release_lease(quarantined);quarantined=NULL;assert(live==0);
+    }
+    fail_event=0;d.scale_x=256;task.clip_area=layer.buf_area;
     for (fail_at=1;fail_at<=3;fail_at++) {
         image=lv_aic_yuv_image_create(&frame,retain,release,NULL); d.src=lv_aic_yuv_image_source(image);
         reset();
@@ -243,5 +372,6 @@ int main(void)
         assert(live==0);
     }
     assert(lv_aic_yuv_image_decoder_deinit()); lv_deinit();
+    printf("PASS %u YUV colored stripe scenes, %u inverse-mapped pixels, full/partial pixel checks and retained frame leases\n",pixel_scenes,pixel_count);
     return 0;
 }

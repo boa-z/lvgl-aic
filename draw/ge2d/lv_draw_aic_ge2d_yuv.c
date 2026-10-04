@@ -4,6 +4,7 @@
 #include "lv_draw_aic_ge2d_utils.h"
 #include "lv_draw_aic_ge2d_rotate.h"
 #include "lv_draw_aic_ge2d_scale.h"
+#include "lv_draw_aic_ge2d_stripes.h"
 #include "lv_aic_yuv_mpp.h"
 #include "lv_aic_yuv_image_private.h"
 #include "lv_aic_pixel_format.h"
@@ -20,6 +21,22 @@
  * fail further YUV attempts until reboot; do not recycle producer storage. */
 static lv_aic_yuv_image_t *quarantined;
 bool lv_draw_aic_ge2d_yuv_faulted(void) { return quarantined != NULL; }
+
+/* Keep both filter channels' adjacent taps at partial-refresh boundaries.
+ * Clamp only against real frame storage, never an intermediate clip edge. */
+static int32_t filter_extent(uint32_t size, int32_t start, int32_t outputs,
+                             int32_t phase, int32_t step, bool subsampled)
+{
+    int64_t last=phase+(int64_t)(outputs-1)*step;
+    int64_t needed=(last+65535)/65536+2;
+    if(subsampled) {
+        int64_t chroma=(((last/2)+65535)/65536+2)*2;
+        if(needed<chroma) needed=chroma;
+        needed=(needed+1)&~INT64_C(1);
+    }
+    int64_t remaining=(int64_t)size-start;
+    return (int32_t)LV_MIN(needed,remaining);
+}
 
 static int submit(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame, bool validate_only)
 {
@@ -91,8 +108,6 @@ static int submit(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame, bool va
             crop=(lv_area_t){x.crop,y.crop,x.crop+x.extent-1,y.crop+y.extent-1};
             flags=MPP_ROTATION_0;
         }
-        int32_t scaler_width=d->rotation%1800 ? lv_area_get_height(&clip) : lv_area_get_width(&clip);
-        if (lv_aic_ge2d_scale_split_risk(x.step_16,scaler_width)) return 0;
         blt.scale_phase.scale_phase_en=1;
         blt.scale_phase.scaler_en=1;
         blt.scale_phase.dx_16[0]=x.step_16;
@@ -107,19 +122,23 @@ static int submit(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame, bool va
     bool sub_y=frame->format==LV_COLOR_FORMAT_I420 || frame->format==LV_COLOR_FORMAT_NV12 ||
                frame->format==LV_COLOR_FORMAT_NV21;
     if (scaled) {
-        /* GE consumes complete chroma samples. Extend the filter footprint,
-         * never shift an odd crop origin and thereby change sampling phase. */
-        if (sub_x && (w&1) && crop.x1+w<(int32_t)frame->width) w++;
-        if (sub_y && (h&1) && crop.y1+h<(int32_t)frame->height) h++;
         blt.scale_phase.channel_num=frame->format==LV_COLOR_FORMAT_I400 ? 1 : 2;
         if (sub_x) {
+            /* Back the crop up to a full chroma sample and retain the original
+             * first sample in the phase (which can include one whole pixel). */
+            if(crop.x1&1) { crop.x1--;blt.scale_phase.h_phase_16[0]+=65536; }
             blt.scale_phase.dx_16[0]&=~1;
             blt.scale_phase.h_phase_16[0]&=~1;
         }
         if (sub_y) {
+            if(crop.y1&1) { crop.y1--;blt.scale_phase.v_phase_16[0]+=65536; }
             blt.scale_phase.dy_16[0]&=~1;
             blt.scale_phase.v_phase_16[0]&=~1;
         }
+        int32_t out_x=d->rotation%1800 ? lv_area_get_height(&clip) : lv_area_get_width(&clip);
+        int32_t out_y=d->rotation%1800 ? lv_area_get_width(&clip) : lv_area_get_height(&clip);
+        w=filter_extent(frame->width,crop.x1,out_x,blt.scale_phase.h_phase_16[0],blt.scale_phase.dx_16[0],sub_x);
+        h=filter_extent(frame->height,crop.y1,out_y,blt.scale_phase.v_phase_16[0],blt.scale_phase.dy_16[0],sub_y);
         if (blt.scale_phase.channel_num==2) {
             blt.scale_phase.in_w_ch1=w>>sub_x;
             blt.scale_phase.in_h_ch1=h>>sub_y;
@@ -149,10 +168,12 @@ static int submit(lv_draw_task_t *task, const lv_aic_yuv_frame_t *frame, bool va
     blt.ctrl.alpha_rules=GE_PD_NONE;
     blt.ctrl.src_alpha_mode=d->opa<LV_OPA_COVER ? 2 : 0;
     blt.ctrl.src_global_alpha=d->opa;
+    unsigned commands;
+    if(!lv_aic_ge2d_stripe_count(&blt,&commands)) return 0;
     if (validate_only) return 1;
     lv_draw_aic_ge2d_prepare_yuv_cache(frame);
     lv_draw_aic_ge2d_prepare_dst_cache(dst,&dst_area);
-    if (mpp_ge_bitblt(ge,&blt)<0 || mpp_ge_emit(ge)<0 || mpp_ge_sync(ge)<0) return -1;
+    if(lv_aic_ge2d_stripe_run(ge,&blt)!=1) return -1;
     return 1;
 }
 

@@ -243,6 +243,65 @@ static int ge_probe(void)
         }
         AIC_TEST_I("PASS I420 tile rot=%u pixels=%d max_error=%d guards=OK",probe*90,checked,tiled_worst);
     }
+    /* Colored chroma exposes phase/crop seams hidden by neutral UV. Run
+     * whole and split refresh with the same independent BT.601 oracle. */
+    d.tile=0;d.pivot=(lv_point_t){0,0};d.scale_y=256;
+    task.area=(lv_area_t){32,32,63,47};
+    for(unsigned y=0;y<16;y++) for(unsigned x=0;x<32;x++) source[y*32+x]=80+x+2*y;
+    for(unsigned y=0;y<8;y++) for(unsigned x=0;x<16;x++) {
+        source[512+y*16+x]=80+2*x+y;source[768+y*16+x]=150+x-2*y;
+    }
+    const lv_area_t stripe_clips[]={{32,32,63,47},{17,32,32,63},{1,17,32,32},{32,1,47,32}};
+    for(unsigned zoom=0;zoom<2;zoom++) for(unsigned angle=0;angle<4;angle++)
+    for(unsigned opacity=0;opacity<2;opacity++) for(unsigned partial=0;partial<2;partial++) {
+        d.scale_x=zoom?281:264;d.rotation=angle*900;d.opa=opacity?128:255;
+        task.clip_area=stripe_clips[angle];
+        memset(output,0xa5,64*64*3);
+        aicos_dcache_clean_invalid_range((unsigned long *)output,64*64*3);
+        for(unsigned pass=0;pass<(partial?2U:1U);pass++) {
+            task.clip_area=stripe_clips[angle];
+            if(partial) {
+                if(angle&1) {
+                    int middle=(task.clip_area.x1+task.clip_area.x2)/2;
+                    if(pass) task.clip_area.x1=middle+1;else task.clip_area.x2=middle;
+                } else {
+                    int middle=(task.clip_area.y1+task.clip_area.y2)/2;
+                    if(pass) task.clip_area.y1=middle+1;else task.clip_area.y2=middle;
+                }
+            }
+            lv_draw_aic_ge2d_outcome_t outcome;
+            if(lv_draw_aic_ge2d_image(&task,&outcome)!=LV_RESULT_OK || outcome!=LV_DRAW_AIC_GE2D_OUTCOME_ENGINE) goto done;
+        }
+        aicos_dcache_invalid_range((unsigned long *)output,64*64*3);
+        int worst=0,checked=0;
+        const lv_area_t *clip=&stripe_clips[angle];
+        for(int y=0;y<64;y++) for(int x=0;x<64;x++) {
+            bool inside=x>=clip->x1 && x<=clip->x2 && y>=clip->y1 && y<=clip->y2;
+            if(!inside) {
+                for(unsigned c=0;c<3;c++) if(output[(y*64+x)*3+c]!=0xa5) goto done;
+                continue;
+            }
+            int dx=x-32,dy=y-32;
+            int64_t u=(int64_t)(angle==0?dx:angle==1?dy:angle==2?-dx:-dy)*256*65536/d.scale_x;
+            int64_t v=(int64_t)(angle==0?dy:angle==1?-dx:angle==2?-dy:dx)*65536;
+            int64_t cx=LV_MIN(u/2,15*INT64_C(65536)),cy=LV_MIN(v/2,7*INT64_C(65536));
+            int64_t yy=64*INT64_C(65536)+u+2*v; /* limited-range Y minus 16 */
+            int64_t uu=-48*INT64_C(65536)+2*cx+cy,vv=22*INT64_C(65536)+cx-2*cy;
+            const int64_t rgb[]={yy*76284+uu*132251,yy*76284-uu*25675-vv*53279,yy*76284+vv*104597};
+            for(unsigned c=0;c<3;c++) {
+                int want=(int)((rgb[c]+INT64_C(2147483648))/INT64_C(4294967296));
+                want=LV_CLAMP(0,want,255);want=(want*d.opa+165*(255-d.opa)+127)/255;
+                int delta=output[(y*64+x)*3+c]-want;
+                if(delta<0) delta=-delta;
+                if(delta>worst) worst=delta;
+            }
+            checked++;
+        }
+        if(checked!=512 || worst>4) {
+            AIC_TEST_E("FAIL YUV stripes sx=%u rot=%u partial=%u error=%d",(unsigned)d.scale_x,angle*90,partial,worst);goto done;
+        }
+        AIC_TEST_I("PASS YUV stripes sx=%u rot=%u opa=%u partial=%u pixels=512 error=%d",(unsigned)d.scale_x,angle*90,(unsigned)d.opa,partial,worst);
+    }
     /* Packed 4:2:2 source formats absent from LVGL's native enum. */
     lv_aic_yuv_image_destroy(image);image=NULL;
     const lv_aic_yuv_format_t packed_formats[]={LV_AIC_YUV_YVYU,LV_AIC_YUV_VYUY};
