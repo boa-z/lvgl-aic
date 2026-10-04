@@ -393,6 +393,7 @@ def main():
         text = map_path.read_text(encoding="utf-8", errors="replace")
         for symbol in ("lv_lottie_create", "lv_lottie_set_buffer", "lv_lottie_set_draw_buf",
                        "lv_lottie_set_src_data", "lv_lottie_set_src_file", "lv_lottie_get_anim",
+                       "lv_aic_lottie_load_data", "lv_aic_lottie_load_file",
                        "tvg_animation_new", "tvg_animation_set_frame"):
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("Lottie live symbol absent: " + symbol)

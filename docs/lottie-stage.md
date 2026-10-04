@@ -28,9 +28,11 @@ adds image/layer composition for addressable storage, with software fallback for
 unsupported requests. The GE backend does not claim Lottie rasterization.
 
 `lv_lottie_set_src_file` uses a C filesystem path through ThorVG `fopen`, not an
-LVGL drive such as `S:/`. The native setters return void and are not a checked
-resource-loading API. Use known valid packaged JSON; explicit malformed-input,
-I/O failure and allocation-failure handling remain a separate integration task.
+LVGL drive such as `S:/`. The native setters return void. The optional
+[checked component loaders](lottie-resources-stage.md) now provide explicit errors,
+input/staging limits and failure-preserving source replacement through memory or
+an LVGL filesystem drive. Internal renderer heap exhaustion remains governed by
+upstream policy.
 Files with external assets, expressions, audio and complete After Effects feature
 parity are not covered. No new SVG loader, worker threads or JavaScript runtime
 is enabled. Allocations use native heaps without a per-animation byte budget.

@@ -7,6 +7,13 @@ GE sources and consistent native software fallback; see [current validation](val
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
+## Checked Lottie resources increment
+
+Native Lottie now has component loaders with explicit errors, encoded/staging
+limits and failure-preserving replacement from memory or LVGL filesystem drives.
+See [checked Lottie resources](lottie-resources-stage.md) for tested failure modes
+and renderer heap boundaries. Physical execution remains **NOT_RUN**.
+
 ## Premultiplied composition increment
 
 GE IMAGE/LAYER now accepts explicit or flagged premultiplied ARGB8888 sources,
@@ -131,7 +138,7 @@ board confirmation remains required. See [font stage](font-stage.md).
 5. Validate the optional [native GIF stage](gif-stage.md) on board. Its decoding
    and lifecycle host coverage does not establish DMA/cache or panel behavior.
 6. Remaining integration priorities: camera-enabled final firmware linkage,
-   concrete SPI panel binding, richer native SVG coverage and checked Lottie resource/failure handling.
+   concrete SPI panel binding, richer native SVG coverage and renderer-internal Lottie heap/failure coverage.
    Target widgets/benchmark integration and combined firmware now pass; their
    native entry points still require explicit application startup selection.
    GE rotation, input-provider interfaces and vendor media/resource adapters now
