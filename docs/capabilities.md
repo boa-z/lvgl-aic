@@ -1,13 +1,12 @@
 # Current capabilities and SDK gaps
 
-Latest combined evidence: **79/79 SVG/vector/Lottie-enabled host PASS**, **74/74 baseline PASS** and GE/widget/SPI full firmware
+Latest combined evidence: **80/80 SVG/vector/Lottie-enabled host PASS**, **75/75 baseline PASS** and GE/widget/SPI full firmware
 build/link/image/provenance **PASS**, including the two-slot SPI display pipeline
 and widgets/benchmark/music/vector/SVG/Lottie enabled together, plus premultiplied
-GE sources, consistent native software fallback, checked Lottie source loading
-corrected SVG transforms, clipping and image composition, and checked GE rotation centers;
-see [current validation](validation.md). Both the 79-test combined suite and
-74-test disabled baseline were rerun for the SVG composition increment; the
-subsequent GE center increment reran the 79-test suite.
+GE sources, checked Lottie source loading, corrected SVG transforms/composition,
+checked GE rotation centers and matched Q15 software fallback geometry/sampling;
+see [current validation](validation.md). Both host configurations were rerun for
+the software rotation increment.
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 
@@ -16,8 +15,9 @@ Board acceptance remains scoped to previously supplied logs; the new image is
 Forward bounds and native software inverse sampling now retain matched Q15
 coefficients. Independent geometry/pixel tests cover remote pivots, negative
 angles, per-axis scale and exact full/partial rendering. Host **80/80 PASS**;
-vector/SVG/Lottie-disabled baseline **75/75 PASS**. Physical execution is
-**NOT_RUN**. See [software rotation](sw-rotation-stage.md) for finite precision
+vector/SVG/Lottie-disabled baseline **75/75 PASS**. Combined target compilation,
+final-link, image and clean-source manifest checks also pass. Physical execution
+is **NOT_RUN**. See [software rotation](sw-rotation-stage.md) for finite precision
 and coordinate limits; target evidence is recorded in [validation](validation.md).
 
 ## GE rotation center increment

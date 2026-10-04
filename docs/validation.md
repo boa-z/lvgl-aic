@@ -1,5 +1,40 @@
 # Validation record
 
+## Software rotation precision (2026-10-04)
+
+Matched Q15 forward geometry and inverse software sampling correct the remote
+pivot fallback reproducers. Source-fingerprinted generated copies retain the
+upstream checkout and SDK source boundary. See [implementation and numerical
+limits](sw-rotation-stage.md).
+
+- Combined host **80/80 PASS** (33.32 s); SVG/vector/Lottie-disabled baseline
+  **75/75 PASS** (28.18 s).
+- Focused test: 420 ARGB8888 scenes, 161,734 independent interior pixels,
+  byte-identical full/partial rendering, 108,000 full-circle geometry probes
+  with a maximum 3.707-pixel error in the declared tested domain.
+- Real GE executor IMAGE/LAYER handoff passes for both 0.1-degree and 45-degree
+  remote-pivot cases, without preceding cache preparation or hardware command.
+- D13x boot/app build, generated-source bytes/live-symbol ownership, image and
+  clean-source manifest gates **PASS**. Physical execution and target timing
+  **NOT_RUN**.
+
+Clean build identities (the following documentation-only commits are not build pins):
+
+- SDK: `ec28f9c927991adeba576be2f06ce972bd60a2ab`.
+- lvgl-aic: `dcfba3466596690a308d1f4113e200051d1693a3`.
+- LVGL: `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
+- Image SHA256: `f3a4c72047db69a2380fea5712a96ba0e59d4d04adb953b7ebfd3cb07556ef87`.
+- ELF SHA256: `accd7e009de2ff862e2d6a3757d3098181e455a3ed91943fe25158f4004e03e9`.
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-sw-rotation/manifest.json`.
+- Component logs: `output/sw-rotation-focus.log`, `output/sw-rotation-tests.log`,
+  `output/sw-rotation-baseline-tests.log`, `output/sw-rotation-firmware.log`.
+
+Use the combined build profile with `-EvidenceTag sw-rotation`. Both generated
+rotation sources are included in the manifest and were independently hashed.
+The GE hardware center domain and arbitrary-angle plus scale limitation are
+unchanged; this stage improves native software fallback, not GE capability or
+physical acceptance.
+
 ## GE ROTATE center bounds (2026-10-04)
 
 Combined host regression **79/79 PASS** (16.43 seconds). The new center contract

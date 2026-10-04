@@ -37,7 +37,9 @@ symbol ownership; the evidence manifest includes both generated sources.
   with no preceding cache preparation or hardware command.
 
 Combined host **80/80 PASS** and vector/SVG/Lottie-disabled baseline **75/75
-PASS**. Target build evidence is recorded separately in [validation](validation.md).
+PASS**. Combined D13x boot/app compilation, generated-source/live-symbol checks,
+image and clean-source manifest gates also pass; exact pins and hashes are in
+[validation](validation.md).
 Hardware execution remains **NOT_RUN**; target timing and numeric/visual rotation
 acceptance are deferred. This change does not establish an unbounded int32
 coordinate/scale domain, change GE Q2.12 arithmetic, or implement hardware
