@@ -44,6 +44,9 @@ file/data first-frame equality, preserved pause/time/pixels after failure,
 continued animation after commit, a valid empty animation and rejection after
 explicit deletion of the native animation. File opens/closes remain balanced.
 Strict warnings are enabled for the adapter in host builds. Full combined host
-suite **77/77 PASS**; final target evidence is pending at this commit.
+suite **77/77 PASS**. The combined D13x 90-degree firmware passes boot/app
+compilation, final-link/live-symbol checks for both loaders, image validation
+and a clean-source manifest. Exact pins and image hash are recorded in
+[validation](validation.md).
 Hardware file access, renderer heap pressure and long-duration playback are
 **NOT_RUN**. No SDK/LVGL source edits and no flashing.

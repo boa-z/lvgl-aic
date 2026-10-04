@@ -3,7 +3,9 @@
 Latest combined evidence: **77/77 SVG/vector/Lottie-enabled host PASS**, **74/74 baseline PASS** and GE/widget/SPI full firmware
 build/link/image/provenance **PASS**, including the two-slot SPI display pipeline
 and widgets/benchmark/music/vector/SVG/Lottie enabled together, plus premultiplied
-GE sources and consistent native software fallback; see [current validation](validation.md).
+GE sources, consistent native software fallback and checked Lottie source loading;
+see [current validation](validation.md). The 74-test disabled baseline belongs to
+the preceding premultiplied stage; this Lottie-only increment reran the 77-test suite.
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 

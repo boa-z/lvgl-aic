@@ -1,5 +1,37 @@
 # Validation record
 
+## Checked Lottie source loading (2026-10-04)
+
+Combined SVG/vector/Lottie host regression **77/77 PASS** (15.38 seconds).
+Across 20 widget lifetimes, the real native parser/renderer verifies successful
+replacement, first-frame pixel equality, continued animation and preserved
+pixels/timing/pause on errors. Failure cases cover malformed/truncated JSON,
+embedded NUL, zero-duration metadata, source/staging limits, forced staging
+allocation failure, deleted native animation and LVGL filesystem open/seek/read/
+early-EOF/oversize/close failures. Seven-byte progressing reads succeed and file
+opens/closes remain balanced. The disabled 74-test baseline was last run in the
+preceding premultiplied stage.
+
+The combined D13x 90-degree GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/
+widgets-demo/benchmark/music/vector/SVG/Lottie firmware passes boot/app,
+final-link/static, image and clean-source manifest gates. Both checked loading
+APIs survive the final link.
+
+- lvgl-aic: `78caf64b756b90dc56f966dfd0488382b5f35d7e` (clean).
+- sdk: `cad06a29b41e93d6528a75fc3c5d0557f216d40f` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `1056ec039e86163165a6829f0ff3783af092aec4e0cd5630c5ccb76de67be49c` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-lottie-load/manifest.json`.
+- Component logs: `output/lottie-resource-tests.log`, `output/lottie-resource-focus.log`, `output/lottie-resource-firmware.log`.
+
+Build with the combined profile and `-EvidenceTag lottie-load`; prior evidence
+images are retained. SDK/LVGL sources remain unchanged with no leaked LVGL
+objects. Limits cover encoded/staging payloads, not the complete renderer heap;
+internal allocation assertions remain an upstream limitation. Camera stays
+disabled and no SPI panel is bound. Physical file access, heap pressure and
+long-duration playback **NOT_RUN**; nothing was flashed.
+See [checked Lottie resources](lottie-resources-stage.md).
+
 ## Premultiplied GE sources and software fallback (2026-10-04)
 
 Combined SVG/vector/Lottie regression **77/77 PASS**; baseline **74/74 PASS**.
