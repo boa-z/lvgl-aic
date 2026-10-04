@@ -23,6 +23,14 @@
  * Every AIC_LVGL_USE_* symbol that is read with `#if` must be listed here:
  * a bare `#define X` makes `#if X` a compile error, not a false branch. */
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
+#ifdef AIC_LVGL_BUILD_DEMO_WIDGETS
+#undef AIC_LVGL_BUILD_DEMO_WIDGETS
+#define AIC_LVGL_BUILD_DEMO_WIDGETS 1
+#endif
+#ifdef AIC_LVGL_BUILD_DEMO_BENCHMARK
+#undef AIC_LVGL_BUILD_DEMO_BENCHMARK
+#define AIC_LVGL_BUILD_DEMO_BENCHMARK 1
+#endif
 #ifdef AIC_LVGL_USE_CANVAS
 #undef AIC_LVGL_USE_CANVAS
 #define AIC_LVGL_USE_CANVAS 1
@@ -182,6 +190,38 @@
 #endif
 #ifndef LV_USE_THORVG_INTERNAL
 #define LV_USE_THORVG_INTERNAL 0
+#endif
+
+/* Explicit target demos share the ordinary application-owned LVGL build. */
+#if defined(AIC_LVGL_BUILD_DEMO_BENCHMARK) && AIC_LVGL_BUILD_DEMO_BENCHMARK
+#define LV_USE_DEMO_BENCHMARK 1
+#define LV_USE_SYSMON 1
+#define LV_USE_PERF_MONITOR 1
+#endif
+#if (defined(AIC_LVGL_BUILD_DEMO_WIDGETS) && AIC_LVGL_BUILD_DEMO_WIDGETS) || \
+    (defined(AIC_LVGL_BUILD_DEMO_BENCHMARK) && AIC_LVGL_BUILD_DEMO_BENCHMARK)
+#define LV_USE_DEMO_WIDGETS 1
+#ifndef LV_FONT_MONTSERRAT_12
+#define LV_FONT_MONTSERRAT_12 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_14
+#define LV_FONT_MONTSERRAT_14 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_16
+#define LV_FONT_MONTSERRAT_16 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_18
+#define LV_FONT_MONTSERRAT_18 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_20
+#define LV_FONT_MONTSERRAT_20 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_24
+#define LV_FONT_MONTSERRAT_24 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_26
+#define LV_FONT_MONTSERRAT_26 1
+#endif
 #endif
 
 /* Keep diagnostics available without enabling high-frequency logging. */

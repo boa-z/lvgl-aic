@@ -37,12 +37,35 @@ for directory, directories, files in os.walk(os.path.join(lvgl_root, 'src')):
     src += Glob(relative + '/*.c', ondisk=True, source=True)
 if not src:
     raise RuntimeError('Application LVGL sources are missing')
+demo_enabled = GetDepend('AIC_LVGL_BUILD_DEMO_WIDGETS') or GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK')
+if demo_enabled:
+    src += Glob('../lvgl/demos/lv_demos.c', ondisk=True, source=True)
+    demo_dirs = ['widgets']
+    if GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
+        demo_dirs += ['benchmark']
+    for demo in demo_dirs:
+        for directory, directories, files in os.walk(os.path.join(lvgl_root, 'demos', demo)):
+            directories.sort()
+            for name in sorted(files):
+                if not name.endswith('.c'):
+                    continue
+                if name == 'lv_demo_' + demo + '.c':
+                    src += [File('compat/lv_aic_demo_' + demo + '.c')]
+                else:
+                    relative = os.path.relpath(directory, cwd).replace(os.sep, '/')
+                    src += Glob(relative + '/' + name, ondisk=True, source=True)
 src += [File('compat/lvgl_aic_config_probe.c'), File('compat/lv_aic_rtthread_os.c')]
 includes = [cwd, os.path.join(cwd, 'include'), os.path.join(cwd, 'compat'),
             lvgl_root, os.path.join(lvgl_root, 'include'), os.path.join(lvgl_root, 'include', 'lvgl'),
             os.path.join(lvgl_root, 'src', 'osal'), os.path.join(lvgl_root, 'env_support', 'rt-thread')]
 group = DefineGroup('Application-LVGL-9.6', src, depend=['AIC_LVGL_PORT'],
-    CPPPATH=includes, CPPDEFINES=['LV_KCONFIG_IGNORE=1', 'LV_BUILD_EXAMPLES=0', 'LV_BUILD_DEMOS=0'])
+    CPPPATH=includes, CPPDEFINES=['LV_KCONFIG_IGNORE=1', 'LV_BUILD_EXAMPLES=0', 'LV_BUILD_DEMOS=' + ('1' if demo_enabled else '0')])
+if demo_enabled and GetDepend('AIC_LVGL_SMOKE_APP'):
+    for api in ('lv_demo_widgets', 'lv_demo_widgets_with_args'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
+    if GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
+        for api in ('lv_demo_benchmark', 'lv_demo_benchmark_set_end_cb', 'lv_demo_benchmark_summary_display'):
+            Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
 # SCons must receive two tokens; DefineGroup treats a CCFLAGS string as one.
 Env.AppendUnique(CCFLAGS=['-include', 'lvgl_aic_build_config.h'])
 

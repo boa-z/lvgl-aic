@@ -86,6 +86,26 @@ config AIC_LVGL_FREETYPE_GLYPHS
     range 8 512
     depends on AIC_LVGL_USE_FREETYPE
 
+config AIC_LVGL_BUILD_DEMO_WIDGETS
+    bool "Build upstream LVGL widgets demo"
+    default n
+    depends on AIC_LVGL_PORT
+    help
+        Application-owned LVGL 9.6 demo sources and required built-in fonts.
+        Call lv_demo_widgets on the LVGL owner thread after display setup.
+        This option does not start a demo or replace application screens.
+
+config AIC_LVGL_BUILD_DEMO_BENCHMARK
+    bool "Build upstream LVGL rendering benchmark"
+    default n
+    depends on AIC_LVGL_PORT
+    select AIC_LVGL_BUILD_DEMO_WIDGETS
+    help
+        Includes native system/performance monitoring and the widgets scene.
+        Call lv_demo_benchmark on a dedicated active screen on the UI thread.
+        Upstream owns timers and top-layer objects for the whole benchmark.
+        Do not delete/switch its screen while running. Results require hardware.
+
 config AIC_LVGL_USE_GIF
     bool "Enable native LVGL GIF widget"
     default n
