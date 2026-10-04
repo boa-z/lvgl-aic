@@ -10,7 +10,8 @@ bool lv_aic_ge2d_rotation_crop(uint32_t src_w, uint32_t src_h,
 {
     int32_t angle = rotation;
     int64_t xs[4], ys[4];
-    if (!dst || !pivot || !src || !flags || src_w == 0 || src_h == 0) return false;
+    if (!dst || !pivot || !src || !flags || src_w == 0 || src_h == 0 ||
+        dst->x1 > dst->x2 || dst->y1 > dst->y2) return false;
     angle %= 3600;
     if (angle < 0) angle += 3600;
     *flags = 0;
@@ -58,7 +59,8 @@ bool lv_aic_ge2d_rotation_scale_crop(uint32_t src_w, uint32_t src_h,
     int32_t angle = rotation % 3600;
     int64_t px, py, x[4], y[4], minx, maxx, miny, maxy;
     if (!dst || !pivot || !src || !flags || !phase_x || !phase_y ||
-        !src_w || !src_h || sx < 16 || sx > 4096 || sy < 16 || sy > 4096)
+        !src_w || !src_h || dst->x1 > dst->x2 || dst->y1 > dst->y2 ||
+        sx < 16 || sx > 4096 || sy < 16 || sy > 4096)
         return false;
     if (angle < 0) angle += 3600;
     if (angle != 0 && angle != 900 && angle != 1800 && angle != 2700) return false;
@@ -69,8 +71,10 @@ bool lv_aic_ge2d_rotation_scale_crop(uint32_t src_w, uint32_t src_h,
     *flags = angle == 0 ? 0 : angle == 900 ? MPP_ROTATION_90 :
              angle == 1800 ? MPP_ROTATION_180 : MPP_ROTATION_270;
     for (int i = 0; i < 4; i++) {
-        int64_t u = ((i & 1) ? dst->x2 : dst->x1) * 256;
-        int64_t v = ((i & 2) ? dst->y2 : dst->y1) * 256;
+        /* Widen before multiplication; image-relative coordinates can be far
+         * outside the clipped destination buffer when the pivot is remote. */
+        int64_t u = (int64_t)((i & 1) ? dst->x2 : dst->x1) * 256;
+        int64_t v = (int64_t)((i & 2) ? dst->y2 : dst->y1) * 256;
         int64_t dx = u - px, dy = v - py;
         switch (angle) {
         case 0:    x[i] = (int64_t)pivot->x * 65536 + dx * 65536 / sx;

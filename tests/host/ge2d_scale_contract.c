@@ -76,6 +76,41 @@ static void combined_transform_contract(void)
         }
     }
 }
+/* A large image-relative translation must not wrap during Q8 conversion.
+ * Use a double forward matrix, independent of the inverse fixed-point helper. */
+static void wide_rotation_contract(void)
+{
+    const lv_point_t pivots[]={{16777216,-16777216},{-16777216,16777216}};
+    for(unsigned p=0;p<2;p++) for(int angle=0;angle<3600;angle+=900) {
+        double radians=angle*3.14159265358979323846/1800.0;
+        double minx=1e30,miny=1e30,maxx=-1e30,maxy=-1e30;
+        for(unsigned i=0;i<4;i++) {
+            double dx=(((i&1)?12:4)-pivots[p].x)*2.0;
+            double dy=(((i&2)?18:6)-pivots[p].y)*3.0;
+            double x=pivots[p].x+cos(radians)*dx-sin(radians)*dy;
+            double y=pivots[p].y+sin(radians)*dx+cos(radians)*dy;
+            if(x<minx) minx=x;
+            if(x>maxx) maxx=x;
+            if(y<miny) miny=y;
+            if(y>maxy) maxy=y;
+        }
+        lv_area_t visible={(int32_t)llround(minx),(int32_t)llround(miny),
+                           (int32_t)llround(maxx),(int32_t)llround(maxy)},crop;
+        unsigned flags;int32_t px,py;
+        assert(lv_aic_ge2d_rotation_scale_crop(32,32,&visible,&pivots[p],angle,
+                                              512,768,&crop,&flags,&px,&py));
+        assert(crop.x1==4 && crop.x2==12 && crop.y1==6 && crop.y2==18);
+        assert(px==0 && py==0);
+    }
+    lv_point_t zero={0,0};lv_area_t crop;unsigned flags;int32_t px,py;
+    lv_area_t visible={16777216,0,16777232,16};
+    assert(!lv_aic_ge2d_rotation_scale_crop(32,32,&visible,&zero,0,
+                                           256,256,&crop,&flags,&px,&py));
+    visible=(lv_area_t){12,0,4,16};
+    assert(!lv_aic_ge2d_rotation_crop(32,32,&visible,&zero,0,&crop,&flags));
+    assert(!lv_aic_ge2d_rotation_scale_crop(32,32,&visible,&zero,0,
+                                           256,256,&crop,&flags,&px,&py));
+}
 /* Native YUV executor has its own real-ABI lease/submission contract. */
 int lv_draw_aic_ge2d_yuv(lv_draw_task_t *task) { (void)task; return 0; }
 bool lv_draw_aic_ge2d_yuv_faulted(void) { return false; }
@@ -197,6 +232,7 @@ static void generic_decoder_lifetime(lv_layer_t *layer)
 int main(void)
 {
     combined_transform_contract();
+    wide_rotation_contract();
     static uint8_t pixels[32 * 128], output[128 * 512];
     lv_draw_buf_t src, dst;
     lv_draw_image_dsc_t d;

@@ -27,3 +27,25 @@ oracle checks every tenth of a degree with error below 2 Q12 units.
 Hardware calls are mocked. Rotated edge pixels, antialiasing, DMA/cache behavior
 and panel output remain pending consolidated board verification. No global
 allocator, SDK core or upstream LVGL source is changed.
+
+## Wide-coordinate crop arithmetic (2026-10-04)
+
+The orthogonal rotation-plus-scale crop helper now widens each destination
+coordinate before multiplying by 256. Previously the expression overflowed a
+32-bit signed integer before assignment to int64_t, corrupting inverse mapping
+for large image-relative translations/pivots. Both rotated crop helpers also
+reject reversed destination rectangles instead of silently reordering corners.
+Normal source/buffer bounds, minimum crop sizes and scaler limits are retained.
+This is arithmetic correction, not expanded end-to-end LVGL geometry support.
+
+A regression failed before the fix on valid inverse mapping with remote pivots.
+An independent double forward matrix now checks all four right-angle directions,
+both pivot signs and per-axis 2x/3x scaling. Separate cases reject an out-of-image
+rectangle that previously wrapped into the source and a reversed rectangle.
+Host regression **70/70 PASS**; strict D13x helper compilation **PASS**.
+SDK object `output/ge-wide-crop-rotate.o` SHA256:
+`91928d8df04725fdfa40af6be6414f3c8f0dc522bb94aa37381b6eaaef12c8a0`.
+Logs: `output/ge-wide-crop-before.log`, `output/ge-wide-crop-build.log`,
+`output/ge-wide-crop-tests.log`, `output/ge-wide-crop-target.log`.
+The current packaged demo firmware predates this correction. Full-firmware
+refresh for this increment and physical hardware execution remain **NOT_RUN**.
