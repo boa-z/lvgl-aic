@@ -1,5 +1,39 @@
 # Validation record
 
+## Premultiplied GE sources and software fallback (2026-10-04)
+
+Combined SVG/vector/Lottie regression **77/77 PASS**; baseline **74/74 PASS**.
+The real decoder/GE dispatch contract captures correct source flags and alpha
+controls for explicit/flagged premultiplication across image, layer, scaled
+orthogonal rotation, arbitrary rotation and tiling at three global opacities.
+Unaddressable sources retain correct native software pixels. These engine mocks
+prove routing and commands, not hardware pixel arithmetic.
+
+A native software canvas test compares explicit/flagged pixels for nine plain,
+opacity, rounded-clip, recolour, transformed and colour-key scenes. Actual SDK
+normal/CMDQ alpha helpers are compiled and exercised at all 256 global opacities;
+upstream source drift is rejected by the generated software-correction guard.
+
+The combined D13x 90-degree GE/fonts/GIF/widgets/AICP/player/APNG/barcode/SPI/
+widgets-demo/benchmark/music/vector/SVG/Lottie firmware passes boot/app,
+final-link/static, image and clean-source manifest gates. The linked software
+image symbol is verified to come from the generated correction. Six new real
+GE-versus-software alpha/clip probes and expanded scale/tile/rotation probes are
+compiled into the smoke image; their physical execution remains **NOT_RUN**.
+
+- lvgl-aic: `90b02dc24c7219655c104b52888c8a8215a73343` (clean).
+- sdk: `366fd8d6acd8578b91a40962aa3d03382df5c60c` (clean).
+- lvgl: `80ca777e37a2b176770726a02e07a6fb79ef0b39` (clean).
+- Image SHA256: `479c5a65fc5d585480cbc5f9b7a0a7525ade1e8e86df01dbf54c6859baa709dc` (independently verified).
+- Manifest: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-aicp-player-apng-barcode-spi-demos-music-vector-svg-lottie-rotate90-premult/manifest.json`.
+- Component logs: `output/premult-tests.log`, `output/premult-baseline-tests.log`, `output/premult-firmware.log`.
+
+Build with the combined profile and `-EvidenceTag premult`; the preceding Lottie
+image is retained separately. SDK and LVGL source checkouts remain unmodified,
+with no leaked objects. Premultiplied destinations and premultiplied colour-key
+GE comparison remain outside this increment. Camera stays disabled, no SPI panel
+is bound and nothing was flashed. See [premultiplied source stage](ge-premult-stage.md).
+
 ## Native Lottie animation and premultiplied composition (2026-10-04)
 
 Combined SVG/vector/Lottie host suite **75/75 PASS**; disabled baseline **72/72

@@ -1,8 +1,9 @@
 # Current capabilities and SDK gaps
 
-Latest combined evidence: **75/75 SVG/vector/Lottie-enabled host PASS**, **72/72 disabled baseline PASS** and GE/widget/SPI full firmware
+Latest combined evidence: **77/77 SVG/vector/Lottie-enabled host PASS**, **74/74 baseline PASS** and GE/widget/SPI full firmware
 build/link/image/provenance **PASS**, including the two-slot SPI display pipeline
-and widgets/benchmark/music/vector/SVG/Lottie enabled together; see [current validation](validation.md).
+and widgets/benchmark/music/vector/SVG/Lottie enabled together, plus premultiplied
+GE sources and consistent native software fallback; see [current validation](validation.md).
 Board acceptance remains scoped to previously supplied logs; the new image is
 **NOT_RUN**. Milestone counts below describe their historical checkpoints.
 

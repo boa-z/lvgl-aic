@@ -39,7 +39,7 @@ its representation is also correct for consumers outside this software path.
 
 ## Validation and board probes
 
-Combined host suite initially **77/77 PASS**. The GE contract traverses actual
+Combined host suite **77/77 PASS**; baseline **74/74 PASS**. The GE contract traverses actual
 decoding and captures engine commands for both representations, three global
 opacities, image/layer, scaled orthogonal rotation, arbitrary rotation and tiling.
 Address-rejected sources render real software pixels. These capture mocks do not
@@ -56,6 +56,8 @@ Existing scale/tile/orthogonal-rotation ramp probes also include both premultipl
 representations. An uncertain DMA completion retains probe storage until reboot.
 These probes are compiled into the smoke image; physical execution is **NOT_RUN**.
 
-Full target validation is pending at the feature commit. The build helper accepts
+Combined D13x boot/app, final-link/static, image and clean-source manifest gates
+**PASS**. Exact pins and image SHA256 are in [validation](validation.md).
+The build helper accepts
 `-EvidenceTag premult` to preserve this candidate separately from the preceding
 Lottie-stage image. Hardware validation remains deferred; no flashing.
