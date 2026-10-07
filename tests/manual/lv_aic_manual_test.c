@@ -11,6 +11,8 @@
 #include "lv_aic_font_test.h"
 #include "lv_aic_gif_test.h"
 #include "lv_aic_apng_test.h"
+#include "lv_aic_can_capture.h"
+#include "lv_aic_meter_test.h"
 #include "lv_aic_plane_test.h"
 #include "lv_img_roller.h"
 #include "lv_swipe_v1.h"
@@ -145,6 +147,12 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
 #endif
 #if defined(AIC_LVGL_USE_APNG_WIDGET) && AIC_LVGL_USE_APNG_WIDGET
     lv_aic_apng_test_poll();
+#endif
+#if defined(AIC_LVGL_BUILD_DEMO_METER) && AIC_LVGL_BUILD_DEMO_METER
+    lv_aic_meter_test_poll();
+#endif
+#if defined(AIC_LVGL_USE_CAN_CAPTURE) && AIC_LVGL_USE_CAN_CAPTURE
+    lv_aic_can_capture_poll();
 #endif
 #if LV_USE_GIF && AIC_LVGL_BSP_RTTHREAD
     lv_aic_gif_test_poll();

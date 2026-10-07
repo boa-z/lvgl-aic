@@ -47,6 +47,10 @@
 #undef AIC_LVGL_BUILD_DEMO_BENCHMARK
 #define AIC_LVGL_BUILD_DEMO_BENCHMARK 1
 #endif
+#ifdef AIC_LVGL_BUILD_DEMO_METER
+#undef AIC_LVGL_BUILD_DEMO_METER
+#define AIC_LVGL_BUILD_DEMO_METER 1
+#endif
 #ifdef AIC_LVGL_USE_CANVAS
 #undef AIC_LVGL_USE_CANVAS
 #define AIC_LVGL_USE_CANVAS 1
@@ -110,6 +114,10 @@
 #ifdef AIC_LVGL_USE_TOUCH
 #undef AIC_LVGL_USE_TOUCH
 #define AIC_LVGL_USE_TOUCH 1
+#endif
+#ifdef AIC_LVGL_USE_CAN_CAPTURE
+#undef AIC_LVGL_USE_CAN_CAPTURE
+#define AIC_LVGL_USE_CAN_CAPTURE 1
 #endif
 #ifdef AIC_LVGL_USE_GIF
 #undef AIC_LVGL_USE_GIF
@@ -286,8 +294,7 @@
 #endif
 
 #if defined(AIC_LVGL_BUILD_DEMO_MUSIC) && AIC_LVGL_BUILD_DEMO_MUSIC
-#define LV_USE_DEMO_MUSIC 1
-/* Fonts for both upstream compact and large layouts. */
+#define LV_USE_DEMO_MUSIC 1/* Fonts for both upstream compact and large layouts. */
 #ifndef LV_FONT_MONTSERRAT_12
 #define LV_FONT_MONTSERRAT_12 1
 #endif
@@ -299,6 +306,14 @@
 #endif
 #ifndef LV_FONT_MONTSERRAT_32
 #define LV_FONT_MONTSERRAT_32 1
+#endif
+#endif
+
+#if defined(AIC_LVGL_BUILD_DEMO_METER) && AIC_LVGL_BUILD_DEMO_METER
+/* Meter labels use the built-in 14px font; vendor ui_font_regular stays
+ * a target asset concern, not a component build dependency. */
+#ifndef LV_FONT_MONTSERRAT_14
+#define LV_FONT_MONTSERRAT_14 1
 #endif
 #endif
 

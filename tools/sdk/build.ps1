@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithVector, [switch]$WithSvg, [switch]$WithLottie, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT, [ValidatePattern('^[a-z0-9][a-z0-9-]{0,31}$')][string]$EvidenceTag)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithMeter, [switch]$WithCanCapture, [switch]$WithVector, [switch]$WithSvg, [switch]$WithLottie, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT, [ValidatePattern('^[a-z0-9][a-z0-9-]{0,31}$')][string]$EvidenceTag)
 $ErrorActionPreference='Stop'
 if ($WithSvg -or $WithLottie) { $WithVector=$true }
 if (-not $SdkRoot) {
@@ -46,6 +46,8 @@ if ($WithSpi) { $variant += '-spi' }
 if ($WithCamera) { $variant += '-camera' }
 if ($WithDemos) { $variant += '-demos' }
 if ($WithMusic) { $variant += '-music' }
+if ($WithMeter) { $variant += '-meter' }
+if ($WithCanCapture) { $variant += '-cancap' }
 if ($WithVector) { $variant += '-vector' }
 if ($WithSvg) { $variant += '-svg' }
 if ($WithLottie) { $variant += '-lottie' }
@@ -102,7 +104,7 @@ if ($Phase -eq 'ge2d') {
 $defPath=Join-Path $root "target/configs/$def"
 $originalDef=[IO.File]::ReadAllBytes($defPath)
 try {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $WithVector) {
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $WithMeter -or $WithCanCapture -or $WithVector) {
         [IO.File]::WriteAllBytes("$evidence/defconfig-original", $originalDef)
         $settings=@("CONFIG_AIC_LVGL_DISPLAY_ROTATION=$([int]($Rotation / 90))")
         if ($WithFonts) { $settings += @('CONFIG_AIC_LVGL_USE_FREETYPE=y', 'CONFIG_AIC_LVGL_USE_FT_CACHE=y', 'CONFIG_LPKG_USING_FREETYPE=y', 'CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64') }
@@ -116,6 +118,8 @@ try {
         if ($WithSvg) { $settings += 'CONFIG_AIC_LVGL_USE_SVG=y' }
         if ($WithVector) { $settings += 'CONFIG_AIC_LVGL_USE_VECTOR=y' }
         if ($WithMusic) { $settings += 'CONFIG_AIC_LVGL_BUILD_DEMO_MUSIC=y' }
+        if ($WithMeter) { $settings += 'CONFIG_AIC_LVGL_BUILD_DEMO_METER=y' }
+        if ($WithCanCapture) { $settings += 'CONFIG_AIC_LVGL_USE_CAN_CAPTURE=y' }
         if ($WithDemos) { $settings += @('CONFIG_AIC_LVGL_BUILD_DEMO_WIDGETS=y','CONFIG_AIC_LVGL_BUILD_DEMO_BENCHMARK=y') }
         if ($WithCamera) { $settings += @('CONFIG_AIC_MPP_VIN=y','CONFIG_AIC_LVGL_USE_VIN=y','CONFIG_AIC_LVGL_USE_CAMERA=y') }
         if ($WithApng) { $settings += @('CONFIG_AIC_LVGL_USE_APNG=y', 'CONFIG_AIC_LVGL_USE_APNG_WIDGET=y') }
@@ -131,7 +135,7 @@ try {
     Run-Step 'app-config' @($scons,"--apply-def=$def")
     Run-Step 'app-build' @($scons,"-j$Jobs")
 } finally {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $WithVector) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $WithMeter -or $WithCanCapture -or $WithVector) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
 }
 $app='output/'+($def -replace '_defconfig$','')+'/images'
 $checkArgs=@("$PSScriptRoot/check_integration.py",'--root','.', '--map',"$app/d13x.map",'--phase',$Phase)
@@ -147,6 +151,8 @@ if ($WithSpi) { $checkArgs += '--with-spi' }
 if ($WithCamera) { $checkArgs += '--with-camera' }
 if ($WithDemos) { $checkArgs += '--with-demos' }
 if ($WithMusic) { $checkArgs += '--with-music' }
+if ($WithMeter) { $checkArgs += '--with-meter' }
+if ($WithCanCapture) { $checkArgs += '--with-can-capture' }
 if ($WithVector) { $checkArgs += '--with-vector' }
 if ($WithLottie) { $checkArgs += '--with-lottie' }
 if ($WithSvg) { $checkArgs += '--with-svg' }

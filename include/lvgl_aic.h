@@ -88,6 +88,18 @@ void lv_aic_mpp_cache_set_limit(uint32_t bytes);
 void lv_aic_mpp_cache_drop(const void *src);
 const lv_aic_mpp_cache_stats_t *lv_aic_mpp_cache_stats(void);
 
+/** One retained cache entry, for diagnostics (path is NULL for memory sources). */
+typedef struct {
+    const char *path;
+    uint32_t width, height, bytes, refs;
+    lv_color_format_t color_format;
+    bool premultiply;
+} lv_aic_mpp_cache_entry_t;
+/** Visit retained entries newest first; owner thread only, do not mutate the
+ * cache from @p fn. */
+void lv_aic_mpp_cache_foreach(void (*fn)(const lv_aic_mpp_cache_entry_t *entry, void *user),
+                              void *user);
+
 /** @brief Return the MPP image decoder owned by the port, or NULL. */
 lv_image_decoder_t *lv_aic_get_mpp_decoder(void);
 #endif

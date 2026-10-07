@@ -52,13 +52,37 @@ static void memory_cache_contract(const char *root)
     args.premultiply=true; open_mpp(&a,&image,&args);
     assert(a.decoded!=cached && (a.decoded->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED));
     lv_image_decoder_close(&a); args.premultiply=false;
-    args.stride_align=true; open_mpp(&a,&image,&args); assert(a.decoded!=cached);
+    /* 32 px RGBA rows (128 B) already satisfy LV_DRAW_BUF_STRIDE_ALIGN: the
+     * SW unit's stride_align=true request shares the GE2D unit's raw buffer
+     * instead of caching a second copy. */
+    args.stride_align=true; before=decodes; open_mpp(&a,&image,&args);
+    assert(a.decoded==cached && decodes==before);
     lv_image_decoder_close(&a); args.stride_align=false;
     args.use_indexed=true; open_mpp(&a,&image,&args); assert(a.decoded!=cached);
     lv_image_decoder_close(&a); args.use_indexed=false;
     args.flush_cache=true; before=decodes; open_mpp(&a,&image,&args);
     assert(a.decoded==cached && decodes==before); lv_image_decoder_close(&a); args.flush_cache=false;
-    assert(lv_aic_mpp_cache_stats()->entries==4);
+    assert(lv_aic_mpp_cache_stats()->entries==3);
+    {
+        /* An aligned request reuses the raw buffer exactly when its actual
+         * stride already equals the aligned stride; otherwise it must decode
+         * a separate (post-processed, aligned) copy. */
+        lv_image_dsc_t odd=image; uint32_t odd_n;
+        unsigned char *odd_data=fixture(root,"s33n3p04.png",&odd_n);
+        odd.data=odd_data; odd.data_size=odd_n; odd.header.cf=LV_COLOR_FORMAT_RAW;
+        open_mpp(&a,&odd,&args); const void *raw=a.decoded;
+        bool aligned=a.decoded->header.stride ==
+            lv_draw_buf_width_to_stride(a.decoded->header.w, a.decoded->header.cf);
+        lv_image_decoder_close(&a);
+        args.stride_align=true; before=decodes; open_mpp(&b,&odd,&args);
+        if(aligned) assert(decodes==before && b.decoded==raw);
+        else assert(decodes==before+1 && b.decoded!=raw &&
+                    b.decoded->header.stride ==
+                        lv_draw_buf_width_to_stride(b.decoded->header.w, b.decoded->header.cf));
+        lv_image_decoder_close(&b); args.stride_align=false;
+        lv_aic_mpp_cache_drop(&odd); free(odd_data);
+        assert(lv_aic_mpp_cache_stats()->entries==3);
+    }
     lv_aic_mpp_cache_drop(NULL); assert(live_cma==0);
 
     /* One-entry byte budget, LRU eviction and pinned-reader preservation. */

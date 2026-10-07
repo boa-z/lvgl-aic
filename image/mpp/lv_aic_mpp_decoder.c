@@ -73,8 +73,30 @@ static lv_aic_mpp_cma_stats_t g_aic_mpp_cma_stats;
 #ifndef AIC_LVGL_MPP_CACHE_BYTES
 #define AIC_LVGL_MPP_CACHE_BYTES (512U * 1024U)
 #endif
-#define LV_AIC_MPP_CACHE_ENTRIES 16U
+#ifndef AIC_LVGL_MPP_CACHE_ENTRIES
+#define AIC_LVGL_MPP_CACHE_ENTRIES 16
+#endif
+#define LV_AIC_MPP_CACHE_ENTRIES ((uint32_t)(AIC_LVGL_MPP_CACHE_ENTRIES))
 static lv_aic_mpp_session_t *g_cache_oldest, *g_cache_newest;
+/* LVGL 9 decodes on more than one thread: the GE2D unit opens images on the
+ * dispatching (UI) thread while tasks it declines reach the SW draw thread.
+ * One lock covers lookup+decode+insert and close, so two misses on the same
+ * source cannot both decode and insert duplicate entries, and the LRU list,
+ * refs and counters are never mutated concurrently. Created once; it
+ * survives decoder deinit/init cycles. LVGL's header cache is always
+ * dropped before taking this lock, never under it. */
+static lv_mutex_t g_mpp_lock;
+static bool g_mpp_lock_ready;
+
+static void lv_aic_mpp_lock(void)
+{
+    if (g_mpp_lock_ready) lv_mutex_lock(&g_mpp_lock);
+}
+
+static void lv_aic_mpp_unlock(void)
+{
+    if (g_mpp_lock_ready) lv_mutex_unlock(&g_mpp_lock);
+}
 static lv_aic_mpp_cache_stats_t g_cache = { .limit_bytes = AIC_LVGL_MPP_CACHE_BYTES };
 static uint32_t g_open_sessions;
 static bool lv_aic_mpp_cache_evict_one(void);
@@ -548,11 +570,9 @@ static bool lv_aic_mpp_cache_key_matches(const lv_aic_mpp_session_t *s, const vo
     return s->key_type == LV_IMAGE_SRC_FILE ? strcmp(s->key,src) == 0 : s->key == src;
 }
 
-void lv_aic_mpp_cache_drop(const void *src)
+static void lv_aic_mpp_cache_drop_locked(const void *src)
 {
     lv_aic_mpp_session_t *s = g_cache_oldest;
-    /* File header entries retain decoder pointers and source dimensions. */
-    lv_image_header_cache_drop(src);
     while (s) {
         lv_aic_mpp_session_t *next = s->newer;
         if (!src || lv_aic_mpp_cache_key_matches(s,src)) {
@@ -563,14 +583,63 @@ void lv_aic_mpp_cache_drop(const void *src)
     }
 }
 
+void lv_aic_mpp_cache_drop(const void *src)
+{
+    /* File header entries retain decoder pointers and source dimensions. */
+    lv_image_header_cache_drop(src);
+    lv_aic_mpp_lock();
+    lv_aic_mpp_cache_drop_locked(src);
+    lv_aic_mpp_unlock();
+}
+
 void lv_aic_mpp_cache_set_limit(uint32_t bytes)
 {
+    if (!bytes) lv_image_header_cache_drop(NULL);
+    lv_aic_mpp_lock();
     g_cache.limit_bytes = bytes;
-    if (!bytes) lv_aic_mpp_cache_drop(NULL);
+    if (!bytes) lv_aic_mpp_cache_drop_locked(NULL);
     while (g_cache.bytes > bytes && lv_aic_mpp_cache_evict_one()) {}
+    lv_aic_mpp_unlock();
 }
 
 const lv_aic_mpp_cache_stats_t *lv_aic_mpp_cache_stats(void) { return &g_cache; }
+
+void lv_aic_mpp_cache_foreach(void (*fn)(const lv_aic_mpp_cache_entry_t *entry, void *user),
+                              void *user)
+{
+    lv_aic_mpp_session_t *s;
+    if (!fn) return;
+    lv_aic_mpp_lock();
+    for (s = g_cache_newest; s; s = s->older) {
+        lv_aic_mpp_cache_entry_t e;
+        e.path = s->key_type == LV_IMAGE_SRC_FILE ? (const char *)s->key : NULL;
+        e.width = s->width; e.height = s->height;
+        e.bytes = s->cache_cost; e.refs = s->refs;
+        e.color_format = s->color_format;
+        e.premultiply = s->args.premultiply;
+        fn(&e, user);
+    }
+    lv_aic_mpp_unlock();
+}
+
+/* The GE2D unit opens with stride_align=false while LVGL's default (the SW
+ * draw unit) asks for LV_DRAW_BUF_STRIDE_ALIGN != 1. Comparing the flag
+ * literally cached every shared image twice (two copies of a full-screen
+ * background evict everything else). Consumers honor header.stride, so a
+ * raw CMA buffer serves an unaligned request, and an aligned request when
+ * its stride already is aligned. Post-processed heap copies are reused only
+ * with identical args (GE2D needs the DMA-reachable CMA buffer). */
+static bool lv_aic_mpp_cache_args_compatible(const lv_aic_mpp_session_t *s,
+                                             const lv_image_decoder_args_t *args)
+{
+    if (s->args.premultiply != args->premultiply || s->args.use_indexed != args->use_indexed)
+        return false;
+    if (s->args.stride_align == args->stride_align) return true;
+    if (s->heap_buf) return false;
+    return !args->stride_align ||
+           s->draw_buf.header.stride ==
+               lv_draw_buf_width_to_stride(s->draw_buf.header.w, s->draw_buf.header.cf);
+}
 
 static bool lv_aic_mpp_cache_acquire(lv_image_decoder_dsc_t *dsc)
 {
@@ -578,9 +647,7 @@ static bool lv_aic_mpp_cache_acquire(lv_image_decoder_dsc_t *dsc)
     if (dsc->args.no_cache || !g_cache.limit_bytes) return false;
     for (s = g_cache_newest; s; s = s->older) {
         if (!s->invalidated && lv_aic_mpp_cache_key_matches(s,dsc->src) &&
-            s->args.premultiply == dsc->args.premultiply &&
-            s->args.stride_align == dsc->args.stride_align &&
-            s->args.use_indexed == dsc->args.use_indexed) {
+            lv_aic_mpp_cache_args_compatible(s, &dsc->args)) {
             s->refs++; g_open_sessions++; g_cache.hits++;
             lv_aic_mpp_cache_unlink(s); lv_aic_mpp_cache_make_newest(s);
             dsc->decoded = s->heap_buf ? s->heap_buf : &s->draw_buf;
@@ -893,16 +960,12 @@ static lv_result_t lv_aic_mpp_info_cb(lv_image_decoder_t *decoder,
     return LV_RESULT_OK;
 }
 
-static lv_result_t lv_aic_mpp_open_cb(lv_image_decoder_t *decoder,
-                                      lv_image_decoder_dsc_t *dsc)
+static lv_result_t lv_aic_mpp_open_locked(lv_image_decoder_dsc_t *dsc)
 {
     lv_aic_mpp_stream_t stream = {0};
     lv_aic_mpp_session_t *session = NULL;
     enum mpp_codec_type codec;
     enum mpp_pixel_format mpp_fmt;
-    (void)decoder;
-    if (!dsc || !dsc->src || !dsc->header.w || !dsc->header.h)
-        return LV_RESULT_INVALID;
     if (lv_aic_mpp_cache_acquire(dsc)) return LV_RESULT_OK;
     if (lv_aic_mpp_source_open(dsc->src,&stream,&codec) != LV_RESULT_OK)
         return LV_RESULT_INVALID;
@@ -913,6 +976,19 @@ static lv_result_t lv_aic_mpp_open_cb(lv_image_decoder_t *decoder,
         return LV_RESULT_INVALID;
     lv_aic_mpp_cache_insert(dsc,session);
     return LV_RESULT_OK;
+}
+
+static lv_result_t lv_aic_mpp_open_cb(lv_image_decoder_t *decoder,
+                                      lv_image_decoder_dsc_t *dsc)
+{
+    lv_result_t result;
+    (void)decoder;
+    if (!dsc || !dsc->src || !dsc->header.w || !dsc->header.h)
+        return LV_RESULT_INVALID;
+    lv_aic_mpp_lock();
+    result = lv_aic_mpp_open_locked(dsc);
+    lv_aic_mpp_unlock();
+    return result;
 }
 
 static void lv_aic_mpp_close_cb(lv_image_decoder_t *decoder,
@@ -928,10 +1004,12 @@ static void lv_aic_mpp_close_cb(lv_image_decoder_t *decoder,
     dsc->user_data = NULL;
     dsc->decoded = NULL;
     if (!session) return;
+    lv_aic_mpp_lock();
     session->refs--; g_open_sessions--;
     if (!session->cached) lv_aic_mpp_session_release(session);
     else if (!session->refs && (session->invalidated || g_cache.bytes > g_cache.limit_bytes))
         lv_aic_mpp_cache_remove(session);
+    lv_aic_mpp_unlock();
 }
 
 int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
@@ -945,6 +1023,12 @@ int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
         return LV_AIC_ERR_INVALID_STATE;
     }
 
+    if (!g_mpp_lock_ready) {
+        if (lv_mutex_init(&g_mpp_lock) != LV_RESULT_OK) {
+            return LV_AIC_ERR_NO_MEMORY;
+        }
+        g_mpp_lock_ready = true;
+    }
     g_aic_mpp_decoder = lv_image_decoder_create();
     if (g_aic_mpp_decoder == NULL) {
         return LV_AIC_ERR_NO_MEMORY;

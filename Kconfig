@@ -121,8 +121,20 @@ config AIC_LVGL_MPP_CACHE_BYTES
     range 0 8388608
     depends on AIC_LVGL_USE_MPP_DEC
     help
-        Application-owned LRU cache, at most 16 entries. Active decoder users
-        are never evicted. Explicitly invalidate mutable sources before reuse.
+        Application-owned LRU cache, at most AIC_LVGL_MPP_CACHE_ENTRIES
+        entries. Active decoder users are never evicted. Explicitly
+        invalidate mutable sources before reuse.
+
+config AIC_LVGL_MPP_CACHE_ENTRIES
+    int "MPP decoded-image cache entry cap"
+    default 16
+    range 1 128
+    depends on AIC_LVGL_USE_MPP_DEC
+    help
+        LRU entry limit next to the byte budget. A UI whose redraw area
+        covers more distinct images than this thrashes (every lookup misses),
+        e.g. the meter cluster under its rotated needle; raise it there.
+        Lookup is a linear scan, so keep it bounded.
 
 config AIC_LVGL_USE_FREETYPE
     bool "Enable native LVGL FreeType bitmap fonts"
@@ -223,6 +235,30 @@ config AIC_LVGL_BUILD_DEMO_BENCHMARK
         Call lv_demo_benchmark on a dedicated active screen on the UI thread.
         Upstream owns timers and top-layer objects for the whole benchmark.
         Do not delete/switch its screen while running. Results require hardware.
+
+config AIC_LVGL_BUILD_DEMO_METER
+    bool "Build application-owned meter cluster demo"
+    default n
+    depends on AIC_LVGL_PORT
+    help
+        Application-owned port of the SDK meter cluster (needle sweep,
+        speed/time/trip/gear/warning timers). Renders from the injected
+        asset root when set, otherwise built-in fallback shapes, so host
+        contracts run without vendor assets. Call
+        lv_aic_demo_meter_create on the UI owner thread after display
+        setup. Nothing starts automatically.
+
+config AIC_LVGL_USE_CAN_CAPTURE
+    bool "Stream framebuffer screenshots over classic CAN"
+    default n
+    depends on AIC_LVGL_PORT && AIC_LVGL_MANUAL_TEST
+    depends on AIC_USING_CAN0 && RT_USING_CAN
+    help
+        Shell-driven CAN screenshot: lv_aic_can_capture start streams
+        RLE frames (CAN ID 0x1CA, 1 Mbps) for host decoding with
+        tools/sdk/can_capture.py (python-can). The bus needs a second
+        node (the PC adapter) for ACK. Snapshot/format/CRC match the
+        UART capture; host PNG output is identical.
 
 config AIC_LVGL_USE_GIF
     bool "Enable native LVGL GIF widget"

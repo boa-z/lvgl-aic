@@ -59,6 +59,21 @@ Component-owned rotation buffers use `aicos_malloc_align(MEM_CMA, ...)` and
 `aicos_malloc_try_cma()` path, which is coupled to the legacy image-cache
 decoder in the old SDK port.
 
+## Kconfig bools in manual-test translation units
+
+Luban-Lite emits enabled Kconfig bools as empty defines
+(`#define AIC_LVGL_USE_X`); `lv_conf.h` normalizes each listed symbol to
+`0/1`, but only for translation units that include the LVGL config chain.
+A new `tests/manual/lv_aic_*_test.{h,c}` pair must therefore include
+`lv_aic_manual_test.h` (which pulls `lvgl_aic.h`) from its own header
+_before_ any `#if defined(AIC_LVGL_USE_*) && AIC_LVGL_USE_*` guard is
+evaluated. Without that include the feature `.c` compiles to an empty
+object while the already-normalized caller keeps its reference, and the
+link fails with `undefined reference to ..._poll` (seen three times:
+meter, CAN capture). Garbage-collected entry points additionally need an
+explicit `-Wl,-u` keep-alive in `SConscript`, following the existing
+`AIC_LVGL_SMOKE_APP` blocks.
+
 ## MPP and cache
 
 Image decoder work must document buffer ownership, cache maintenance, decoder

@@ -87,6 +87,18 @@ if demo_enabled:
                 else:
                     relative = os.path.relpath(directory, cwd).replace(os.sep, '/')
                     src += Glob(relative + '/' + name, ondisk=True, source=True)
+if GetDepend('AIC_LVGL_BUILD_DEMO_METER'):
+    src += Glob('demos/meter_demo/*.c')
+    # Vendored vendor assets ride the normal INSTALL -> rodata.fatfs
+    # pipeline (dst is resolved under the image output tree by
+    # fsinstall.py, then packed from there by makefatfs.py).
+    # The trailing separator is load-bearing: fsinstall.py derives the
+    # destination suffix with str.replace(srcpath, ''), so without it the
+    # remainder is drive-rooted and files scatter outside the image tree
+    # (legacy SConscripts always pass 'assets/').
+    group += DefineGroup('Application-LVGL-Meter-Assets', [],
+                         depend=['AIC_LVGL_BUILD_DEMO_METER'],
+                         INSTALL=[('demos/meter_demo/assets/', 'rodata/lvgl_data')])
 if GetDepend('AIC_LVGL_USE_LOTTIE'):
     src = [source for source in src if os.path.basename(str(source)) != 'lv_lottie.c']
     src += [File('compat/lv_aic_lottie.c'), File('widgets/lv_aic_lottie_resource.c')]
@@ -138,6 +150,12 @@ if demo_enabled and GetDepend('AIC_LVGL_SMOKE_APP'):
     if GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
         for api in ('lv_demo_benchmark', 'lv_demo_benchmark_set_end_cb', 'lv_demo_benchmark_summary_display'):
             Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
+if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_BUILD_DEMO_METER'):
+    for api in ('configure', 'init', 'destroy', 'timer_fires', 'get_speed_step', 'get_needle_angle'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,meter_ui_' + api])
+if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_CAN_CAPTURE'):
+    for api in ('poll', 'deinit'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_can_capture_' + api])
 # SCons must receive two tokens; DefineGroup treats a CCFLAGS string as one.
 Env.AppendUnique(CCFLAGS=['-include', 'lvgl_aic_build_config.h'])
 

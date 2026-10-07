@@ -20,9 +20,17 @@ are in the [validation record](validation.md).
   SDK limits remain: progressive/arithmetic JPEG, gray/Adam7/low-depth palette
   PNG, AICP, BMP, fake images and YUV are not added by this stage.
 - A component-owned LRU retains decoded CMA or post-processed heap buffers.
-  Default budget is 512 KiB (AIC_LVGL_MPP_CACHE_BYTES); at most 16 entries.
+  Default budget is 512 KiB (AIC_LVGL_MPP_CACHE_BYTES); at most 16 entries
+  by default (AIC_LVGL_MPP_CACHE_ENTRIES, 1..128).
   File paths are copied; memory keys use the descriptor address. Decode options
-  premultiply, stride_align and use_indexed are part of the key.
+  premultiply and use_indexed are part of the key. stride_align is matched by
+  compatibility: the GE2D unit opens with stride_align=false and LVGL's SW
+  unit with true, so a raw CMA buffer serves both when its stride is already
+  aligned (a literal match cached every shared image twice). Heap copies
+  made by post-processing are reused only with identical args.
+- One decoder lock covers lookup, decode, insert and close: images are opened
+  from the UI thread (GE2D unit) and the SW draw thread concurrently.
+  `lv_aic_mpp_cache_foreach()` lists retained entries for diagnostics.
 - no_cache bypasses both lookup and insertion. flush_cache still follows the
   caller's current decoder args through LVGL's normal post-open path.
 - Budget counts retained decoded allocations, session metadata and copied path.

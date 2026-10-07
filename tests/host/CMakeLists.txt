@@ -28,6 +28,7 @@ option(AIC_BUILD_MANUAL_PREVIEW "Build native software reference screenshots" OF
 option(AIC_BUILD_FREETYPE_TESTS "Test native FreeType and glyph caches" OFF)
 option(AIC_BUILD_SDL_SMOKE "Build the interactive SDL2 smoke window" OFF)
 option(AIC_BUILD_MUSIC_DEMO_TESTS "Render the target music demo configuration" OFF)
+option(AIC_BUILD_METER_DEMO_TESTS "Test the application-owned meter cluster demo" OFF)
 option(AIC_BUILD_TARGET_DEMO_TESTS "Render the target widgets/benchmark configuration" OFF)
 option(AIC_BUILD_SDL_DEMOS "Build the official LVGL 9.6 demos for the SDL target" OFF)
 if(AIC_BUILD_SDL_DEMOS AND NOT AIC_BUILD_SDL_SMOKE)
@@ -1517,6 +1518,19 @@ if(AIC_BUILD_MUSIC_DEMO_TESTS)
     endif()
     add_test(NAME lvgl_aic_music_demo_contract COMMAND lvgl_aic_music_demo_contract)
     set_tests_properties(lvgl_aic_music_demo_contract PROPERTIES TIMEOUT 60)
+endif()
+
+if(AIC_BUILD_METER_DEMO_TESTS)
+    target_compile_definitions(lvgl PUBLIC AIC_LVGL_BUILD_DEMO_METER=1)
+    add_executable(lvgl_aic_meter_demo_contract meter_demo_contract.c
+        "${AIC_ROOT}/demos/meter_demo/meter_ui.c")
+    target_include_directories(lvgl_aic_meter_demo_contract PRIVATE "${AIC_ROOT}")
+    target_link_libraries(lvgl_aic_meter_demo_contract PRIVATE lvgl)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(lvgl_aic_meter_demo_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    endif()
+    add_test(NAME lvgl_aic_meter_demo_contract COMMAND lvgl_aic_meter_demo_contract)
+    set_tests_properties(lvgl_aic_meter_demo_contract PROPERTIES TIMEOUT 60)
 endif()
 
 add_executable(lvgl_aic_spi_overlap_worker_contract spi_overlap_worker_contract.c

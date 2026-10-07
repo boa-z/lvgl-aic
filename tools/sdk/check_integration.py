@@ -269,6 +269,8 @@ def main():
     parser.add_argument("--with-camera", action="store_true")
     parser.add_argument("--with-demos", action="store_true")
     parser.add_argument("--with-music", action="store_true")
+    parser.add_argument("--with-meter", action="store_true")
+    parser.add_argument("--with-can-capture", action="store_true")
     parser.add_argument("--with-vector", action="store_true")
     parser.add_argument("--with-svg", action="store_true")
     parser.add_argument("--with-lottie", action="store_true")
@@ -402,6 +404,30 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("Music demo live symbol absent: " + symbol)
         print("Upstream music UI final link: PASS (not audio playback)")
+    feature = "AIC_LVGL_BUILD_DEMO_METER"
+    enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
+    defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None
+    if enabled != args.with_meter or defined != args.with_meter:
+        fail("Meter demo profile mismatch")
+    if args.with_meter:
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("meter_ui_init", "meter_ui_destroy",
+                       "meter_ui_timer_fires", "meter_ui_get_speed_step",
+                       "meter_ui_get_needle_angle"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("Meter demo live symbol absent: " + symbol)
+        print("Meter demo final link: PASS (not board execution)")
+    feature = "AIC_LVGL_USE_CAN_CAPTURE"
+    enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
+    defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None
+    if enabled != args.with_can_capture or defined != args.with_can_capture:
+        fail("CAN capture profile mismatch")
+    if args.with_can_capture:
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_aic_can_capture_poll", "lv_aic_can_capture_deinit"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("CAN capture live symbol absent: " + symbol)
+        print("CAN capture final link: PASS (not board execution)")
     feature = "AIC_LVGL_USE_VECTOR"
     enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
     defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None
