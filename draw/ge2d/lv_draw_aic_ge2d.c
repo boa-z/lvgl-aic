@@ -2,20 +2,23 @@
  * @file lv_draw_aic_ge2d.c
  * @brief ArtInChip GE2D draw unit: registration, evaluation and dispatch.
  *
- * Scope is deliberately narrow. FILL: opaque, unrounded, non-gradient tasks.
- * IMAGE: unrotated, untiled, unrecolored RGB copies/scales at visible opacity -
+ * FILL supports solid and bounded horizontal/vertical two-stop gradients.
+ * IMAGE: rotated or bounded transformed tiled, RGB copies/scales with bounded CPU recolor -
  * the blit blends, so a partial opacity is supported rather than declined.
  * LAYER: the same blit, fed from a child layer's buffer instead of a decoded
- * image. Everything else is declined, and a declined task simply stays with the
- * software renderer. The unit runs synchronously on the dispatching thread -
+ * image, including bounded scaling and arbitrary-angle scaled rotation.
+ * Everything else is declined, and a declined task
+ * simply stays with the software renderer.
+ * The unit runs synchronously on the dispatching thread -
  * there is no render thread, no task queue and no saved layer/clip state, which
  * is why it does not reuse lv_draw_sw_unit_t the way the legacy port did.
  *
  * Two departures from the legacy port are the reason this file exists
  * separately and are easy to regress:
  *   1. evaluate() reports acceptance (returns 1), not 0.
- *   2. a GE failure marks the task FAILED, never FINISHED. A rectangle or an
- *      image the engine did not draw must not be reported as drawn.
+ *   2. a GE failure never marks the task FINISHED. Ordinary failures become
+ *      FAILED; a quarantined YUV DMA fault retains IN_PROGRESS and its layer
+ *      until reboot because DMA completion has not been established.
  *
  * A third point is specific to this file: the counters separate "the unit
  * claimed the task" from "the engine drew it". A completed count alone would
@@ -29,6 +32,11 @@
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_draw_aic_ge2d.h"
 #include "lv_draw_aic_ge2d_utils.h"
+#include "lv_aic_fake_image.h"
+#include "lv_aic_pixel_format.h"
+#include "lv_draw_aic_ge2d_yuv.h"
+#include "lv_aic_yuv_layer_private.h"
+#include "lv_aic_yuv_mpp.h"
 
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 
@@ -54,6 +62,7 @@
 
 static struct mpp_ge *g_ge2d_dev;
 static bool g_ge2d_ready;
+static bool g_ge2d_external_fault;
 static bool g_ge2d_registered;
 static lv_draw_aic_ge2d_stats_t g_ge2d_stats;
 
@@ -78,53 +87,118 @@ static bool lv_draw_aic_ge2d_accepts_dst(const lv_draw_task_t *task)
      * fixed at task creation, unlike layer->_clip_area which may already
      * describe a later task by the time we run. */
     layer = task->target_layer;
-    if (layer == NULL || layer->draw_buf == NULL) {
-        return false;
+    if (layer == NULL) return false;
+    if (layer->draw_buf == NULL) {
+        /* LVGL allocates child buffers lazily, after task evaluation. The
+         * actual DMA address is checked again after allocation in dispatch. */
+        int64_t w=(int64_t)layer->buf_area.x2-layer->buf_area.x1+1;
+        int64_t h=(int64_t)layer->buf_area.y2-layer->buf_area.y1+1;
+        return w>0 && h>0 && w<=4096 && h<=4096 &&
+               lv_draw_aic_ge2d_dst_format_supported(layer->color_format);
     }
     draw_buf = layer->draw_buf;
+    if (draw_buf->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED) return false;
 
     if (!lv_draw_aic_ge2d_dst_format_supported((lv_color_format_t)draw_buf->header.cf)) {
         return false;
     }
 
-    return lv_draw_aic_ge2d_buf_address_valid(draw_buf);
+    return lv_draw_aic_ge2d_buf_layout_valid(draw_buf);
 }
 
 /**
- * True when @p dsc carries no transform.
+ * True when @p dsc carries a supported IMAGE or LAYER transform.
  *
- * Shared by IMAGE and LAYER. Both would need the scaler or the rotator to draw
- * anything else, and neither step drives one.
+ * Arbitrary scaled angles use bounded scratch passes; orthogonal transforms
+ * use BITBLT.
  */
 static bool lv_draw_aic_ge2d_dsc_is_supported_transform(const lv_draw_image_dsc_t *dsc)
 {
-    return (dsc->rotation == 0 || dsc->rotation == 900 ||
-            dsc->rotation == 1800 || dsc->rotation == 2700) &&
-           dsc->scale_x == LV_SCALE_NONE && dsc->scale_y == LV_SCALE_NONE &&
+    return dsc->scale_x >= LV_SCALE_NONE / 16 &&
+           dsc->scale_x <= LV_SCALE_NONE * 16 &&
+           dsc->scale_y >= LV_SCALE_NONE / 16 &&
+           dsc->scale_y <= LV_SCALE_NONE * 16 &&
            dsc->skew_x == 0 && dsc->skew_y == 0;
 }
 
 /**
- * True when @p dsc needs nothing beyond a straight copy.
+ * True when @p dsc uses effects handled by GE or its bounded preparation.
  *
- * Shared by IMAGE and LAYER: neither the GE2D control block nor the blit
- * descriptor carries a recolor, a mask, a rounded clip, a color key or a blend
- * rule, so any one of them means the software renderer has to take the task.
+ * Shared by IMAGE and LAYER: rounded clips and non-normal blends remain
+ * software. Recolor and bounded bitmap masks use native CPU preparation.
+ * Exact single-value keys may use BITBLT directly; range, packed RGB565 and
+ * filtered/rotated keys are normalized by the image executor before GE.
+ * When recolor is also requested, the executor stages the key first and then
+ * recolors the keyed ARGB copy, so the combination remains on the GE path.
  * Keeping the list here is what stops the two task types from drifting apart.
  */
 static bool lv_draw_aic_ge2d_dsc_is_plain(const lv_draw_image_dsc_t *dsc)
 {
-    if (dsc->recolor_opa > LV_OPA_MIN) {
-        return false;
-    }
     if (dsc->bitmap_mask_src != NULL || dsc->clip_radius != 0) {
-        return false;
-    }
-    if (dsc->colorkey != NULL) {
         return false;
     }
 
     return dsc->blend_mode == LV_BLEND_MODE_NORMAL;
+}
+
+/* The SDK evaluator filters the image descriptor's advertised source format
+ * before assigning the task to GE2D.  RAW is an encoded-resource marker: the
+ * decoder replaces it with a readable RGB/YUV buffer before submission.  Keep
+ * that admission separate from lv_aic_pixel_format_is_ge2d_src(), which is
+ * deliberately the post-decode RGB mapping used by the GE blitter. */
+static bool lv_draw_aic_ge2d_image_source_format_admitted(lv_color_format_t cf)
+{
+    /* Direct unit callers can leave header.cf unset; the decoder remains the
+     * authority in that case, matching LVGL's task construction order. */
+    if (cf == LV_COLOR_FORMAT_UNKNOWN) return true;
+
+    switch (cf) {
+    case LV_COLOR_FORMAT_RGB565:
+    case LV_COLOR_FORMAT_RGB888:
+    case LV_COLOR_FORMAT_ARGB8888:
+    case LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED:
+    case LV_COLOR_FORMAT_XRGB8888:
+    case LV_COLOR_FORMAT_I420:
+    case LV_COLOR_FORMAT_I422:
+    case LV_COLOR_FORMAT_I444:
+    case LV_COLOR_FORMAT_I400:
+    case LV_COLOR_FORMAT_RAW:
+    case LV_COLOR_FORMAT_RAW_ALPHA:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* LAYER sources may be explicitly premultiplied.  The MPP descriptor uses
+ * ARGB8888 plus MPP_BUF_IS_PREMULTIPLY, so this is a source-only extension of
+ * the four direct mappings accepted by lv_aic_pixel_format_is_ge2d_src(). */
+static bool lv_draw_aic_ge2d_layer_src_format_supported(const lv_layer_t *layer)
+{
+    if (!layer) return false;
+    if (lv_aic_pixel_format_is_ge2d_src(layer->color_format) ||
+        layer->color_format == LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED)
+        return true;
+
+    /* LVGL's generic layer allocator cannot describe planar storage.  A YUV
+     * layer is therefore admitted only when the application attached an
+     * immutable, physically addressable frame through the explicit adapter. */
+    if (layer->color_format != LV_COLOR_FORMAT_I420 &&
+        layer->color_format != LV_COLOR_FORMAT_I422 &&
+        layer->color_format != LV_COLOR_FORMAT_I444 &&
+        layer->color_format != LV_COLOR_FORMAT_I400)
+        return false;
+    const lv_aic_yuv_frame_t *frame;
+    lv_aic_yuv_layer_t *lease = lv_aic_yuv_layer_acquire(layer, &frame);
+    if (!lease) return false;
+    struct mpp_buf source;
+    uint32_t floor = 0;
+#if defined(AIC_CHIP_D13X) || defined(AIC_CHIP_G73X)
+    floor = 0x40000000U;
+#endif
+    bool valid = lv_aic_yuv_to_mpp(frame, floor, &source);
+    lv_aic_yuv_layer_release_lease(lease);
+    return valid;
 }
 
 /**
@@ -147,18 +221,14 @@ static bool lv_draw_aic_ge2d_accepts_fill(const lv_draw_task_t *task)
         return false;
     }
 
-    /* A gradient needs a colour ramp the fillrect descriptor does not carry. */
-    if (dsc->grad.dir != (lv_grad_dir_t)LV_GRAD_DIR_NONE) {
+    if (!lv_draw_aic_ge2d_fill_dsc_supported(dsc)) return false;
+
+    if (dsc->opa <= LV_OPA_MIN || !lv_draw_aic_ge2d_accepts_dst(task)) {
         return false;
     }
 
-    /* No source alpha and no destination read-modify-write, so a translucent
-     * fill would be silently wrong. */
-    if (dsc->opa != LV_OPA_COVER) {
-        return false;
-    }
-
-    return lv_draw_aic_ge2d_accepts_dst(task);
+    /* Partial straight ARGB fills use bounded GE staging and native blend. */
+    return true;
 }
 
 /**
@@ -177,20 +247,17 @@ static bool lv_draw_aic_ge2d_accepts_image(const lv_draw_task_t *task)
         return false;
     }
 
-    /* Phase 3C2: bounded RGB scale only. LAYER keeps its existing policy. */
-    if ((dsc->rotation != 0 && dsc->rotation != 900 && dsc->rotation != 1800 && dsc->rotation != 2700) ||
-        dsc->skew_x != 0 || dsc->skew_y != 0 ||
-        dsc->scale_x < LV_SCALE_NONE / 16 || dsc->scale_x > LV_SCALE_NONE * 16 ||
-        dsc->scale_y < LV_SCALE_NONE / 16 || dsc->scale_y > LV_SCALE_NONE * 16) {
+    if (!lv_draw_aic_ge2d_image_source_format_admitted(dsc->header.cf)) {
         return false;
     }
 
-    /* A tiled image is many blits with its own helper; not this step. */
-    if (dsc->tile != 0) {
+    if (!lv_draw_aic_ge2d_dsc_is_supported_transform(dsc)) {
         return false;
     }
 
-    if (!lv_draw_aic_ge2d_dsc_is_plain(dsc)) {
+    lv_draw_image_dsc_t effects = *dsc;
+    effects.bitmap_mask_src = NULL; /* The executor prepares a bounded image copy. */
+    if (!lv_draw_aic_ge2d_dsc_is_plain(&effects)) {
         return false;
     }
 
@@ -241,10 +308,24 @@ static bool lv_draw_aic_ge2d_accepts_layer(const lv_draw_task_t *task)
         return false;
     }
 
-    /* A transform needs the scaler or the rotator, which this step does not
-     * drive. This is the common case for a transformed widget, and it is
-     * deliberately left to the software renderer for now. */
-        if (!lv_draw_aic_ge2d_dsc_is_supported_transform(dsc)) {
+    /* Match the SDK evaluator's source-side gate.  A child layer is often
+     * still lazy (draw_buf == NULL) when evaluate() runs, so defer address
+     * and stride checks until dispatch, but its declared format is already
+     * authoritative.  Claiming an unsupported/YUV child here would make the
+     * GE unit own the task and only discover the software fallback after the
+     * decoder opens, skewing acceptance counters and scheduling preference. */
+    if (!lv_draw_aic_ge2d_layer_src_format_supported(layer_to_draw)) {
+        return false;
+    }
+    if (layer_to_draw->draw_buf != NULL &&
+        layer_to_draw->draw_buf->header.cf != layer_to_draw->color_format) {
+        /* LVGL normally keeps these fields equal.  Treat a stale or malformed
+         * child descriptor as software-owned instead of reading pixels under
+         * a format different from the layer contract. */
+        return false;
+    }
+
+    if (!lv_draw_aic_ge2d_dsc_is_supported_transform(dsc)) {
         return false;
     }
 
@@ -255,7 +336,9 @@ static bool lv_draw_aic_ge2d_accepts_layer(const lv_draw_task_t *task)
         return false;
     }
 
-    if (!lv_draw_aic_ge2d_dsc_is_plain(dsc)) {
+    lv_draw_image_dsc_t effects = *dsc;
+    effects.bitmap_mask_src = NULL; /* The executor prepares a bounded layer copy. */
+    if (!lv_draw_aic_ge2d_dsc_is_plain(&effects)) {
         return false;
     }
 
@@ -265,6 +348,11 @@ static bool lv_draw_aic_ge2d_accepts_layer(const lv_draw_task_t *task)
 void lv_draw_aic_ge2d_init(void)
 {
     lv_draw_aic_ge2d_unit_t *unit;
+
+    if (lv_draw_aic_ge2d_faulted()) {
+        LV_LOG_ERROR("GE DMA fault: reinitialization requires reboot");
+        return;
+    }
 
     /* The device is opened on EVERY init, not only the first one. The smoke
      * application runs LVGL deinit/init cycles, and lv_draw_aic_ge2d_deinit()
@@ -279,10 +367,9 @@ void lv_draw_aic_ge2d_init(void)
     g_ge2d_stats.ready = g_ge2d_ready;
 
     if (!g_ge2d_ready) {
-        /* The unit is still registered: it declines every task, so the software
-         * renderer keeps the display working instead of the unit dispatching
-         * into a NULL device. */
-        LV_LOG_ERROR("GE2D device unavailable; the GE2D unit will decline every task");
+        /* Ordinary tasks stay with SW. SDK pseudo-images retain this unit's
+         * software fill handler so replacement semantics remain available. */
+        LV_LOG_ERROR("GE2D device unavailable; using software rendering");
     }
 
     if (g_ge2d_registered) {
@@ -305,8 +392,27 @@ void lv_draw_aic_ge2d_init(void)
     g_ge2d_registered = true;
 }
 
+bool lv_draw_aic_ge2d_faulted(void)
+{
+    return g_ge2d_external_fault || lv_draw_aic_ge2d_fill_faulted() ||
+           lv_draw_aic_ge2d_yuv_faulted() || lv_draw_aic_ge2d_image_faulted();
+}
+
+void lv_draw_aic_ge2d_quarantine(void)
+{
+    g_ge2d_external_fault = true;
+    g_ge2d_stats.ready = false;
+}
+
 void lv_draw_aic_ge2d_deinit(void)
 {
+    if (lv_draw_aic_ge2d_faulted()) {
+        /* close frees the SDK client without proving DMA has stopped. Keep
+         * it alive. This cannot make LVGL display/object teardown safe. */
+        g_ge2d_stats.ready = false;
+        LV_LOG_ERROR("GE DMA fault: retaining client until reboot");
+        return;
+    }
     if (g_ge2d_dev != NULL) {
         mpp_ge_close(g_ge2d_dev);
         g_ge2d_dev = NULL;
@@ -317,7 +423,7 @@ void lv_draw_aic_ge2d_deinit(void)
 
 struct mpp_ge *lv_draw_aic_ge2d_device(void)
 {
-    return g_ge2d_dev;
+    return lv_draw_aic_ge2d_faulted() ? NULL : g_ge2d_dev;
 }
 
 const lv_draw_aic_ge2d_stats_t *lv_draw_aic_ge2d_stats(void)
@@ -331,6 +437,7 @@ void lv_draw_aic_ge2d_stats_reset(void)
 
     g_ge2d_stats.fill_accepted = 0U;
     g_ge2d_stats.fill_completed = 0U;
+    g_ge2d_stats.fill_sw_fallback = 0U;
     g_ge2d_stats.image_accepted = 0U;
     g_ge2d_stats.image_completed = 0U;
     g_ge2d_stats.scaled_image_engine = 0U;
@@ -346,10 +453,14 @@ void lv_draw_aic_ge2d_stats_reset(void)
 static int32_t lv_draw_aic_ge2d_evaluate(lv_draw_unit_t *unit, lv_draw_task_t *task)
 {
     bool accepted;
+    lv_aic_fake_image_t fake;
+    const lv_draw_image_dsc_t *image = task->type == LV_DRAW_TASK_TYPE_IMAGE ? task->draw_dsc : NULL;
+    bool is_fake = image && image->src && lv_image_src_get_type(image->src) == LV_IMAGE_SRC_FILE &&
+                   lv_aic_fake_image_parse(image->src, &fake);
 
     LV_UNUSED(unit);
 
-    if (!g_ge2d_ready) {
+    if (!g_ge2d_ready && !is_fake) {
         return 0;
     }
 
@@ -362,7 +473,9 @@ static int32_t lv_draw_aic_ge2d_evaluate(lv_draw_unit_t *unit, lv_draw_task_t *t
         accepted = lv_draw_aic_ge2d_accepts_fill(task);
         break;
     case LV_DRAW_TASK_TYPE_IMAGE:
-        accepted = lv_draw_aic_ge2d_accepts_image(task);
+        /* SDK pseudo-images need our fill semantics even if GE is unavailable.
+         * The executor can perform the same replacement/blend on the CPU. */
+        accepted = is_fake || lv_draw_aic_ge2d_accepts_image(task);
         break;
     case LV_DRAW_TASK_TYPE_LAYER:
         accepted = lv_draw_aic_ge2d_accepts_layer(task);
@@ -396,6 +509,15 @@ static int32_t lv_draw_aic_ge2d_evaluate(lv_draw_unit_t *unit, lv_draw_task_t *t
     return 1;
 }
 
+/* Native blending expects the task clip to stay inside the allocated layer.
+ * Keep scheduler fallback safe for the same clipped task geometry as GE. */
+static void lv_draw_aic_ge2d_sw_fill(lv_draw_task_t *task)
+{
+    lv_draw_task_t copy = *task;
+    if (lv_area_intersect(&copy.clip_area, &copy.clip_area, &copy.target_layer->buf_area))
+        lv_draw_sw_fill(&copy, copy.draw_dsc, &copy.area);
+}
+
 static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer)
 {
     lv_draw_aic_ge2d_unit_t *ge2d = (lv_draw_aic_ge2d_unit_t *)unit;
@@ -404,7 +526,7 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
     lv_result_t result;
 
     /* Synchronous unit: exactly one task in flight. */
-    if (ge2d->task_act != NULL) {
+    if (ge2d->task_act != NULL || lv_draw_aic_ge2d_faulted()) {
         return LV_DRAW_UNIT_IDLE;
     }
 
@@ -415,8 +537,8 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
 
     /* Make sure the layer has a buffer before the engine is pointed at it. */
     if (lv_draw_layer_alloc_buf(layer) == NULL) {
-        task->state = LV_DRAW_TASK_STATE_FAILED;
-        g_ge2d_stats.errors++;
+        /* Match LVGL SW scheduling: memory pressure is retryable; never
+         * discard a task just because another layer currently owns memory. */
         return LV_DRAW_UNIT_IDLE;
     }
 
@@ -424,12 +546,23 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
     task->draw_unit = unit;
     ge2d->task_act = task;
 
-    switch (task->type) {
+    if (task->type==LV_DRAW_TASK_TYPE_FILL && !lv_draw_aic_ge2d_accepts_dst(task)) {
+        /* Lazy allocation may use heap fallback. IMAGE/LAYER retain their
+         * executor's source leases and special .fake replacement semantics. */
+        lv_draw_aic_ge2d_sw_fill(task);
+        result=LV_RESULT_OK;outcome=LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE;
+    }
+    else switch (task->type) {
     case LV_DRAW_TASK_TYPE_FILL:
-        /* The fill path has no fallback: it either runs on the engine or
-         * reports a failure, so the outcome is always ENGINE here. */
         result = lv_draw_aic_ge2d_fill(task);
         outcome = LV_DRAW_AIC_GE2D_OUTCOME_ENGINE;
+        if (result != LV_RESULT_OK && !lv_draw_aic_ge2d_faulted()) {
+            /* Scratch budget/allocation failure occurs before any DMA. A
+             * latched DMA failure must never replay onto the original target. */
+            lv_draw_aic_ge2d_sw_fill(task);
+            result = LV_RESULT_OK;
+            outcome = LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE;
+        }
         break;
     case LV_DRAW_TASK_TYPE_IMAGE:
     case LV_DRAW_TASK_TYPE_LAYER:
@@ -449,6 +582,7 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
         switch (task->type) {
         case LV_DRAW_TASK_TYPE_FILL:
             g_ge2d_stats.fill_completed++;
+            if(outcome==LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE) g_ge2d_stats.fill_sw_fallback++;
             break;
         case LV_DRAW_TASK_TYPE_IMAGE:
             g_ge2d_stats.image_completed++;
@@ -470,6 +604,14 @@ static int32_t lv_draw_aic_ge2d_dispatch(lv_draw_unit_t *unit, lv_layer_t *layer
         }
     }
     else {
+        if (lv_draw_aic_ge2d_faulted()) {
+            /* A failed GE submission or sync may leave DMA active. Keep this task and its
+             * destination layer in flight, and retain the source lease.
+             * Rendering is intentionally stopped until hardware reboot. */
+            g_ge2d_stats.errors++;
+            LV_LOG_ERROR("GE DMA fault: rendering stopped; reboot required");
+            return 1;
+        }
         ge2d->task_act->state = LV_DRAW_TASK_STATE_FAILED;
         g_ge2d_stats.errors++;
     }

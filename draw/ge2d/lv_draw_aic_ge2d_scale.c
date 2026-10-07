@@ -31,7 +31,7 @@ bool lv_aic_ge2d_scale_axis(int32_t source_size, int32_t dest_start,
 bool lv_aic_ge2d_scale_split_risk(int32_t step_16, int32_t dest_width)
 {
     /* Vendor calculate_split_params outer condition (D13x/D12x/G73x/D12p).
-     * 0.5x/1.5x/2x do not enter it. Defer split submission and safely decline
-     * the entire risk interval, instead of hoping the last block is correct. */
+     * 0.5x/1.5x/2x do not enter it. The shared stripe planner uses this
+     * classification to preflight explicit commands below the split width. */
     return step_16 < 65536 && step_16 > (65536 / 32) * 29 && dest_width >= 32;
 }

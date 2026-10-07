@@ -42,16 +42,11 @@ struct mpp_ge;
  *   a task it cannot blit to the software renderer and still reports success, so
  *   a task can finish without the engine having touched a pixel. Read the
  *   engine-drawn count as completed minus sw_fallback.
- * @c image_sw_fallback / @c layer_sw_fallback count the accepted tasks of that
- *   type the executor handed to the software renderer because the engine could
- *   not take the source - an unsupported format, or an address outside the GE
- *   window. This pair is the only way to tell "the unit claimed it" from "the
- *   engine drew it"; without it a completed count reads as acceleration that
- *   never happened. It is expected to be non-zero for LAYER on any board whose
- *   LVGL heap sits below the GE window: layer buffers come from lv_malloc, so
- *   the composite is declined and drawn in software. Nothing is dropped and
- *   nothing is misreported. There is no fill counterpart because the fill path
- *   cannot fall back - it either runs on the engine or fails.
+ * @c fill_sw_fallback / @c image_sw_fallback / @c layer_sw_fallback
+ *   count accepted tasks completed by software. Lazy child-buffer allocation
+ *   can use heap fallback; image sources can also be outside the GE window.
+ *   CMA allocation makes more child layers accessible, but does not guarantee
+ *   every accepted task executes on hardware.
  * @c fallback counts tasks of a supported type this unit declined in
  *   evaluate(), which the software renderer then owns. A task the executor
  *   rejects after the source became visible is counted in the sw_fallback pair
@@ -61,6 +56,7 @@ struct mpp_ge;
 typedef struct {
     uint32_t fill_accepted;
     uint32_t fill_completed;
+    uint32_t fill_sw_fallback;
     uint32_t image_accepted;
     uint32_t image_completed;
     uint32_t scaled_image_engine; /**< successful scaled IMAGE tasks only */
@@ -85,15 +81,24 @@ typedef struct {
  * @brief Open GE2D and register the draw unit.
  *
  * Call once per LVGL initialisation, after lv_init(). If mpp_ge_open() fails
- * the unit is still created but refuses every task, so the software renderer
- * keeps drawing instead of the unit dispatching into a NULL device.
+ * the unit is still created but refuses ordinary tasks. SDK pseudo-images
+ * use its CPU fill handler, preserving their replacement semantics.
  */
 void lv_draw_aic_ge2d_init(void);
 
-/** @brief Close the GE2D device handle. */
+/** Close a healthy client; retain a faulted client until reboot.
+ * Full LVGL/display teardown with uncertain DMA is unsupported. */
 void lv_draw_aic_ge2d_deinit(void);
 
-/** @brief The open GE2D device, or NULL when unavailable. */
+/** True if fill, leased image, or a direct user reported uncertain DMA. */
+bool lv_draw_aic_ge2d_faulted(void);
+
+/** Latch uncertain DMA from a direct device user (e.g. a board probe).
+ * UI-thread only, like all draw-unit APIs. Caller must retain DMA buffers.
+ * No runtime reset is provided; stop rendering and reboot. */
+void lv_draw_aic_ge2d_quarantine(void);
+
+/** @brief The open GE2D device, or NULL when unavailable or quarantined. */
 struct mpp_ge *lv_draw_aic_ge2d_device(void);
 
 /** @brief Current counters. Never NULL. */
@@ -103,13 +108,28 @@ const lv_draw_aic_ge2d_stats_t *lv_draw_aic_ge2d_stats(void);
 void lv_draw_aic_ge2d_stats_reset(void);
 
 /**
- * @brief Execute an opaque solid fill for @p task through GE2D.
+ * @brief Execute a solid fill for @p task through GE2D.
  *
  * Runs fillrect -> emit -> sync synchronously. Returns LV_RESULT_INVALID if any
- * step fails, so the dispatcher can mark the task FAILED rather than FINISHED.
+ * step fails. DMA failures latch until reboot; the dispatcher retains the
+ * task and destination in flight. Preflight rejection does not latch a fault.
  * The task must already have been accepted by this unit's evaluate().
  */
 lv_result_t lv_draw_aic_ge2d_fill(lv_draw_task_t *task);
+
+/** True when the descriptor maps to the bounded GE linear-gradient path. */
+bool lv_draw_aic_ge2d_fill_dsc_supported(const lv_draw_fill_dsc_t *dsc);
+
+/** True after an uncertain fill DMA failure; no runtime reset is safe. */
+bool lv_draw_aic_ge2d_fill_faulted(void);
+
+/**
+ * Replace a solid FILL region with the exact ARGB value, without alpha blending.
+ * Used by SDK pseudo-images with blend=0, including zero-alpha clears.
+ * Descriptor opacity is ignored; clipping, format/address validation and
+ * synchronous failure handling are identical to the normal fill executor.
+ */
+lv_result_t lv_draw_aic_ge2d_fill_replace(lv_draw_task_t *task, uint32_t argb);
 
 /**
  * @brief How a dispatched image-shaped task's pixels were produced.
@@ -151,6 +171,7 @@ typedef enum {
  *
  * The task must already have been accepted by this unit's evaluate().
  */
+bool lv_draw_aic_ge2d_image_faulted(void);
 lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
                                    lv_draw_aic_ge2d_outcome_t *outcome);
 

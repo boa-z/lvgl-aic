@@ -1,41 +1,58 @@
 # GE2D draw unit
 
-Phase 3A implements this backend for exactly one task type:
-`LV_DRAW_TASK_TYPE_FILL`, opaque, `radius == 0`, no gradient, a supported
-destination format and a GE-addressable buffer.
+The synchronous backend evaluates FILL, IMAGE and LAYER.
 
-It uses an independent `lv_draw_aic_ge2d_unit_t` (`base_unit` + `task_act`), not
-`lv_draw_sw_unit_t`, and routes every unsupported task back to the LVGL software
-renderer by declining it in `evaluate()`.
+- FILL: solid and bounded two-stop horizontal/vertical PAD gradients on
+  unrounded tasks. Partial opacity supports
+  RGB565/RGB888/XRGB8888; straight ARGB8888 uses bounded GE staging plus
+  native CPU composition. See [fill stage](../../docs/ge-fill-argb-stage.md).
+- IMAGE: RGB565/RGB888/ARGB8888/XRGB8888, straight and premultiplied alpha,
+  bounded scale, right-angle and arbitrary-angle rotation plus scale,
+  clipped transformed tiling and supported exact color keys. The image
+  executor prepares LVGL range/RGB565/premultiplied or filtered keys in a
+  bounded ARGB8888 source copy before GE; direct descriptors still require the
+  simple SDK comparator contract.
+- LAYER: shares the RGB image executor, including scale and rotation. The
+  evaluator applies the SDK-compatible child-source RGB format gate before
+  claiming a task; allocated child buffers must agree with the layer format.
+  Default draw buffers can use the bounded CMA allocator; inaccessible/fallback
+  heap storage stays with software. Source and destination descriptors also
+  pass the shared stride/footprint guard before cache or DMA. See [LAYER
+  preflight](../../docs/ge-layer-preflight-stage.md) and [buffer layout
+  preflight](../../docs/ge-buffer-layout-stage.md).
+- Immutable YUV frames use a separate validated lease/geometry path, including
+  bounded scaling, orthogonal rotation and transformed tiling. Straight-ARGB
+  targets also apply bounded A8/L8 masks and inclusive LVGL color keys after
+  CSC through the native alpha tail; direct orthogonal, repeated tiled and
+  per-axis scaled masks are supported, including direct orthogonal
+  rotated/scaled images, while rotated/scaled tiles and non-ARGB destinations
+  remain software.
+- Recolor and bounded A8/L8 masks are prepared by the application before GE;
+  repeated IMAGE tiles reuse one source-sized mask staging copy. Rounded
+  clips, non-normal blends and unsafe small/scaler-split geometry stay with
+  software. YUV masks and color keys remain on the immutable frame path.
 
-## Files
+ROTATE requires source and clipped destination dimensions within 4..4096.
+Its source and crop-relative destination centers use a conservative signed
+14-bit domain. Translation is computed in 64 bits and rejected before cache
+maintenance or submission if it cannot be represented. Native software still
+has its own far-pivot precision limits; see [center checks](../../docs/ge-center-stage.md).
 
-| File | Responsibility |
-| --- | --- |
-| `lv_draw_aic_ge2d.{c,h}` | Registration, `evaluate`, `dispatch`, `delete`, counters |
-| `lv_draw_aic_ge2d_fill.c` | One opaque `ge_fillrect` -> `mpp_ge_emit` -> `mpp_ge_sync` |
-| `lv_draw_aic_ge2d_utils.{c,h}` | GE address window, destination format, destination cache prep |
+Arbitrary rotation plus scale uses [bounded multipass preparation](../../docs/ge-multipass-stage.md)
+with a shared 2 MiB scratch budget, transparent input/output borders, Q16
+phase planning and all-tile preflight. Submit/emit/sync are synchronous and checked. An uncertain DMA failure retains
+the affected decoder/source lease and destination/task lifetime until reboot;
+it never replays a software blend over potentially modified pixels. No SDK
+source change is required. Per-buffer CMA handlers preserve allocation ownership.
 
-The LVGL <-> MPP format translation lives in `common/lv_aic_pixel_format.{c,h}`,
-because the decoder needs it too.
+Implementation: evaluation/dispatch in lv_draw_aic_ge2d.c, RGB and YUV executors
+in their corresponding files, scale/rotation helpers separately, cache/address
+guards in lv_draw_aic_ge2d_utils.c, format mapping in common/lv_aic_pixel_format.c.
 
-## Contract
+The supplied board logs passed the original fill/blend/scale/CMA probes, and
+the operator accepted the interface. Subsequent rotation, premultiplication,
+YUV, tiling and other increments require consolidated physical validation.
+Host mocks prove routing and descriptors; they do not prove GE pixel arithmetic.
 
-- Execution is synchronous on the dispatching thread. There is no render thread,
-  no task queue and no saved layer/clip state; `task_act` only enforces "one task
-  in flight".
-- `evaluate()` returns 1 on acceptance and claims at preference score 70. The
-  software unit claims at `>= 100`, so 70 wins, and a declined task still reaches
-  software.
-- `dispatch()` keeps an explicit `preferred_draw_unit_id != AIC_GE2D_DRAW_UNIT_ID`
-  check: `lv_draw_get_available_task()` also returns tasks whose
-  `preferred_draw_unit_id` is `LV_DRAW_UNIT_NONE`.
-- A GE failure marks the task `LV_DRAW_TASK_STATE_FAILED`, never `FINISHED`.
-- If `mpp_ge_open()` fails the unit is still registered and declines everything,
-  so software rendering keeps the display alive.
-
-Phase 3A covered FILL. IMAGE/LAYER, bounded scale, and right-angle rotation
-are implemented in the later 3B/3C stages. Rotation combined with scaling is
-the next gated step (3C4); arbitrary angles remain software fallback.
-
-See `docs/validation.md` for the current verification status.
+See [capabilities](../../docs/capabilities.md) and
+[exact validation records](../../docs/validation.md).

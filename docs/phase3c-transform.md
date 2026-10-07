@@ -1,5 +1,10 @@
 # Phase 3C2-3C5 transform gates
 
+Historical gate log. See [capabilities](capabilities.md) for current scope.
+3C5 now has bounded timing code in tests/manual/lv_aic_ge2d_test.c; paired
+board timing is still open. Future-tense entries below describe their date.
+The new SDK-parity development sequence continues in capabilities.md.
+
 2026-09-27. Base: phase3-ge2d / 45d1f03 (3C1 board blend probe).
 The earlier supplied log with mpp_ge_open failure predates this baseline;
 it is not evidence about the scale candidate. Keep GE_PD_NONE / mixed alpha.
@@ -45,7 +50,7 @@ scaled_image_engine delta must be positive and errors zero.
 
 Run from SDK root:
 
-    & packages/custom/lvgl-aic/tools/sdk/build.ps1 -Phase ge2d -Jobs 8 -AllowComponentDirty
+    & application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic/tools/sdk/build.ps1 -Phase ge2d -Jobs 8 -AllowComponentDirty
 
 Archive: SDK output/lvgl-evidence/ge2d. Attach image SHA256, complete serial log
 and panel/touch observations to the gate. Candidate changes remain uncommitted
@@ -102,7 +107,8 @@ image is produced.
 
 ### 3C4 implementation candidate (2026-09-27)
 
-The executor now accepts right-angle rotation together with bounded scaling.
+The executor now accepts right-angle rotation together with bounded scaling and
+unscaled arbitrary-angle IMAGE rotation through the SDK GE rotate primitive.
 The combined crop helper maps the clipped destination corners back through the
 scaled pivot, swaps the scaler axes for 90°/270°, preserves the GE rotation
 flag, and keeps unsupported angles and unsafe geometry on the software path.
@@ -122,6 +128,7 @@ report frame time and engine task counters together, without treating a single
 board timing sample as a performance guarantee. No allocator, scheduler or
 display-buffer policy changes are part of this stage.
 
-Each stage needs its own evidence and commit. No arbitrary rotation, CMA layer
-copies, async thread, YUV, tile, recolor or allocator replacement. Stop after
-3C5; subsequent work is real D50T UI integration and workload profiling.
+Each stage needs its own evidence and commit. Arbitrary-angle plus scale, CMA
+layer copies, async thread, YUV, tile, recolor and allocator replacement remain
+outside this stage. Board validation is intentionally deferred until the current
+GE/widget development batch is complete.

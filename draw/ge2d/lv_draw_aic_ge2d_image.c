@@ -2,9 +2,11 @@
  * @file lv_draw_aic_ge2d_image.c
  * @brief RGB copy/scale through the ArtInChip GE2D engine.
  *
- * Supports unrotated copies and bounded RGB scaling with explicit inverse-map
- * phases. Unsupported geometry falls back before submission; a hardware
- * failure never retries blending on a potentially partly written target.
+ * Supports unrotated copies, bounded RGB scaling with explicit inverse-map
+ * phases, arbitrary-angle rotation, and bounded multi-pass scaled rotation.
+ * Straight ARGB destinations use bounded raw GE staging and native CPU blend.
+ * Unsupported geometry falls back before submission; a hardware failure never
+ * retries blending on a potentially partly written target.
  *
  * Source alpha is the one thing that is not "the simple case" and is handled
  * anyway: an ARGB8888 source is blended with its own per-pixel alpha, and a
@@ -17,10 +19,10 @@
  * descriptor and the identical blit runs - there is no second code path to keep
  * in step, and no separate "blend a layer" implementation to drift.
  *
- * The decode and the clip bookkeeping are left to LVGL: this file only supplies
- * the core callback, so the source coordinates, the palette handling and the
- * decoder lifetime stay in the upstream code that already gets them right. In
- * particular there is no local copy of the 9.1 image helpers.
+ * Normal images use LVGL's helper. Tiles hold one LVGL decoder and one
+ * source-sized mask staging copy across validation and submission passes so
+ * unsupported later tiles cannot cause software replay over pixels already
+ * blended by GE.
  *
  * Three things here are easy to get wrong and are deliberately explicit:
  *   1. Both strides come from the buffer headers. Neither side is necessarily
@@ -38,45 +40,465 @@
  * the same statement and only the executor can tell them apart. See the note on
  * the sw_fallback counters in lv_draw_aic_ge2d.h.
  *
- * Note on the LAYER source address: LVGL allocates layer buffers with
- * lv_malloc, which on this SDK is rt_malloc, i.e. the RT-Thread system heap.
- * With CONFIG_AIC_DEFAULT_SYS_HEAP_SRAM that heap is at 0x30040000, below the
- * 0x40000000 floor the D13x GE can reach, so a LAYER composite is declined here
- * and composited in software. That is a buffer-placement property, not a defect
- * in this file: moving layer buffers into CMA would make the same code run on
- * the engine, and the address gate already makes the transition safe.
+ * Default draw buffers can use the application's bounded CMA allocation
+ * wrapper. Ordinary fallback heap buffers outside the GE address window still
+ * composite in software; the address gate remains authoritative.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_draw_aic_ge2d.h"
+#include "lv_aic_rgb_image_private.h"
 #include "lv_draw_aic_ge2d_utils.h"
+#include "lv_draw_aic_ge2d_yuv.h"
+#include "lv_aic_fake_image.h"
 #include "lv_aic_pixel_format.h"
 #include "lv_draw_aic_ge2d_scale.h"
 #include "lv_draw_aic_ge2d_rotate.h"
+#include "lv_draw_aic_ge2d_transform.h"
+#include "lv_draw_aic_ge2d_stripes.h"
 
 #if AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP
 
 #include "lvgl_aic_private.h"
 
 #include <aic_core.h>
+#include <aic_osal.h>
 #include <mpp_ge.h>
 #include <limits.h>
+#include "lv_draw_aic_ge2d_alpha.h"
 
-/**
- * Outcome of one blit attempt.
- *
- * The core callback LVGL hands us returns void, so the result travels back
- * through this file-scope record. That is safe here because the unit is
- * strictly synchronous: dispatch() keeps at most one task in flight and there
- * is no render thread, so two attempts cannot overlap. The MPP decoder always
- * sets @c decoder_dsc->decoded for a whole image, which means the callback runs
- * exactly once per task and the record cannot be overwritten mid-attempt.
- */
+/* Synchronous draw unit: one full-image decoder and at most one task in
+ * flight. A failed DMA keeps this descriptor and its owned resources alive;
+ * subsequent public calls refuse work until reboot. */
 static bool s_blit_called;
 static bool s_blit_ok;
 static bool s_blit_failed;
+static lv_aic_rgb_image_t *rgb_quarantined;
+/* Stable address: decoders may retain pointers into their descriptor. */
+static lv_image_decoder_dsc_t image_decoder;
+static bool decoder_quarantined;
+bool lv_draw_aic_ge2d_image_faulted(void)
+{
+    return rgb_quarantined != NULL || decoder_quarantined;
+}
+static bool s_blit_validate_only;
+
+/* One synchronous operation owns transform, mask, recolor, color-key and alpha scratch.
+ * Uncertain DMA retains these buffers with the decoder and destination. */
+static lv_aic_ge2d_transform_plan_t transform_plan;
+static lv_draw_buf_t transform_padded, transform_scaled, masked, recolored, keyed, alpha_surface;
+static bool alpha_active, alpha_premult;
+static bool transform_active;
+#ifndef AIC_LVGL_GE2D_TRANSFORM_BYTES
+#define AIC_LVGL_GE2D_TRANSFORM_BYTES (2U * 1024U * 1024U)
+#endif
+
+#ifndef AIC_LVGL_GE2D_RECOLOR_BYTES
+#define AIC_LVGL_GE2D_RECOLOR_BYTES (1024U * 1024U)
+#endif
+
+#ifndef AIC_LVGL_GE2D_MASK_BYTES
+#define AIC_LVGL_GE2D_MASK_BYTES (1024U * 1024U)
+#endif
+
+#ifndef AIC_LVGL_GE2D_COLORKEY_BYTES
+#define AIC_LVGL_GE2D_COLORKEY_BYTES (1024U * 1024U)
+#endif
+
+static void transform_release(void)
+{
+    lv_aic_ge2d_alpha_release(&alpha_surface);
+    alpha_active=alpha_premult=false;
+    if(masked.data) aicos_free_align(MEM_CMA,masked.data);
+    lv_memzero(&masked,sizeof masked);
+    if(recolored.data) aicos_free_align(MEM_CMA,recolored.data);
+    lv_memzero(&recolored,sizeof recolored);
+    if(keyed.data) aicos_free_align(MEM_CMA,keyed.data);
+    lv_memzero(&keyed,sizeof keyed);
+    if(transform_padded.data) aicos_free_align(MEM_CMA,transform_padded.data);
+    if(transform_scaled.data) aicos_free_align(MEM_CMA,transform_scaled.data);
+    lv_memzero(&transform_padded,sizeof transform_padded);
+    lv_memzero(&transform_scaled,sizeof transform_scaled);
+}
+
+static bool transform_buffer(lv_draw_buf_t *buf, uint32_t w, uint32_t h,
+                             uint32_t stride, uint32_t bytes)
+{
+    void *data = aicos_malloc_align(MEM_CMA,bytes,64);
+    if(!data) return false;
+    if(((uintptr_t)data & 63U) ||
+       lv_draw_buf_init(buf,w,h,LV_COLOR_FORMAT_ARGB8888,stride,data,bytes) != LV_RESULT_OK ||
+       !lv_draw_aic_ge2d_buf_address_valid(buf)) {
+        aicos_free_align(MEM_CMA,data); lv_memzero(buf,sizeof *buf); return false;
+    }
+    buf->header.flags |= LV_IMAGE_FLAGS_PREMULTIPLIED;
+    return true;
+}
+
+/* Straight ARGB destination composition must retain the native destination
+ * alpha equation. GE renders raw transformed channels into a clipped surface;
+ * the native CPU blend consumes it only after every command has completed.
+ * Tiled cells never overlap (each clips to its own unscaled grid rectangle). */
+static bool alpha_prepare(lv_draw_task_t *task,const lv_area_t *visible,lv_layer_t *layer,lv_draw_task_t *copy)
+{
+    if(!lv_aic_ge2d_alpha_prepare(task,visible,&alpha_surface,layer,copy)) return false;
+    alpha_active=true;alpha_premult=false;
+    return true;
+}
+
+static void alpha_raw(struct ge_ctrl *ctrl,struct mpp_buf *source,bool premult)
+{
+    if(!alpha_active) return;
+    /* No conversion, alpha multiplication or global opacity in GE. */
+    ctrl->alpha_en=0;ctrl->src_alpha_mode=0;ctrl->src_global_alpha=255;
+    source->flags&=~MPP_BUF_IS_PREMULTIPLY;
+    alpha_premult=premult;
+}
+
+static void alpha_finish(lv_draw_task_t *task,const lv_layer_t *layer,lv_opa_t opa)
+{
+    lv_aic_ge2d_alpha_finish(task,&alpha_surface,layer,opa,
+        alpha_premult?LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED:LV_COLOR_FORMAT_ARGB8888,false);
+}
+
+/* Native per-pixel recolor into owned storage. No source/cache entry is edited.
+ * The map covers the whole source so partial refresh/tile boundaries cannot
+ * change its colors. Geometry and every tile still preflight before target DMA. */
+static bool recolor_prepare(const lv_draw_buf_t *src,const lv_draw_image_dsc_t *dsc)
+{
+    if(!src || !src->data || !src->header.w || !src->header.h ||
+       src->header.w>4096 || src->header.h>4096) return false;
+    lv_color_format_t cf=src->header.cf;
+    if(cf!=LV_COLOR_FORMAT_RGB565 && cf!=LV_COLOR_FORMAT_RGB888 &&
+       cf!=LV_COLOR_FORMAT_XRGB8888 && cf!=LV_COLOR_FORMAT_ARGB8888 &&
+       cf!=LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED) return false;
+    uint32_t row=src->header.w*lv_color_format_get_size(cf),stride=(row+63U)&~63U;
+    uint64_t bytes=(uint64_t)stride*src->header.h;
+    if(row>src->header.stride || (uint64_t)src->header.stride*src->header.h>src->data_size ||
+       bytes>AIC_LVGL_GE2D_RECOLOR_BYTES || bytes>UINT32_MAX) return false;
+    void *data=aicos_malloc_align(MEM_CMA,(size_t)bytes,64);
+    if(!data) return false;
+    if(((uintptr_t)data&63U) ||
+       lv_draw_buf_init(&recolored,src->header.w,src->header.h,cf,stride,data,(uint32_t)bytes)!=LV_RESULT_OK ||
+       !lv_draw_aic_ge2d_buf_address_valid(&recolored)) {
+        aicos_free_align(MEM_CMA,data);lv_memzero(&recolored,sizeof recolored);return false;
+    }
+    recolored.header.flags|=src->header.flags&LV_IMAGE_FLAGS_PREMULTIPLIED;
+    return lv_aic_sw_recolor_copy(src,&recolored,dsc->recolor,dsc->recolor_opa);
+}
+
+/* Range/RGB565/filtering color keys are normalized to straight ARGB before
+ * GE. This keeps the source immutable and makes the result independent of the
+ * engine's undocumented packed-color comparator. */
+static bool colorkey_prepare(const lv_draw_buf_t *src,const lv_draw_image_dsc_t *dsc)
+{
+    if(!src || !dsc || !dsc->colorkey || !src->data || !src->header.w || !src->header.h ||
+       src->header.w>4096 || src->header.h>4096) return false;
+    uint32_t stride=(src->header.w*4U+63U)&~63U;
+    uint64_t bytes=(uint64_t)stride*src->header.h;
+    if(bytes>AIC_LVGL_GE2D_COLORKEY_BYTES || bytes>UINT32_MAX) return false;
+    if(!src->header.stride || (uint64_t)src->header.stride*src->header.h>src->data_size) return false;
+    void *data=aicos_malloc_align(MEM_CMA,(size_t)bytes,64);
+    if(!data) return false;
+    if(((uintptr_t)data&63U) ||
+       lv_draw_buf_init(&keyed,src->header.w,src->header.h,LV_COLOR_FORMAT_ARGB8888,
+                        stride,data,(uint32_t)bytes)!=LV_RESULT_OK ||
+       !lv_draw_aic_ge2d_buf_address_valid(&keyed)) {
+        aicos_free_align(MEM_CMA,data);lv_memzero(&keyed,sizeof keyed);return false;
+    }
+    if(lv_aic_sw_colorkey_copy(src,&keyed,dsc->colorkey)) return true;
+    aicos_free_align(MEM_CMA,keyed.data);lv_memzero(&keyed,sizeof keyed);
+    return false;
+}
+
+static bool image_is_premultiplied(const lv_draw_buf_t *src);
+
+static bool colorkey_needs_prepare(const lv_draw_buf_t *src,
+                                   const lv_draw_image_dsc_t *dsc)
+{
+    if(!src || !dsc || !dsc->colorkey) return false;
+    lv_color_format_t cf=src->header.cf;
+    return dsc->bitmap_mask_src != NULL || dsc->antialias ||
+           dsc->rotation != 0 || dsc->scale_x != LV_SCALE_NONE ||
+           dsc->scale_y != LV_SCALE_NONE ||
+           dsc->recolor_opa > LV_OPA_MIN ||
+           cf == LV_COLOR_FORMAT_RGB565 || image_is_premultiplied(src) ||
+           !lv_color_eq(dsc->colorkey->low,dsc->colorkey->high);
+}
+
+/* The whole layer is copied before native masking, so split refreshes do not
+ * multiply alpha repeatedly on the original child buffer. Mask decoding is CPU
+ * work and completes before DMA; the resulting copy survives uncertain DMA. */
+static int mask_prepare(const lv_draw_buf_t *src,const lv_draw_image_dsc_t *dsc,
+                         const lv_area_t *area)
+{
+    if(!src || !src->data || !src->header.w || !src->header.h ||
+       src->header.w>4096 || src->header.h>4096 ||
+       (src->header.cf!=LV_COLOR_FORMAT_ARGB8888 &&
+        src->header.cf!=LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED)) return -1;
+    uint32_t row=src->header.w*4U,stride=(row+63U)&~63U;
+    uint64_t bytes=(uint64_t)stride*src->header.h;
+    if(row>src->header.stride || (uint64_t)src->header.stride*src->header.h>src->data_size ||
+       bytes>AIC_LVGL_GE2D_MASK_BYTES || bytes>UINT32_MAX) return -1;
+    void *data=aicos_malloc_align(MEM_CMA,(size_t)bytes,64);
+    if(!data) return -1;
+    if(((uintptr_t)data&63U) ||
+       lv_draw_buf_init(&masked,src->header.w,src->header.h,src->header.cf,stride,data,(uint32_t)bytes)!=LV_RESULT_OK ||
+       !lv_draw_aic_ge2d_buf_address_valid(&masked)) {
+        aicos_free_align(MEM_CMA,data);lv_memzero(&masked,sizeof masked);return -1;
+    }
+    masked.header.flags|=src->header.flags&LV_IMAGE_FLAGS_PREMULTIPLIED;
+    return lv_aic_sw_layer_mask_copy(dsc,area,src,&masked);
+}
+
+static int image_mask_prepare(const lv_draw_buf_t *src,const lv_draw_image_dsc_t *dsc,
+                              const lv_area_t *area)
+{
+    if(!src || !src->data || !src->header.w || !src->header.h || !area ||
+       lv_area_get_width(area)!=(int32_t)src->header.w ||
+       lv_area_get_height(area)!=(int32_t)src->header.h || src->header.w>4096 ||
+       src->header.h>4096) return -1;
+    uint32_t stride=(src->header.w*4U+63U)&~63U;
+    uint64_t bytes=(uint64_t)stride*src->header.h;
+    if(bytes>AIC_LVGL_GE2D_MASK_BYTES || bytes>UINT32_MAX) return -1;
+    lv_color_format_t cf=src->header.cf;
+    if(cf==LV_COLOR_FORMAT_ARGB8888 && (src->header.flags&LV_IMAGE_FLAGS_PREMULTIPLIED))
+        cf=LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED;
+    if(cf!=LV_COLOR_FORMAT_RGB565 && cf!=LV_COLOR_FORMAT_RGB888 &&
+       cf!=LV_COLOR_FORMAT_XRGB8888 && cf!=LV_COLOR_FORMAT_ARGB8888 &&
+       cf!=LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED) return -1;
+    void *data=aicos_malloc_align(MEM_CMA,(size_t)bytes,64);
+    if(!data) return -1;
+    if(((uintptr_t)data&63U) ||
+       lv_draw_buf_init(&masked,src->header.w,src->header.h,
+                        cf==LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED?
+                        LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED:LV_COLOR_FORMAT_ARGB8888,
+                        stride,data,(uint32_t)bytes)!=LV_RESULT_OK ||
+       !lv_draw_aic_ge2d_buf_address_valid(&masked)) {
+        aicos_free_align(MEM_CMA,data);lv_memzero(&masked,sizeof masked);return -1;
+    }
+    if(cf==LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED ||
+       (src->header.cf==LV_COLOR_FORMAT_ARGB8888 && (src->header.flags&LV_IMAGE_FLAGS_PREMULTIPLIED)))
+        masked.header.flags|=LV_IMAGE_FLAGS_PREMULTIPLIED;
+    return lv_aic_sw_image_mask_copy(dsc,area,src,&masked);
+}
+
+static struct mpp_buf transform_mpp(const lv_draw_buf_t *buf, enum mpp_pixel_format cf)
+{
+    struct mpp_buf m = {0};
+    m.buf_type = MPP_PHY_ADDR; m.phy_addr[0] = (uint32_t)(uintptr_t)buf->data;
+    m.stride[0] = buf->header.stride; m.size.width = buf->header.w; m.size.height = buf->header.h;
+    m.format = cf;
+    return m;
+}
+
+static bool transform_submit(struct mpp_ge *ge, struct ge_bitblt *blt)
+{
+    int result=lv_aic_ge2d_stripe_run(ge,blt);
+    if(result==0) return false;
+    if(result<0) {
+        s_blit_failed = true;
+        LV_LOG_ERROR("GE2D transform preparation failed; retaining scratch DMA buffers");
+        return false;
+    }
+    return true;
+}
+
+
+static int lv_draw_aic_ge2d_angle_2_12(int32_t angle, bool cosine)
+{
+    /* LVGL angles have tenths-of-degree precision. Interpolate the native
+     * degree table before converting Q15 to GE Q12; do not round the angle. */
+    int32_t degrees = angle / 10 + (cosine ? 90 : 0);
+    int32_t remainder = angle % 10;
+    int32_t value = lv_trigo_sin((int16_t)degrees) * (10 - remainder) +
+                    lv_trigo_sin((int16_t)(degrees + 1)) * remainder;
+
+    return value / 80;
+}
+
+static bool image_is_premultiplied(const lv_draw_buf_t *src)
+{
+    return src->header.cf == LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED ||
+           (src->header.cf == LV_COLOR_FORMAT_ARGB8888 &&
+            (src->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED));
+}
+
+static void image_source_alpha(struct ge_ctrl *ctrl, lv_color_format_t cf,
+                               lv_opa_t opa, bool premultiplied)
+{
+    if (opa >= LV_OPA_COVER && cf != LV_COLOR_FORMAT_ARGB8888) {
+        ctrl->alpha_en = 0U;
+        ctrl->src_alpha_mode = 0U;
+    }
+    else {
+        ctrl->alpha_en = 1U;
+        ctrl->alpha_rules = GE_PD_NONE;
+        /* SDK rewrites the full-opacity premultiplied path to (1, 1-As).
+         * Mixed opacity uses its depremultiply stage plus (As, 1-As). */
+        ctrl->src_alpha_mode = premultiplied && opa >= LV_OPA_COVER ? 0U : 2U;
+        ctrl->src_global_alpha = opa;
+    }
+}
+
+/* Copy/convert to padded premultiplied pixels, then scale their stored
+ * channels without another alpha operation. Apply global opacity only at the
+ * final rotation. No CPU access to either buffer follows a DMA write. */
+static bool transform_prepare(const lv_draw_buf_t *src)
+{
+    const lv_aic_ge2d_transform_plan_t *p = &transform_plan;
+    enum mpp_pixel_format fmt;
+    lv_color_format_t cf = src->header.cf == LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED ?
+                          LV_COLOR_FORMAT_ARGB8888 : src->header.cf;
+    struct mpp_ge *ge = lv_draw_aic_ge2d_device();
+    if(!ge || !lv_aic_pixel_format_to_mpp(cf,&fmt)) return false;
+    if(!transform_buffer(&transform_padded,p->padded_w,p->padded_h,p->padded_stride,p->padded_bytes) ||
+       !transform_buffer(&transform_scaled,p->scaled_w,p->scaled_h,p->scaled_stride,p->scaled_bytes)) return false;
+    lv_memzero(transform_padded.data,p->padded_bytes);
+    /* Explicit output padding remains transparent even for strong downscale,
+     * where two input border pixels occupy less than one scaled pixel. */
+    lv_memzero(transform_scaled.data,p->scaled_bytes);
+    lv_area_t source = {0,0,(int32_t)src->header.w-1,(int32_t)src->header.h-1};
+    lv_area_t padded = {0,0,p->padded_w-1,p->padded_h-1};
+    lv_area_t scaled = {0,0,p->scaled_w-1,p->scaled_h-1};
+    struct ge_bitblt copy = {0};
+    copy.src_buf = transform_mpp(src,fmt);
+    copy.dst_buf = transform_mpp(&transform_padded,MPP_FMT_ARGB_8888);
+    copy.dst_buf.crop_en = 1;
+    copy.dst_buf.crop = (struct mpp_rect){2,2,src->header.w,src->header.h};
+    if(!image_is_premultiplied(src)) {
+        copy.dst_buf.flags = MPP_BUF_IS_PREMULTIPLY;
+        copy.ctrl.alpha_en = 1; copy.ctrl.alpha_rules = GE_PD_SRC;
+        copy.ctrl.src_alpha_mode = 0; copy.ctrl.src_global_alpha = 255;
+    }
+    struct ge_bitblt scale = {0};
+    scale.src_buf = transform_mpp(&transform_padded,MPP_FMT_ARGB_8888);
+    scale.src_buf.crop_en = 1;
+    scale.src_buf.crop = (struct mpp_rect){p->crop_x,p->crop_y,p->padded_w-p->crop_x,p->padded_h-p->crop_y};
+    scale.dst_buf = transform_mpp(&transform_scaled,MPP_FMT_ARGB_8888);
+    scale.dst_buf.crop_en = 1;
+    scale.dst_buf.crop = (struct mpp_rect){2,2,p->scaled_w-4,p->scaled_h-4};
+    scale.scale_phase.scale_phase_en = 1; scale.scale_phase.scaler_en = 1;
+    scale.scale_phase.channel_num = 1;
+    scale.scale_phase.dx_16[0] = p->step_x; scale.scale_phase.dy_16[0] = p->step_y;
+    scale.scale_phase.h_phase_16[0] = p->phase_x; scale.scale_phase.v_phase_16[0] = p->phase_y;
+    /* Validate ALL scale strips before even the preparation copy. */
+    unsigned commands;
+    if(!lv_aic_ge2d_stripe_count(&copy,&commands) || !lv_aic_ge2d_stripe_count(&scale,&commands)) return false;
+    /* Existing premultiplied storage can be copied bit-for-bit. */
+    lv_draw_aic_ge2d_prepare_src_cache(src,&source);
+    lv_draw_aic_ge2d_prepare_dst_cache(&transform_padded,&padded);
+    if(!transform_submit(ge,&copy)) return false;
+    lv_draw_aic_ge2d_prepare_src_cache(&transform_padded,&padded);
+    lv_draw_aic_ge2d_prepare_dst_cache(&transform_scaled,&scaled);
+    return transform_submit(ge,&scale);
+}
+
+static bool lv_draw_aic_ge2d_rotate(const lv_layer_t *layer,
+                                    const lv_draw_buf_t *src,
+                                    const lv_draw_buf_t *dst,
+                                    lv_color_format_t src_cf,
+                                    enum mpp_pixel_format src_fmt,
+                                    enum mpp_pixel_format dst_fmt,
+                                    const lv_draw_image_dsc_t *draw_dsc,
+                                    const lv_area_t *img_coords,
+                                    const lv_area_t *dst_area_abs)
+{
+    struct ge_rotation rot = { 0 };
+    lv_area_t src_area = { 0, 0, (int32_t)src->header.w - 1,
+                           (int32_t)src->header.h - 1 };
+    lv_area_t dst_area = {
+        dst_area_abs->x1 - layer->buf_area.x1,
+        dst_area_abs->y1 - layer->buf_area.y1,
+        dst_area_abs->x2 - layer->buf_area.x1,
+        dst_area_abs->y2 - layer->buf_area.y1,
+    };
+    struct mpp_ge *ge;
+    int32_t angle;
+
+    /* SDK check_format_and_size rejects either rectangle outside 4..4096.
+     * Decline before cache/submission so narrow clips can render in software. */
+    if (src->header.w < 4 || src->header.h < 4 ||
+        src->header.w > 4096 || src->header.h > 4096 ||
+        dst_area.x1 < 0 || dst_area.y1 < 0 ||
+        dst_area.x2 >= (int32_t)dst->header.w ||
+        dst_area.y2 >= (int32_t)dst->header.h ||
+        lv_area_get_width(&dst_area) < 4 || lv_area_get_height(&dst_area) < 4 ||
+        lv_area_get_width(&dst_area) > 4096 || lv_area_get_height(&dst_area) > 4096) {
+        return false;
+    }
+
+    lv_point_t destination_center;
+    if (!lv_aic_ge2d_rotation_center(&draw_dsc->pivot, img_coords,
+                                     dst_area_abs, &destination_center)) {
+        return false;
+    }
+
+    if (s_blit_validate_only) return true;
+    lv_draw_aic_ge2d_prepare_src_cache(src, &src_area);
+    lv_draw_aic_ge2d_prepare_dst_cache(dst, &dst_area);
+
+    rot.src_buf.buf_type = MPP_PHY_ADDR;
+    rot.src_buf.phy_addr[0] = (uint32_t)(ulong)src->data;
+    rot.src_buf.stride[0] = src->header.stride;
+    rot.src_buf.size.width = src->header.w;
+    rot.src_buf.size.height = src->header.h;
+    rot.src_buf.format = src_fmt;
+    if (image_is_premultiplied(src)) rot.src_buf.flags |= MPP_BUF_IS_PREMULTIPLY;
+
+    rot.src_rot_center.x = draw_dsc->pivot.x;
+    rot.src_rot_center.y = draw_dsc->pivot.y;
+
+    rot.dst_buf.buf_type = MPP_PHY_ADDR;
+    rot.dst_buf.phy_addr[0] = (uint32_t)(ulong)dst->data;
+    rot.dst_buf.stride[0] = dst->header.stride;
+    rot.dst_buf.size.width = dst->header.w;
+    rot.dst_buf.size.height = dst->header.h;
+    rot.dst_buf.format = dst_fmt;
+    rot.dst_buf.crop_en = 1U;
+    rot.dst_buf.crop.x = dst_area.x1;
+    rot.dst_buf.crop.y = dst_area.y1;
+    rot.dst_buf.crop.width = (uint32_t)lv_area_get_width(&dst_area);
+    rot.dst_buf.crop.height = (uint32_t)lv_area_get_height(&dst_area);
+
+    /* GE rotation centers are relative to the cropped destination area. */
+    rot.dst_rot_center.x = destination_center.x;
+    rot.dst_rot_center.y = destination_center.y;
+
+    angle = draw_dsc->rotation % 3600;
+    if (angle < 0) angle += 3600;
+    rot.angle_sin = lv_draw_aic_ge2d_angle_2_12(angle, false);
+    rot.angle_cos = lv_draw_aic_ge2d_angle_2_12(angle, true);
+
+    image_source_alpha(&rot.ctrl, src_cf, draw_dsc->opa, image_is_premultiplied(src));
+    alpha_raw(&rot.ctrl,&rot.src_buf,image_is_premultiplied(src));
+
+    ge = lv_draw_aic_ge2d_device();
+    if (ge == NULL) {
+        LV_LOG_ERROR("GE2D device is not open");
+        return false;
+    }
+
+    if (mpp_ge_rotate(ge, &rot) < 0) {
+        s_blit_failed = true;
+        LV_LOG_ERROR("GE2D rotate failed");
+        return false;
+    }
+    if (mpp_ge_emit(ge) < 0) {
+        s_blit_failed = true;
+        LV_LOG_ERROR("GE2D emit failed");
+        return false;
+    }
+    if (mpp_ge_sync(ge) < 0) {
+        s_blit_failed = true;
+        LV_LOG_ERROR("GE2D sync failed");
+        return false;
+    }
+
+    return true;
+}
 
 /**
  * Build the GE2D blit descriptor and run it.
@@ -122,6 +544,17 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     /* Acceptance already checked the destination, but the source format is
      * only known after the decode, so it has to be re-checked here. */
     src_cf = (lv_color_format_t)src->header.cf;
+    /* The MPP layout enum describes channel storage; the separate buffer flag
+     * carries premultiplication. Do not broaden unrelated format consumers. */
+    if (src_cf == LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED) src_cf = LV_COLOR_FORMAT_ARGB8888;
+    if (dst->header.flags & LV_IMAGE_FLAGS_PREMULTIPLIED) return false;
+    if (draw_dsc->colorkey != NULL &&
+        (image_is_premultiplied(src) || src_cf == LV_COLOR_FORMAT_RGB565 ||
+         (src_cf == LV_COLOR_FORMAT_ARGB8888 && draw_dsc->antialias))) {
+        /* RGB565 expansion and premultiplied antialias filtering can change
+         * the comparison space. Preserve LVGL's key semantics in software. */
+        return false;
+    }
     if (!lv_aic_pixel_format_is_ge2d_src(src_cf)) {
         LV_LOG_WARN("GE2D cannot read source format %d; falling back", (int)src_cf);
         return false;
@@ -138,11 +571,11 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
 
     /* The GE block reaches memory through a fixed window. A heap source below
      * it cannot be read, and no amount of retrying will change that. */
-    if (!lv_draw_aic_ge2d_buf_address_valid(src)) {
+    if (!lv_draw_aic_ge2d_buf_layout_valid(src)) {
         LV_LOG_WARN("GE2D cannot address source %p; falling back", (void *)src->data);
         return false;
     }
-    if (!lv_draw_aic_ge2d_buf_address_valid(dst)) {
+    if (!lv_draw_aic_ge2d_buf_layout_valid(dst)) {
         return false;
     }
 
@@ -150,6 +583,33 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
      * actual layer storage before inverse mapping; never drop an edge pixel. */
     if (!lv_area_intersect(&dst_area, clipped_img_area, &layer->buf_area)) {
         return false;
+    }
+    /* SDK GE validation applies the 4..4096 bound to every submitted source
+     * and destination rectangle, including an unscaled blit. Keep the check
+     * here so small images and narrow clips reach LVGL software intact. */
+    if (src->header.w < 4 || src->header.w > 4096 ||
+        src->header.h < 4 || src->header.h > 4096 ||
+        lv_area_get_width(&dst_area) < 4 || lv_area_get_width(&dst_area) > 4096 ||
+        lv_area_get_height(&dst_area) < 4 || lv_area_get_height(&dst_area) > 4096) {
+        return false;
+    }
+    /* The bounded scratch path separates scale and rotation. Destination
+     * centers keep the ORIGINAL pivot; the source center belongs to the
+     * resampled integer grid. Reject translations before any target write. */
+    if (scaled && draw_dsc->rotation % 900 != 0) {
+        if(!transform_active) return false;
+        int64_t x = (int64_t)img_coords->x1 + draw_dsc->pivot.x - transform_plan.pivot.x;
+        int64_t y = (int64_t)img_coords->y1 + draw_dsc->pivot.y - transform_plan.pivot.y;
+        if(x < INT32_MIN || y < INT32_MIN || x > INT32_MAX || y > INT32_MAX) return false;
+        lv_area_t origin = {(int32_t)x,(int32_t)y,(int32_t)x,(int32_t)y};
+        lv_draw_image_dsc_t rotate = *draw_dsc;
+        rotate.pivot = transform_plan.pivot; rotate.scale_x = rotate.scale_y = LV_SCALE_NONE;
+        return lv_draw_aic_ge2d_rotate(layer,&transform_scaled,dst,LV_COLOR_FORMAT_ARGB8888,
+                                       MPP_FMT_ARGB_8888,dst_fmt,&rotate,&origin,&dst_area);
+    }
+    if (!scaled && draw_dsc->rotation % 900 != 0) {
+        return lv_draw_aic_ge2d_rotate(layer, src, dst, src_cf, src_fmt, dst_fmt,
+                                       draw_dsc, img_coords, &dst_area);
     }
     rx = (int64_t)dst_area.x1 - img_coords->x1;
     ry = (int64_t)dst_area.y1 - img_coords->y1;
@@ -180,19 +640,14 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     }
     if (scaled) {
         lv_aic_ge2d_scale_axis_t x, y;
-        uint32_t sx = draw_dsc->rotation == 900 || draw_dsc->rotation == 2700
-                          ? draw_dsc->scale_y : draw_dsc->scale_x;
-        uint32_t sy = draw_dsc->rotation == 900 || draw_dsc->rotation == 2700
-                          ? draw_dsc->scale_x : draw_dsc->scale_y;
+        uint32_t sx = draw_dsc->scale_x;
+        uint32_t sy = draw_dsc->scale_y;
         if (draw_dsc->skew_x != 0 || draw_dsc->skew_y != 0 ||
             (draw_dsc->rotation == 0 &&
              (!lv_aic_ge2d_scale_axis(src->header.w, src_area.x1, lv_area_get_width(&dst_area),
                                       draw_dsc->pivot.x, draw_dsc->scale_x, &x) ||
               !lv_aic_ge2d_scale_axis(src->header.h, src_area.y1, lv_area_get_height(&dst_area),
-                                      draw_dsc->pivot.y, draw_dsc->scale_y, &y))) ||
-            (draw_dsc->rotation != 0 &&
-             lv_aic_ge2d_scale_split_risk((int32_t)(16777216 / sx),
-                                          lv_area_get_width(&dst_area)))) {
+                                      draw_dsc->pivot.y, draw_dsc->scale_y, &y)))) {
             return false;
         }
         if (draw_dsc->rotation == 0) {
@@ -203,9 +658,6 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
             y.step_16 = (int32_t)(16777216 / sy);
             x.crop = src_area.x1; x.extent = lv_area_get_width(&src_area);
             y.crop = src_area.y1; y.extent = lv_area_get_height(&src_area);
-        }
-        if (lv_aic_ge2d_scale_split_risk(x.step_16, lv_area_get_width(&dst_area))) {
-            return false;
         }
         blt.scale_phase.scale_phase_en = 1;
         blt.scale_phase.scaler_en = 1;
@@ -234,10 +686,6 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
         return false;
     }
 
-    /* Source is read by the engine, so write back; destination is written. */
-    lv_draw_aic_ge2d_prepare_src_cache(src, &src_area);
-    lv_draw_aic_ge2d_prepare_dst_cache(dst, &dst_area);
-
     blt.src_buf.buf_type = MPP_PHY_ADDR;
     blt.src_buf.phy_addr[0] = (uint32_t)(ulong)src->data;
     blt.src_buf.stride[0] = src->header.stride;
@@ -247,6 +695,7 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     blt.src_buf.size.width = src->header.w;
     blt.src_buf.size.height = src->header.h;
     blt.src_buf.format = src_fmt;
+    if (image_is_premultiplied(src)) blt.src_buf.flags |= MPP_BUF_IS_PREMULTIPLY;
     blt.src_buf.crop_en = 1U;
     blt.src_buf.crop.x = src_area.x1;
     blt.src_buf.crop.y = src_area.y1;
@@ -265,108 +714,167 @@ static bool lv_draw_aic_ge2d_blit(lv_draw_task_t *task,
     blt.dst_buf.crop.width = (uint32_t)lv_area_get_width(&dst_area);
     blt.dst_buf.crop.height = (uint32_t)lv_area_get_height(&dst_area);
 
-    /* Blending is needed when either side can contribute transparency: the
-     * source may carry a per-pixel alpha channel, and the draw descriptor may
-     * carry a partial global opacity. Only a source with neither takes the
-     * plain-copy path and skips the Porter/Duff datapath entirely.
-     *
-     * Note the D13x header comment inverts alpha_en's meaning - the HAL enables
-     * blending when it is non-zero, which is what the vendor port relies on too.
-     * src_alpha_mode 2 is the "mixed" mode, src_alpha = pixel alpha * global
-     * alpha / 255, which is exactly LVGL's own composition rule when both are
-     * present. A source with no alpha channel has an opaque pixel alpha, so the
-     * product reduces to the global value.
-     *
-     * The rule is GE_PD_NONE, and that name is misleading enough to be worth
-     * spelling out, because the obvious-looking alternative is wrong here.
-     *
-     * The GE's blend coefficients (ge_config_blend in hal_ge_hw.h) are
-     * 1: 1.0, 2: As, 3: 1-As, 4: Ad, 5: 1-Ad - coefficient 3 is 1-As, which the
-     * GE_PD_DST_OUT entry (0, 3) confirms. The enum is therefore the
-     * PREMULTIPLIED Porter/Duff table: GE_PD_SRC_OVER is (1, 1-As), which adds
-     * the source colour at full strength and relies on the source already
-     * carrying As. This source does not: the MPP decoder returns PNG/JPEG
-     * output as it found it and nothing in the pipeline sets
-     * MPP_BUF_IS_PREMULTIPLY, so the source is straight alpha and the
-     * premultiplied form over-brightens every partially transparent pixel.
-     * GE_PD_NONE is the pair that matches a straight source, (As, 1-As), i.e.
-     * Cs*As + Cd*(1-As) - what LVGL's own software blend computes.
-     *
-     * The HAL says the same thing from the other side. set_premuliply()
-     * rewrites the GE_PD_NONE pair to the GE_PD_SRC_OVER pair, but only after
-     * turning on the hardware premultiply stage, and only for src_alpha_mode 0.
-     * The mixed mode used here is src_alpha_mode 2, so that rewrite never
-     * applies and the straight pair has to be chosen here. The vendor GE2D port
-     * (lv_draw_ge2d_img.c) and the aic_player PNG backend (png_backend_ops.c)
-     * both leave alpha_rules at GE_PD_NONE for exactly this reason.
-     *
-     * The choice is written out rather than left to the zero-initialised
-     * descriptor, and it is measured rather than argued: the numeric probe in
-     * tests/manual/lv_aic_ge2d_test.c runs the engine against LVGL's arithmetic
-     * under both rules and reports the deviation of each. */
-    if (draw_dsc->opa >= LV_OPA_COVER && src_cf != LV_COLOR_FORMAT_ARGB8888) {
-        blt.ctrl.alpha_en = 0U;
-        blt.ctrl.src_alpha_mode = 0U;
-    }
-    else {
-        blt.ctrl.alpha_en = 1U;
-        blt.ctrl.alpha_rules = GE_PD_NONE;
-        blt.ctrl.src_alpha_mode = 2U;
-        blt.ctrl.src_global_alpha = draw_dsc->opa;
-    }
+    /* Straight sources use (As, 1-As). Premultiplied sources also publish the
+     * MPP flag so SDK normal/CMDQ backends select the required conversion.
+     * Never select SRC_OVER without also accounting for global opacity. */
+    image_source_alpha(&blt.ctrl, src_cf, draw_dsc->opa, image_is_premultiplied(src));
+    alpha_raw(&blt.ctrl,&blt.src_buf,image_is_premultiplied(src));
     blt.ctrl.flags = rotation_flags;
+    if (draw_dsc->colorkey != NULL) {
+        blt.ctrl.ck_en = 1U;
+        blt.ctrl.ck_value = lv_color_to_u32(draw_dsc->colorkey->low) & 0xffffffU;
+    }
+    unsigned commands;
+    if(!lv_aic_ge2d_stripe_count(&blt,&commands)) return false;
+    if(s_blit_validate_only) return true;
+    lv_draw_aic_ge2d_prepare_src_cache(src,&src_area);
+    lv_draw_aic_ge2d_prepare_dst_cache(dst,&dst_area);
     ge = lv_draw_aic_ge2d_device();
     if (ge == NULL) {
         LV_LOG_ERROR("GE2D device is not open");
         return false;
     }
 
-    if (mpp_ge_bitblt(ge, &blt) < 0) {
-        s_blit_failed = true;
-        LV_LOG_ERROR("GE2D bitblt failed");
-        return false;
+    int result=lv_aic_ge2d_stripe_run(ge,&blt);
+    if(result<0) {
+        s_blit_failed=true;
+        LV_LOG_ERROR("GE2D blit strip failed");
     }
-    if (mpp_ge_emit(ge) < 0) {
-        s_blit_failed = true;
-        LV_LOG_ERROR("GE2D emit failed");
-        return false;
-    }
-    if (mpp_ge_sync(ge) < 0) {
-        s_blit_failed = true;
-        LV_LOG_ERROR("GE2D sync failed");
-        return false;
-    }
-
-    return true;
+    return result>0;
 }
 
-/**
- * Core callback handed to lv_draw_image_normal_helper().
- *
- * Only records the outcome; the fallback decision belongs to the caller, which
- * still holds the original draw descriptor and the task.
- */
-static void lv_draw_aic_ge2d_image_cb(lv_draw_task_t *task,
-                                      const lv_draw_image_dsc_t *draw_dsc,
-                                      const lv_image_decoder_dsc_t *decoder_dsc,
-                                      lv_draw_image_sup_t *sup,
-                                      const lv_area_t *img_coords,
-                                      const lv_area_t *clipped_img_area)
+/* Keep the decoder open across both passes. No tile writes before every
+ * clipped tile has passed geometry/address checks; never replay a partial
+ * blend through software after an engine failure. */
+static int lv_draw_aic_ge2d_tiles(lv_draw_task_t *task, const lv_draw_image_dsc_t *dsc,
+                                 const lv_image_decoder_dsc_t *decoder, bool validate_only)
 {
-    LV_UNUSED(sup);
-
-    s_blit_called = true;
-    s_blit_ok = lv_draw_aic_ge2d_blit(task, draw_dsc, decoder_dsc, img_coords,
-                                      clipped_img_area);
+    int32_t w = dsc->header.w, h = dsc->header.h;
+    lv_area_t visible;
+    if (w <= 0 || h <= 0 || !task->target_layer || !task->target_layer->draw_buf ||
+        !decoder->decoded || !lv_draw_aic_ge2d_device()) return 0;
+    /* 2 means a successful no-op, distinct from an engine submission. */
+    if (!lv_area_intersect(&visible, &task->area, &task->clip_area) ||
+        !lv_area_intersect(&visible, &visible, &task->target_layer->buf_area)) return 2;
+    lv_area_t anchor = lv_area_get_width(&dsc->image_area) >= 0 ? dsc->image_area : task->area;
+    /* LVGL tiles step by untransformed source dimensions, even with scale or
+     * rotation. Each cell clips its transformed image; do not scale the grid.
+     * Match LVGL's initial anchor and positive stepping; jump over invisible
+     * rows/columns without iterating an unbounded off-screen prefix. */
+    int64_t x0 = anchor.x1, y0 = anchor.y1;
+    if (x0 + w - 1 < visible.x1) x0 += ((visible.x1 - x0) / w) * w;
+    if (y0 + h - 1 < visible.y1) y0 += ((visible.y1 - y0) / h) * h;
+    if (x0 > visible.x2 || y0 > visible.y2) return 2;
+    for (int pass = 0; pass < (validate_only ? 1 : 2); pass++) {
+        s_blit_validate_only = pass == 0;
+        for (int64_t y = y0; y <= visible.y2; y += h) {
+            for (int64_t x = x0; x <= visible.x2; x += w) {
+                if (x + w - 1 > INT32_MAX || y + h - 1 > INT32_MAX) {
+                    s_blit_validate_only = false;
+                    return pass ? -1 : 0;
+                }
+                lv_area_t tile = {(int32_t)x, (int32_t)y, (int32_t)(x+w-1), (int32_t)(y+h-1)};
+                lv_area_t clip;
+                if (!lv_area_intersect(&clip, &tile, &visible)) continue;
+                if (!lv_draw_aic_ge2d_blit(task, dsc, decoder, &tile, &clip)) {
+                    s_blit_validate_only = false;
+                    return pass ? -1 : 0;
+                }
+            }
+        }
+    }
+    s_blit_validate_only = false;
+    return 1;
 }
 
-lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
+/* SDK .fake draws the transformed bounding rectangle, not rotated pixels.
+ * blend=0 replaces even transparent ARGB; blend=1 uses the encoded alpha.
+ * As in the SDK, image opacity/recolor/tile do not alter this pseudo-fill. */
+static lv_result_t fake_image_draw(lv_draw_task_t *task, const lv_aic_fake_image_t *fake,
+                                  lv_draw_aic_ge2d_outcome_t *outcome)
+{
+    const lv_draw_image_dsc_t *image = task->draw_dsc;
+    lv_layer_t *layer = task->target_layer;
+    lv_draw_buf_t *dst = layer ? layer->draw_buf : NULL;
+    lv_area_t area, clip;
+    int64_t width = (int64_t)task->area.x2 - task->area.x1 + 1;
+    int64_t height = (int64_t)task->area.y2 - task->area.y1 + 1;
+    if (!dst || !dst->data || width < 1 || width > 4096 || height < 1 || height > 4096 ||
+        image->scale_x < 16 || image->scale_x > 4096 ||
+        image->scale_y < 16 || image->scale_y > 4096 ||
+        image->skew_x || image->skew_y ||
+        image->pivot.x < -4096 || image->pivot.x > 4096 ||
+        image->pivot.y < -4096 || image->pivot.y > 4096) return LV_RESULT_INVALID;
+    lv_color_format_t cf = dst->header.cf;
+    if (layer->color_format != cf || !lv_draw_aic_ge2d_dst_format_supported(cf)) return LV_RESULT_INVALID;
+    uint32_t bpp = lv_color_format_get_size(cf);
+    int64_t lw = (int64_t)layer->buf_area.x2 - layer->buf_area.x1 + 1;
+    int64_t lh = (int64_t)layer->buf_area.y2 - layer->buf_area.y1 + 1;
+    if (lw < 1 || lh < 1 || lw > dst->header.w || lh > dst->header.h ||
+        (uint64_t)lw * bpp > dst->header.stride ||
+        (uint64_t)dst->header.stride * lh > dst->data_size) return LV_RESULT_INVALID;
+    lv_image_buf_get_transformed_area(&area, (int32_t)width, (int32_t)height,
+                                     image->rotation, image->scale_x, image->scale_y, &image->pivot);
+    if ((int64_t)area.x1 + task->area.x1 < INT32_MIN ||
+        (int64_t)area.y1 + task->area.y1 < INT32_MIN ||
+        (int64_t)area.x2 + task->area.x1 > INT32_MAX ||
+        (int64_t)area.y2 + task->area.y1 > INT32_MAX) return LV_RESULT_INVALID;
+    lv_area_move(&area, task->area.x1, task->area.y1);
+    if (!lv_area_intersect(&clip, &area, &task->clip_area) ||
+        !lv_area_intersect(&clip, &clip, &layer->buf_area)) return LV_RESULT_OK;
+    lv_draw_fill_dsc_t fill;
+    lv_draw_fill_dsc_init(&fill);
+    fill.color = lv_color_hex(fake->argb);
+    fill.opa = fake->argb >> 24;
+    if (fake->blend && fill.opa <= LV_OPA_MIN) return LV_RESULT_OK;
+    lv_draw_task_t fill_task = *task;
+    fill_task.type = LV_DRAW_TASK_TYPE_FILL;
+    fill_task.draw_dsc = &fill;
+    fill_task.area = area;
+    fill_task.clip_area = clip;
+    if (lv_draw_aic_ge2d_device() && lv_draw_aic_ge2d_buf_address_valid(dst)) {
+        lv_result_t result = fake->blend ? lv_draw_aic_ge2d_fill(&fill_task) :
+                                          lv_draw_aic_ge2d_fill_replace(&fill_task, fake->argb);
+        if (result == LV_RESULT_OK && outcome) *outcome = LV_DRAW_AIC_GE2D_OUTCOME_ENGINE;
+        if (result == LV_RESULT_OK || lv_draw_aic_ge2d_faulted()) return result;
+        /* A pre-DMA rejection (including bounded ARGB scratch exhaustion) can
+         * use native fill; uncertain hardware completion may never replay. */
+    }
+    if (fake->blend) {
+        lv_draw_sw_fill(&fill_task, &fill, &area);
+    }
+    else {
+        /* No blending on blend=0: preserve all 32 bits on ARGB, including
+         * zero alpha. Byte stores also allow unaligned/padded RGB888 rows. */
+        uint16_t rgb565 = (uint16_t)(((fake->argb >> 8) & 0xf800) |
+                                   ((fake->argb >> 5) & 0x07e0) |
+                                   ((fake->argb >> 3) & 0x001f));
+        int32_t x0 = clip.x1 - layer->buf_area.x1, y0 = clip.y1 - layer->buf_area.y1;
+        int32_t cw = lv_area_get_width(&clip), ch = lv_area_get_height(&clip);
+        for (int32_t y = 0; y < ch; y++) {
+            uint8_t *p = dst->data + (uint32_t)(y0 + y) * dst->header.stride + (uint32_t)x0 * bpp;
+            for (int32_t x = 0; x < cw; x++, p += bpp) {
+                if (cf == LV_COLOR_FORMAT_RGB565) {
+                    p[0] = rgb565 & 255; p[1] = rgb565 >> 8;
+                }
+                else {
+                    p[0] = fake->argb; p[1] = fake->argb >> 8; p[2] = fake->argb >> 16;
+                    if (bpp == 4) p[3] = fake->argb >> 24;
+                }
+            }
+        }
+    }
+    if (outcome) *outcome = LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE;
+    return LV_RESULT_OK;
+}
+
+static lv_result_t image_draw(lv_draw_task_t *task,
                                    lv_draw_aic_ge2d_outcome_t *outcome)
 {
     const lv_draw_image_dsc_t *dsc;
     const lv_draw_image_dsc_t *blit_dsc;
     lv_draw_image_dsc_t layer_dsc;
-    lv_layer_t *layer_to_draw;
+    lv_layer_t *layer_to_draw = NULL;
     const lv_image_decoder_args_t decoder_args = {
         .stride_align = false,
         .premultiply = false,
@@ -388,6 +896,19 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
     if (dsc == NULL || dsc->src == NULL) {
         return LV_RESULT_INVALID;
     }
+    int yuv=lv_draw_aic_ge2d_yuv(task);
+    if (yuv<0) return LV_RESULT_INVALID;
+    if (yuv>0) {
+        if (yuv==1 && outcome) *outcome=LV_DRAW_AIC_GE2D_OUTCOME_ENGINE;
+        return LV_RESULT_OK;
+    }
+    lv_aic_fake_image_t fake;
+    if (task->type == LV_DRAW_TASK_TYPE_IMAGE && lv_image_src_get_type(dsc->src) == LV_IMAGE_SRC_FILE &&
+        lv_aic_fake_image_parse(dsc->src, &fake)) return fake_image_draw(task, &fake, outcome);
+
+    /* Direct executor users must obey the same effect boundary as dispatch.
+     * The SDK pseudo-fill above intentionally ignores image effects. */
+    if(dsc->clip_radius || dsc->blend_mode!=LV_BLEND_MODE_NORMAL) goto software;
 
     /* A LAYER task's source is the child layer, and the layer's buffer is what
      * actually gets blitted. Wrapping it in an image descriptor lets the code
@@ -416,12 +937,124 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
     s_blit_ok = false;
     s_blit_failed = false;
 
-    /* GE consumes the decoded byte stride directly. Default bin-decoder
-     * normalization can replace a padded CMA source with an inaccessible
-     * LVGL heap copy. Preserve its layout and straight alpha instead.
-     * LVGL still owns decode, clipping and the decoder lifetime. */
-    lv_draw_image_normal_helper(task, blit_dsc, &task->area,
-                                lv_draw_aic_ge2d_image_cb, &decoder_args);
+    /* Own the decoder through completion. Upstream helpers unconditionally
+     * close it after the callback, which is unsafe after uncertain DMA.
+     * Whole-image decoders use GE; partial decoders retain the SW path. */
+    lv_area_t draw_area = task->area, clipped;
+    if (!blit_dsc->tile && (blit_dsc->rotation ||
+        blit_dsc->scale_x != LV_SCALE_NONE || blit_dsc->scale_y != LV_SCALE_NONE)) {
+        lv_image_buf_get_transformed_area(&draw_area,
+            lv_area_get_width(&task->area), lv_area_get_height(&task->area),
+            blit_dsc->rotation, blit_dsc->scale_x, blit_dsc->scale_y, &blit_dsc->pivot);
+        lv_area_move(&draw_area, task->area.x1, task->area.y1);
+    }
+    if (!lv_area_intersect(&clipped, &draw_area, &task->clip_area)) return LV_RESULT_OK;
+    if (lv_image_decoder_open(&image_decoder, blit_dsc->src, &decoder_args) == LV_RESULT_OK) {
+        bool prepared = true;
+        lv_draw_task_t *original_task=task,alpha_task;
+        lv_layer_t alpha_layer;
+        if(task->target_layer && task->target_layer->draw_buf &&
+           task->target_layer->draw_buf->header.cf==LV_COLOR_FORMAT_ARGB8888) {
+            prepared=alpha_prepare(task,&clipped,&alpha_layer,&alpha_task);
+            if(prepared) task=&alpha_task;
+        }
+        lv_image_decoder_dsc_t draw_decoder=image_decoder;
+        lv_draw_image_dsc_t effect_dsc;
+        if(prepared && dsc->bitmap_mask_src) {
+            lv_area_t image_area=dsc->image_area;
+            if(image_area.x2==LV_COORD_MIN ||
+               lv_area_get_width(&image_area)!=(int32_t)draw_decoder.decoded->header.w ||
+               lv_area_get_height(&image_area)!=(int32_t)draw_decoder.decoded->header.h) {
+                image_area=task->area;
+                /* lv_draw_image_tiled_helper keeps the tile origin in the
+                 * descriptor only when the caller supplied image_area. For
+                 * the default origin, task->area is the complete tiled
+                 * region; mask staging needs one source-sized cell so the
+                 * native mask kernel can align every repeated tile locally. */
+                if(dsc->tile) {
+                    image_area.x2=image_area.x1+(int32_t)draw_decoder.decoded->header.w-1;
+                    image_area.y2=image_area.y1+(int32_t)draw_decoder.decoded->header.h-1;
+                }
+            }
+            int result=layer_to_draw?mask_prepare(draw_decoder.decoded,dsc,&layer_to_draw->buf_area):
+                        image_mask_prepare(draw_decoder.decoded,dsc,&image_area);
+            if(result==0) {
+                transform_release();lv_image_decoder_close(&image_decoder);
+                return LV_RESULT_OK;
+            }
+            prepared=result>0;
+            if(prepared) draw_decoder.decoded=&masked;
+        }
+        if(prepared && colorkey_needs_prepare(draw_decoder.decoded,blit_dsc)) {
+            prepared=colorkey_prepare(draw_decoder.decoded,blit_dsc);
+            if(prepared) {
+                draw_decoder.decoded=&keyed;
+                effect_dsc=*blit_dsc;effect_dsc.colorkey=NULL;
+                blit_dsc=&effect_dsc;
+            }
+        }
+        if(prepared && blit_dsc->recolor_opa>LV_OPA_MIN) {
+            prepared=recolor_prepare(draw_decoder.decoded,blit_dsc);
+            if(prepared) {
+                draw_decoder.decoded=&recolored;
+                effect_dsc=*blit_dsc;effect_dsc.recolor_opa=LV_OPA_TRANSP;
+                blit_dsc=&effect_dsc;
+            }
+        }
+        if(prepared && blit_dsc->rotation % 900 != 0 &&
+           (blit_dsc->scale_x != LV_SCALE_NONE || blit_dsc->scale_y != LV_SCALE_NONE)) {
+            const lv_draw_buf_t *source = draw_decoder.decoded;
+            prepared = source && lv_aic_ge2d_transform_plan(source->header.w,source->header.h,
+                           blit_dsc,AIC_LVGL_GE2D_TRANSFORM_BYTES,&transform_plan);
+            if(prepared) {
+                /* Transform geometry preflight: recolor storage may exist, but
+                 * no transform allocation, cache maintenance or DMA yet. */
+                transform_scaled.header.w = transform_plan.scaled_w;
+                transform_scaled.header.h = transform_plan.scaled_h;
+                transform_active = true;
+                s_blit_validate_only = true;
+                if(blit_dsc->tile) {
+                    int preflight = lv_draw_aic_ge2d_tiles(task,blit_dsc,&draw_decoder,true);
+                    if(preflight == 2) {
+                        s_blit_validate_only = transform_active = false;
+                        transform_release(); lv_image_decoder_close(&image_decoder);
+                        return LV_RESULT_OK;
+                    }
+                    prepared = preflight > 0;
+                }
+                else prepared = lv_draw_aic_ge2d_blit(task,blit_dsc,&draw_decoder,&task->area,&clipped);
+                s_blit_validate_only = false;
+                if(prepared) prepared = transform_prepare(source);
+            }
+        }
+        if (prepared && blit_dsc->tile) {
+            int tiled = lv_draw_aic_ge2d_tiles(task, blit_dsc, &draw_decoder, false);
+            s_blit_called = tiled != 2;
+            s_blit_ok = tiled > 0;
+            s_blit_failed = tiled < 0;
+            if (tiled == 2) {
+                transform_active = false; transform_release();
+                lv_image_decoder_close(&image_decoder);
+                return LV_RESULT_OK;
+            }
+        }
+        else if (prepared && draw_decoder.decoded) {
+            s_blit_called = true;
+            s_blit_ok = lv_draw_aic_ge2d_blit(task, blit_dsc, &draw_decoder,
+                                            &task->area, &clipped);
+        }
+        transform_active = false;
+        task=original_task;
+        if(alpha_active && s_blit_called && s_blit_ok && !s_blit_failed)
+            alpha_finish(task,&alpha_layer,dsc->opa);
+        if(!s_blit_failed) transform_release();
+        if (s_blit_failed) {
+            /* Retain decoder-owned pixels, cache references and file state.
+             * Dispatcher retains the task and destination until reboot. */
+            decoder_quarantined = true;
+        }
+        else lv_image_decoder_close(&image_decoder);
+    }
 
     if (s_blit_failed) {
         /* GE may already have blended pixels: never retry those in software. */
@@ -434,6 +1067,7 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
         return LV_RESULT_OK;
     }
 
+software:
     /* Either the decode failed or the engine could not take the source. Hand
      * the whole task to the software renderer so the image is never dropped.
      * This re-decodes, which is wasteful but is the only path that is correct
@@ -455,6 +1089,27 @@ lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,
         *outcome = LV_DRAW_AIC_GE2D_OUTCOME_SOFTWARE;
     }
     return LV_RESULT_OK;
+}
+
+lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *task,lv_draw_aic_ge2d_outcome_t *outcome)
+{
+    if(outcome) *outcome=LV_DRAW_AIC_GE2D_OUTCOME_NOTHING;
+    if(lv_draw_aic_ge2d_faulted()) return LV_RESULT_INVALID;
+    lv_aic_rgb_image_t *lease=NULL;
+    const lv_aic_rgb_frame_t *frame;
+    if(task && task->type==LV_DRAW_TASK_TYPE_IMAGE && task->draw_dsc) {
+        const lv_draw_image_dsc_t *dsc=task->draw_dsc;
+        lease=lv_aic_rgb_image_acquire(dsc->src,&frame);
+    }
+    s_blit_failed=false;
+    lv_result_t result=image_draw(task,outcome);
+    if(lease) {
+        /* Preserve the producer lease as well as the open decoder snapshot
+         * if DMA completion is uncertain. */
+        if(s_blit_failed) rgb_quarantined=lease;
+        else lv_aic_rgb_image_release_lease(lease);
+    }
+    return result;
 }
 
 #endif /* AIC_LVGL_USE_GE2D && AIC_LVGL_BSP_MPP */

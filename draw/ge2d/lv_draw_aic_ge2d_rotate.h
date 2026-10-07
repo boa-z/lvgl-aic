@@ -4,6 +4,14 @@
 
 #include "lvgl_aic.h"
 
+/* ROT1 center registers preserve only 14 bits. Use a conservative signed
+ * 14-bit domain for both source pivot and crop-relative destination center.
+ * Compute the translation in 64 bits before checking/narrowing. */
+bool lv_aic_ge2d_rotation_center(const lv_point_t *pivot,
+                                  const lv_area_t *image_coords,
+                                  const lv_area_t *destination_clip,
+                                  lv_point_t *destination_center);
+
 /* Map an inclusive destination rectangle, expressed relative to the
  * untransformed image origin, back to the source rectangle consumed by a GE
  * rotated bitblt. The source crop and destination crop therefore stay paired
