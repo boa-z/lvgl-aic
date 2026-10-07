@@ -1,0 +1,664 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#include <assert.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
+#define ulong uintptr_t
+#include "../../draw/ge2d/lv_draw_aic_ge2d.c"
+#include "../../draw/ge2d/lv_draw_aic_ge2d_fill.c"
+
+static struct ge_fillrect captured;
+static lv_area_t cache_area;
+static int submits, emits, syncs, caches, fail_at;
+static const void *allowed_dst;
+static bool yuv_fault, rgb_fault;
+static bool alloc_failure,allocated_ge_accessible;
+static bool alpha_model, scratch_live, scratch_failure, scratch_address_failure;
+static _Alignas(64) uint8_t scratch[65536];
+static uint8_t alpha_pixels[32*160], alpha_before[32*160];
+static unsigned scratch_allocations, scratch_frees, invalidates, cleans;
+static size_t scratch_bytes;
+void *aicos_malloc_align(unsigned int type,size_t bytes,size_t align)
+{
+    assert(type==MEM_CMA && align==64 && !scratch_live);
+    scratch_allocations++;
+    if(!alpha_model || scratch_failure) return NULL;
+    assert(bytes<=sizeof scratch);scratch_bytes=bytes;scratch_live=true;return scratch;
+}
+void aicos_free_align(unsigned int type,void *p)
+{
+    assert(type==MEM_CMA && p==scratch && scratch_live);
+    scratch_live=false;scratch_frees++;
+}
+void aicos_dcache_invalid_range(unsigned long *p,unsigned long size)
+{
+    assert(alpha_model && (void *)p==scratch && size==scratch_bytes);
+    assert(syncs==1 && !fail_at && !memcmp(alpha_pixels,alpha_before,sizeof alpha_pixels));
+    invalidates++;
+}
+void lv_draw_aic_ge2d_prepare_src_cache(const lv_draw_buf_t *b,const lv_area_t *a)
+{
+    assert(alpha_model && b->data==alpha_pixels && a && scratch_live);
+    assert(invalidates==cleans+1);cleans++;
+}
+extern void *__real_lv_draw_layer_alloc_buf(lv_layer_t *layer);
+void *__wrap_lv_draw_layer_alloc_buf(lv_layer_t *layer)
+{
+    if(alloc_failure) return NULL;
+    void *data=__real_lv_draw_layer_alloc_buf(layer);
+    if(allocated_ge_accessible) allowed_dst=data;
+    return data;
+}
+
+static int image_calls, image_fault_kind, opens, closes;
+bool lv_draw_aic_ge2d_image_faulted(void) { return rgb_fault; }
+bool lv_draw_aic_ge2d_yuv_faulted(void) { return yuv_fault; }
+struct mpp_ge *mpp_ge_open(void) { opens++; return (struct mpp_ge *)(uintptr_t)1; }
+void mpp_ge_close(struct mpp_ge *ge) { (void)ge; closes++; }
+/* Model the reviewed SDK Q16 command increment, independent of the native
+ * LVGL gradient oracle. Real GE interpolation still needs board execution. */
+static uint32_t gradient_model(const struct ge_fillrect *f, int x, int y)
+{
+    if(f->type == GE_NO_GRADIENT) return f->start_color;
+    int span = f->type == GE_H_LINEAR_GRADIENT ? f->dst_buf.crop.width : f->dst_buf.crop.height;
+    int pos = f->type == GE_H_LINEAR_GRADIENT ? x : y;
+    uint32_t result = 0;
+    for(unsigned shift = 0; shift < 32; shift += 8) {
+        int first = (f->start_color >> shift) & 255;
+        int last = (f->end_color >> shift) & 255;
+        int step = span > 1 ? (last - first) * 65536 / (span - 1) : 0;
+        int value = (first * 65536 + step * pos) / 65536;
+        assert(value >= 0 && value <= 255);
+        result |= (uint32_t)value << shift;
+    }
+    return result;
+}
+int mpp_ge_fillrect(struct mpp_ge *ge, struct ge_fillrect *f)
+{
+    (void)ge; captured = *f; submits++;
+    if(alpha_model) {
+        assert(f->dst_buf.format==MPP_FMT_ARGB_8888 && !f->ctrl.alpha_en);
+        uint8_t *pixels=f->dst_buf.phy_addr[0]==(uint32_t)(uintptr_t)scratch?scratch:alpha_pixels;
+        assert(f->dst_buf.phy_addr[0]==(uint32_t)(uintptr_t)pixels);
+        assert(pixels!=scratch || scratch_live);
+        for(int y=0;y<f->dst_buf.crop.height;y++) for(int x=0;x<f->dst_buf.crop.width;x++) {
+            uint32_t value=gradient_model(f,x,y);
+            memcpy(pixels+(y+f->dst_buf.crop.y)*f->dst_buf.stride[0]+(x+f->dst_buf.crop.x)*4,&value,4);
+        }
+    }
+    return fail_at == 1 ? -1 : 0;
+}
+int mpp_ge_emit(struct mpp_ge *ge)
+{ (void)ge; emits++; return fail_at == 2 ? -1 : 0; }
+int mpp_ge_sync(struct mpp_ge *ge)
+{ (void)ge; syncs++; return fail_at == 3 ? -1 : 0; }
+bool lv_draw_aic_ge2d_buf_address_valid(const lv_draw_buf_t *b)
+{ return b && b->data && (b->data==allowed_dst ||
+    (scratch_live && b->data==scratch && !scratch_address_failure)); }
+bool lv_draw_aic_ge2d_dst_format_supported(lv_color_format_t cf)
+{ return lv_aic_pixel_format_is_ge2d_dst(cf); }
+void lv_draw_aic_ge2d_prepare_dst_cache(const lv_draw_buf_t *b, const lv_area_t *a)
+{
+    cache_area = *a; caches++;
+    if(alpha_model && b->data==alpha_pixels) {
+        assert(!submits);memcpy(alpha_before,alpha_pixels,sizeof alpha_pixels);
+    }
+}
+lv_result_t lv_draw_aic_ge2d_image(lv_draw_task_t *t, lv_draw_aic_ge2d_outcome_t *o)
+{ (void)t; (void)o; image_calls++; yuv_fault = image_fault_kind == 1; rgb_fault = image_fault_kind == 2; return LV_RESULT_INVALID; }
+static void dispatcher_failure_contract(lv_layer_t *layer)
+{
+    for (unsigned fatal = 0; fatal < 3; fatal++) {
+        lv_draw_aic_ge2d_unit_t unit = {0};
+        lv_draw_task_t *task = lv_draw_add_task(layer, &layer->buf_area,
+                                               LV_DRAW_TASK_TYPE_IMAGE);
+        assert(task != NULL);
+        task->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
+        yuv_fault = rgb_fault = false; image_fault_kind = fatal;
+        image_calls = 0;
+        lv_draw_aic_ge2d_stats_reset();
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == 1);
+        assert(image_calls == 1 && g_ge2d_stats.errors == 1);
+        assert(g_ge2d_stats.image_completed == 0);
+        assert(task->draw_unit == &unit.base_unit);
+        assert(task->state == (fatal ? LV_DRAW_TASK_STATE_IN_PROGRESS :
+                                      LV_DRAW_TASK_STATE_FAILED));
+        assert(unit.task_act == (fatal ? task : NULL));
+        lv_draw_task_t *queued = NULL;
+        if (fatal) {
+            queued = lv_draw_add_task(layer, &layer->buf_area, LV_DRAW_TASK_TYPE_IMAGE);
+            assert(queued != NULL);
+            queued->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
+        }
+        for (unsigned retry = 0; retry < 3; retry++) {
+            assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == LV_DRAW_UNIT_IDLE);
+            assert(image_calls == 1 && g_ge2d_stats.errors == 1);
+            assert(layer->draw_buf->data == allowed_dst);
+            if (queued) assert(queued->state == LV_DRAW_TASK_STATE_WAITING);
+        }
+        /* Only this synchronous mock can prove no DMA is pending. Never
+         * release a quarantined production task this way. */
+        layer->draw_task_head = NULL;
+        lv_free(queued);
+        lv_free(task);
+    }
+    yuv_fault = rgb_fault = false; image_fault_kind = 0;
+}
+static void reset_calls(void) { submits = emits = syncs = caches = 0; }
+static void verify_latched(lv_draw_task_t *task)
+{
+    int saved_failure = fail_at;
+    assert(lv_draw_aic_ge2d_fill_faulted());
+    fail_at = 0; reset_calls();
+    assert(lv_draw_aic_ge2d_fill(task) == LV_RESULT_INVALID);
+    assert(lv_draw_aic_ge2d_fill_replace(task, 0) == LV_RESULT_INVALID);
+    assert(submits == 0 && emits == 0 && syncs == 0 && caches == 0);
+    /* Test-only reset: synchronous mocks never start DMA. */
+    fill_dma_faulted = false; fail_at = saved_failure;
+}
+static void fill_dispatch_failure(lv_layer_t *layer, lv_draw_fill_dsc_t *dsc)
+{
+    for (fail_at = 1; fail_at <= 3; fail_at++) {
+        lv_draw_aic_ge2d_unit_t unit = {0};
+        lv_draw_task_t *task = lv_draw_add_task(layer, &layer->buf_area,
+                                               LV_DRAW_TASK_TYPE_FILL);
+        task->draw_dsc = dsc;
+        task->clip_area = layer->buf_area;
+        task->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
+        reset_calls(); lv_draw_aic_ge2d_stats_reset();
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == 1);
+        assert(task->state == LV_DRAW_TASK_STATE_IN_PROGRESS && unit.task_act == task);
+        assert(g_ge2d_stats.errors == 1 && g_ge2d_stats.fill_completed == 0);
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == LV_DRAW_UNIT_IDLE);
+        assert(submits == 1 && g_ge2d_stats.errors == 1);
+        verify_latched(task);
+        /* Mock-only cleanup, never valid for real uncertain DMA. */
+        layer->draw_task_head = NULL; lv_free(task);
+    }
+    fail_at = 0;
+}
+static void lazy_layer_contract(void)
+{
+    const void *saved=allowed_dst;
+    for(unsigned hardware=0;hardware<2;hardware++) {
+        lv_layer_t layer={0};layer.buf_area=(lv_area_t){4,6,11,13};
+        layer.color_format=LV_COLOR_FORMAT_RGB888;
+        lv_draw_fill_dsc_t d;lv_draw_fill_dsc_init(&d);d.color=lv_color_make(20,70,130);
+        lv_draw_task_t *t=lv_draw_add_task(&layer,&layer.buf_area,LV_DRAW_TASK_TYPE_FILL);
+        t->draw_dsc=&d;t->clip_area=layer.buf_area;
+        assert(lv_draw_aic_ge2d_accepts_fill(t));
+        layer.color_format=LV_COLOR_FORMAT_ARGB8888;d.opa=128;
+        assert(lv_draw_aic_ge2d_accepts_fill(t));
+        layer.color_format=LV_COLOR_FORMAT_RGB888;d.opa=255;
+        t->preference_score=100;
+        assert(lv_draw_aic_ge2d_evaluate(NULL,t)==1);
+        assert(t->preferred_draw_unit_id==AIC_GE2D_DRAW_UNIT_ID);
+        lv_draw_aic_ge2d_unit_t unit={0};
+        reset_calls();lv_draw_aic_ge2d_stats_reset();
+        alloc_failure=true;
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit,&layer)==LV_DRAW_UNIT_IDLE);
+        assert(t->state==LV_DRAW_TASK_STATE_WAITING && !layer.draw_buf && !submits);
+        assert(!unit.task_act && !g_ge2d_stats.errors);
+        alloc_failure=false;allocated_ge_accessible=hardware;allowed_dst=NULL;
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit,&layer)==1);
+        assert(t->state==LV_DRAW_TASK_STATE_FINISHED && !unit.task_act);
+        assert(g_ge2d_stats.fill_completed==1 && g_ge2d_stats.fill_sw_fallback==!hardware);
+        assert(submits==(int)hardware && emits==(int)hardware && syncs==(int)hardware);
+        if(!hardware) for(unsigned y=0;y<8;y++) for(unsigned x=0;x<8;x++) {
+            uint8_t *p=layer.draw_buf->data+y*layer.draw_buf->header.stride+x*3;
+            assert(p[0]==130 && p[1]==70 && p[2]==20);
+        }
+        layer.draw_task_head=NULL;lv_free(t);lv_draw_layer_dealloc_buf(&layer);
+    }
+    allocated_ge_accessible=false;allowed_dst=saved;
+}
+static void rejected(lv_draw_task_t *t)
+{
+    reset_calls();
+    assert(lv_draw_aic_ge2d_fill(t) == LV_RESULT_INVALID);
+    assert(submits == 0 && emits == 0 && syncs == 0 && caches == 0);
+}
+static void client_fault_contract(lv_draw_task_t *task)
+{
+    for (unsigned kind = 0; kind < 4; kind++) {
+        fill_dma_faulted = kind == 0;
+        yuv_fault = kind == 1; rgb_fault = kind == 2;
+        if (kind == 3) lv_draw_aic_ge2d_quarantine();
+        int old_opens = opens, old_closes = closes;
+        struct mpp_ge *retained = g_ge2d_dev;
+        assert(lv_draw_aic_ge2d_faulted() && lv_draw_aic_ge2d_device() == NULL);
+        reset_calls();
+        assert(lv_draw_aic_ge2d_fill(task) == LV_RESULT_INVALID);
+        assert(lv_draw_aic_ge2d_fill_replace(task, 0) == LV_RESULT_INVALID);
+        assert(submits == 0 && caches == 0);
+        lv_layer_t *layer = task->target_layer;
+        lv_draw_aic_ge2d_unit_t unit = {0};
+        lv_draw_task_t *queued = lv_draw_add_task(layer, &layer->buf_area, LV_DRAW_TASK_TYPE_FILL);
+        queued->draw_dsc = task->draw_dsc;
+        queued->preferred_draw_unit_id = AIC_GE2D_DRAW_UNIT_ID;
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit, layer) == LV_DRAW_UNIT_IDLE);
+        assert(queued->state == LV_DRAW_TASK_STATE_WAITING && unit.task_act == NULL);
+        assert(submits == 0);
+        layer->draw_task_head = NULL; lv_free(queued);
+        lv_draw_aic_ge2d_deinit(); lv_draw_aic_ge2d_init();
+        assert(opens == old_opens && closes == old_closes && g_ge2d_dev == retained);
+        assert(!lv_draw_aic_ge2d_stats()->ready);
+        lv_draw_aic_ge2d_stats_reset();
+        assert(lv_draw_aic_ge2d_faulted());
+        /* Mock-only reset: production must reboot, never discard this latch. */
+        fill_dma_faulted = yuv_fault = rgb_fault = g_ge2d_external_fault = false;
+    }
+    int old_closes = closes;
+    lv_draw_aic_ge2d_deinit();
+    assert(closes == old_closes + 1 && g_ge2d_dev == NULL);
+}
+static void alpha_fill_contract(void);
+static void gradient_fill_contract(void);
+int main(void)
+{
+    static uint8_t output[32 * 160];
+    lv_draw_buf_t dst;
+    lv_draw_fill_dsc_t d;
+    lv_layer_t layer = {0};
+    lv_draw_task_t task = {0};
+    const lv_color_format_t formats[] = {LV_COLOR_FORMAT_RGB565,
+        LV_COLOR_FORMAT_RGB888, LV_COLOR_FORMAT_XRGB8888, LV_COLOR_FORMAT_ARGB8888};
+    const uint8_t opacities[] = {LV_OPA_MIN + 1, 64, 128, 192, LV_OPA_MAX - 1, LV_OPA_MAX, 255};
+    lv_init();
+    allowed_dst = output;
+    g_ge2d_dev = mpp_ge_open(); g_ge2d_ready = true;
+    lv_draw_fill_dsc_init(&d); d.color = lv_color_make(200,40,80);
+    layer.draw_buf = &dst; layer.buf_area = (lv_area_t){100,200,131,231};
+    task.target_layer = &layer; task.draw_dsc = &d; task.type = LV_DRAW_TASK_TYPE_FILL;
+    task.area = (lv_area_t){95,195,120,220}; task.clip_area = (lv_area_t){90,198,110,210};
+    for (unsigned f = 0; f < sizeof(formats)/sizeof(formats[0]); f++) {
+        assert(lv_draw_buf_init(&dst,32,32,formats[f],160,output,sizeof(output)) == LV_RESULT_OK);
+        layer.color_format=formats[f];
+        for (unsigned i = 0; i < sizeof(opacities)/sizeof(opacities[0]); i++) {
+            d.opa = opacities[i];
+            if (formats[f] == LV_COLOR_FORMAT_ARGB8888 && d.opa < LV_OPA_MAX) {
+                /* Scheduler may claim it; this descriptor-only fixture declines
+                 * staging allocation before submission. Pixel fixture below runs it. */
+                assert(lv_draw_aic_ge2d_accepts_fill(&task)); rejected(&task); continue;
+            }
+            assert(lv_draw_aic_ge2d_accepts_fill(&task)); reset_calls();
+            assert(lv_draw_aic_ge2d_fill(&task) == LV_RESULT_OK);
+            assert(submits == 1 && emits == 1 && syncs == 1 && caches == 1);
+            enum mpp_pixel_format fmt;
+            assert(lv_aic_pixel_format_to_mpp(formats[f], &fmt));
+            assert(captured.dst_buf.format == fmt);
+            assert(captured.dst_buf.phy_addr[0] == (uint32_t)(uintptr_t)output);
+            assert(captured.dst_buf.stride[0] == 160);
+            assert(captured.dst_buf.crop.x == 0 && captured.dst_buf.crop.y == 0);
+            assert(captured.dst_buf.crop.width == 11 && captured.dst_buf.crop.height == 11);
+            assert(cache_area.x1 == 0 && cache_area.y1 == 0 && cache_area.x2 == 10 && cache_area.y2 == 10);
+            assert(captured.ctrl.alpha_en == (d.opa < LV_OPA_MAX));
+            assert(captured.ctrl.alpha_rules == GE_PD_NONE && captured.ctrl.src_alpha_mode == 0);
+            assert((captured.start_color & 0xffffffU) == 0xc82850U);
+            if(d.opa < LV_OPA_MAX) assert((captured.start_color >> 24) == d.opa);
+        }
+    }
+    assert(lv_draw_buf_init(&dst,32,32,LV_COLOR_FORMAT_RGB888,160,output,sizeof(output)) == LV_RESULT_OK);
+    d.opa = 128;
+    task.preference_score = 100;
+    assert(lv_draw_aic_ge2d_evaluate(NULL,&task) == 1);
+    assert(task.preferred_draw_unit_id == AIC_GE2D_DRAW_UNIT_ID && task.preference_score == 70);
+    d.radius = 2; assert(!lv_draw_aic_ge2d_accepts_fill(&task)); rejected(&task); d.radius = 0;
+    d.grad.dir = LV_GRAD_DIR_HOR;
+    d.grad.stops[0].color = lv_color_hex(0x102030);
+    d.grad.stops[0].frac = 0;
+    d.grad.stops[0].opa = LV_OPA_COVER;
+    d.grad.stops[1].color = lv_color_hex(0xe0c080);
+    d.grad.stops[1].frac = 255;
+    d.grad.stops[1].opa = LV_OPA_COVER;
+    d.grad.stops_count = 2;
+    d.opa = LV_OPA_COVER;
+    task.area = task.clip_area = (lv_area_t){100,200,131,231};
+    assert(lv_draw_aic_ge2d_accepts_fill(&task)); reset_calls();
+    assert(lv_draw_aic_ge2d_fill(&task) == LV_RESULT_OK);
+    uint32_t gradient_start = lv_color_to_u32(d.grad.stops[0].color) | 0xff000000U;
+    uint32_t gradient_end = lv_color_to_u32(d.grad.stops[1].color) | 0xff000000U;
+    assert(captured.type == GE_H_LINEAR_GRADIENT && captured.start_color == gradient_start &&
+           captured.end_color == gradient_end);
+    d.grad.dir = LV_GRAD_DIR_VER; reset_calls();
+    assert(lv_draw_aic_ge2d_fill(&task) == LV_RESULT_OK && captured.type == GE_V_LINEAR_GRADIENT);
+    d.grad.dir = LV_GRAD_DIR_LINEAR; assert(!lv_draw_aic_ge2d_accepts_fill(&task)); rejected(&task);
+    d.grad.dir = LV_GRAD_DIR_NONE;
+    task.area = (lv_area_t){95,195,120,220}; task.clip_area = (lv_area_t){90,198,110,210};
+    allowed_dst = NULL; assert(!lv_draw_aic_ge2d_accepts_fill(&task)); rejected(&task); allowed_dst = output;
+    dst.header.cf = LV_COLOR_FORMAT_A8; rejected(&task); dst.header.cf = LV_COLOR_FORMAT_RGB888;
+    dst.header.stride = 95; rejected(&task); dst.header.stride = 160;
+    dst.data_size--; rejected(&task); dst.data_size++;
+    dst.header.w = 31; rejected(&task); dst.header.w = 32;
+    dst.header.h = 31; rejected(&task); dst.header.h = 32;
+    g_ge2d_dev = NULL; rejected(&task); g_ge2d_dev = mpp_ge_open();
+    for (int opacity = 0; opacity <= LV_OPA_MIN; opacity++) {
+        d.opa = opacity; reset_calls(); assert(!lv_draw_aic_ge2d_accepts_fill(&task));
+        assert(lv_draw_aic_ge2d_fill(&task) == LV_RESULT_OK && submits == 0 && caches == 0);
+    }
+    d.opa = 128; task.clip_area = (lv_area_t){0,0,10,10}; reset_calls();
+    assert(lv_draw_aic_ge2d_fill(&task) == LV_RESULT_OK && submits == 0 && caches == 0);
+    task.area = task.clip_area; /* task/clip overlap, but entirely outside the layer */
+    assert(lv_draw_aic_ge2d_fill(&task) == LV_RESULT_OK && submits == 0 && caches == 0);
+    task.area = (lv_area_t){110,210,150,250}; task.clip_area = task.area;
+    reset_calls(); assert(lv_draw_aic_ge2d_fill(&task) == LV_RESULT_OK);
+    assert(captured.dst_buf.crop.x == 10 && captured.dst_buf.crop.y == 10);
+    assert(captured.dst_buf.crop.width == 22 && captured.dst_buf.crop.height == 22);
+    assert(cache_area.x2 == 31 && cache_area.y2 == 31);
+    task.area = task.clip_area = layer.buf_area;
+    for (fail_at = 1; fail_at <= 3; fail_at++) {
+        reset_calls(); assert(lv_draw_aic_ge2d_fill(&task) == LV_RESULT_INVALID);
+        assert(submits == 1 && emits == (fail_at >= 2) && syncs == (fail_at >= 3));
+        verify_latched(&task);
+    }
+    fail_at = 0; task.draw_dsc = NULL; rejected(&task); task.draw_dsc = &d;
+    /* SDK blend=0 must write alpha exactly, including zero; it is not a
+     * source-over fill and must not disappear at LV_OPA_MIN/MAX thresholds. */
+    for (unsigned f = 0; f < sizeof(formats)/sizeof(formats[0]); f++) {
+        assert(lv_draw_buf_init(&dst,32,32,formats[f],160,output,sizeof(output)) == LV_RESULT_OK);
+        for (unsigned alpha = 0; alpha <= 255; alpha++) {
+            uint32_t argb = (alpha << 24) | 0x123456;
+            d.opa = alpha;
+            reset_calls();
+            assert(lv_draw_aic_ge2d_fill_replace(&task, argb) == LV_RESULT_OK);
+            assert(submits == 1 && emits == 1 && syncs == 1 && caches == 1);
+            assert(captured.start_color == argb && !captured.ctrl.alpha_en);
+        }
+    }
+    for (fail_at = 1; fail_at <= 3; fail_at++) {
+        reset_calls();
+        assert(lv_draw_aic_ge2d_fill_replace(&task, 0x00123456) == LV_RESULT_INVALID);
+        assert(submits == 1 && emits == (fail_at >= 2) && syncs == (fail_at >= 3));
+        verify_latched(&task);
+    }
+    fail_at = 0;
+    allowed_dst = NULL;
+    reset_calls();
+    assert(lv_draw_aic_ge2d_fill_replace(&task, 0) == LV_RESULT_INVALID);
+    assert(submits == 0 && caches == 0);
+    allowed_dst = output;
+    task.type = LV_DRAW_TASK_TYPE_IMAGE; rejected(&task); rejected(NULL);
+    lazy_layer_contract();
+    dispatcher_failure_contract(&layer);
+    d.opa = 255; fill_dispatch_failure(&layer, &d);
+    task.type = LV_DRAW_TASK_TYPE_FILL;
+    alpha_fill_contract();
+    gradient_fill_contract();
+    client_fault_contract(&task);
+    lv_deinit(); return 0;
+}
+
+/* Descriptor-driven raw fill plus the real native blend. The oracle is native
+ * solid fill, independent of the staged image-blend path under test. */
+static void alpha_fill_contract(void)
+{
+    const void *saved=allowed_dst;allowed_dst=alpha_pixels;alpha_model=true;
+    lv_draw_buf_t dst,reference;
+    uint8_t expected[sizeof alpha_pixels],whole[sizeof alpha_pixels];
+    assert(lv_draw_buf_init(&dst,32,32,LV_COLOR_FORMAT_ARGB8888,160,alpha_pixels,sizeof alpha_pixels)==LV_RESULT_OK);
+    assert(lv_draw_buf_init(&reference,32,32,LV_COLOR_FORMAT_ARGB8888,160,expected,sizeof expected)==LV_RESULT_OK);
+    lv_layer_t layer={0},sw_layer={0};
+    layer.draw_buf=&dst;layer.color_format=LV_COLOR_FORMAT_ARGB8888;
+    layer.buf_area=(lv_area_t){100,200,131,231};
+    sw_layer=layer;sw_layer.draw_buf=&reference;
+    lv_draw_fill_dsc_t d;lv_draw_fill_dsc_init(&d);
+    lv_draw_task_t t={0};t.type=LV_DRAW_TASK_TYPE_FILL;t.draw_dsc=&d;t.target_layer=&layer;
+    t.area=(lv_area_t){96,203,126,229};
+    const lv_area_t clips[]={{98,198,120,220},{110,215,150,250},{0,0,10,10}};
+    const uint32_t colors[]={0xc82850,0x00ff80,0xff00ff};
+    const uint8_t alphas[]={0,1,64,128,254,255};
+    unsigned scenes=0,channels=0,worst=0;
+    for(unsigned c=0;c<3;c++) for(unsigned a=0;a<6;a++) for(unsigned opa=0;opa<256;opa++)
+    for(unsigned clip=0;clip<3;clip++) {
+        memset(alpha_pixels,0xa5,sizeof alpha_pixels);
+        for(unsigned y=0;y<32;y++) for(unsigned x=0;x<32;x++) {
+            uint8_t *p=alpha_pixels+y*160+x*4;
+            p[0]=(x*17+y*3)%256;p[1]=(y*11+x*7)%256;p[2]=(x*5+y*13)%256;p[3]=alphas[a];
+        }
+        memcpy(expected,alpha_pixels,sizeof expected);
+        d.color=lv_color_hex(colors[c]);d.opa=opa;t.clip_area=clips[clip];
+        lv_draw_task_t sw=t;sw.target_layer=&sw_layer;
+        if(lv_area_intersect(&sw.clip_area,&sw.clip_area,&sw_layer.buf_area))
+            lv_draw_sw_fill(&sw,&d,&sw.area);
+        lv_draw_task_t saved_task=t;lv_draw_fill_dsc_t saved_dsc=d;
+        reset_calls();unsigned old_free=scratch_frees,old_clean=cleans;
+        assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_OK);
+        assert(!memcmp(&t,&saved_task,sizeof t) && !memcmp(&d,&saved_dsc,sizeof d));
+        bool drawn=opa>LV_OPA_MIN && clip!=2;
+        bool staged=drawn && opa<LV_OPA_MAX;
+        assert(submits==(int)drawn && emits==(int)drawn && syncs==(int)drawn);
+        assert(scratch_frees==old_free+staged && cleans==old_clean+staged && !scratch_live);
+        lv_area_t visible;bool has_clip=lv_area_intersect(&visible,&t.area,&t.clip_area) &&
+            lv_area_intersect(&visible,&visible,&layer.buf_area);
+        for(unsigned y=0;y<32;y++) for(unsigned b=0;b<160;b++) {
+            bool inside=drawn && has_clip && b<128 && (int)(100+b/4)>=visible.x1 &&
+                (int)(100+b/4)<=visible.x2 && (int)(200+y)>=visible.y1 && (int)(200+y)<=visible.y2;
+            int error=(int)alpha_pixels[y*160+b]-expected[y*160+b];if(error<0) error=-error;
+            if((unsigned)error>worst) worst=error;
+            if(error) fprintf(stderr,"fill mismatch c=%u alpha=%u opa=%u clip=%u y=%u b=%u got=%u want=%u inside=%u\n",c,alphas[a],opa,clip,y,b,alpha_pixels[y*160+b],expected[y*160+b],inside);
+            assert(error==0);channels++;
+        }
+        scenes++;
+    }
+    /* Full and split refresh must produce exactly the same bytes. */
+    d.color=lv_color_hex(0xc82850);d.opa=128;t.clip_area=layer.buf_area;
+    memset(alpha_pixels,0x40,sizeof alpha_pixels);reset_calls();
+    assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_OK);memcpy(whole,alpha_pixels,sizeof whole);
+    memset(alpha_pixels,0x40,sizeof alpha_pixels);
+    for(unsigned part=0;part<2;part++) {
+        t.clip_area=(lv_area_t){100,200+(int)part*16,131,215+(int)part*16};reset_calls();
+        assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_OK);
+    }
+    assert(!memcmp(whole,alpha_pixels,sizeof whole));t.clip_area=layer.buf_area;
+    /* Pre-DMA rejection leaves the target and cache state untouched. */
+    for(unsigned reason=0;reason<5;reason++) {
+        scratch_failure=reason==0;scratch_address_failure=reason==1;
+        if(reason==2) dst.header.flags|=LV_IMAGE_FLAGS_PREMULTIPLIED;
+        if(reason==3) layer.color_format=LV_COLOR_FORMAT_RGB888;
+        if(reason==4) dst.header.stride=127;
+        memcpy(whole,alpha_pixels,sizeof whole);reset_calls();
+        assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_INVALID);
+        assert(!submits && !caches && !scratch_live && !memcmp(whole,alpha_pixels,sizeof whole));
+        scratch_failure=scratch_address_failure=false;dst.header.flags=0;
+        layer.color_format=LV_COLOR_FORMAT_ARGB8888;dst.header.stride=160;
+    }
+    /* Budget rejection happens before allocation even though storage metadata
+     * is deliberately larger than this mock target allocation. */
+    lv_draw_buf_t saved_dst=dst;lv_area_t saved_area=layer.buf_area;
+    dst.header.w=2048;dst.header.h=1024;dst.header.stride=8192;dst.data_size=8192*1024;
+    layer.buf_area=(lv_area_t){0,0,2047,1023};t.area=t.clip_area=layer.buf_area;
+    unsigned before=scratch_allocations;reset_calls();
+    assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_INVALID && scratch_allocations==before && !caches && !submits);
+    dst=saved_dst;layer.buf_area=saved_area;t.area=t.clip_area=layer.buf_area;
+    /* Allocation/address failures must complete via native scheduler fallback. */
+    for(unsigned reason=0;reason<2;reason++) {
+        memset(alpha_pixels,0x40,sizeof alpha_pixels);memcpy(expected,alpha_pixels,sizeof expected);
+        lv_draw_task_t sw=t;sw.target_layer=&sw_layer;lv_draw_sw_fill(&sw,&d,&sw.area);
+        scratch_failure=reason==0;scratch_address_failure=reason==1;
+        lv_draw_task_t *queued=lv_draw_add_task(&layer,&t.area,LV_DRAW_TASK_TYPE_FILL);
+        queued->draw_dsc=&d;queued->clip_area=t.clip_area;queued->preferred_draw_unit_id=AIC_GE2D_DRAW_UNIT_ID;
+        lv_draw_aic_ge2d_unit_t unit={0};reset_calls();lv_draw_aic_ge2d_stats_reset();
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit,&layer)==1);
+        assert(queued->state==LV_DRAW_TASK_STATE_FINISHED && !unit.task_act && !submits && !scratch_live);
+        assert(g_ge2d_stats.fill_completed==1 && g_ge2d_stats.fill_sw_fallback==1 && !g_ge2d_stats.errors);
+        assert(!memcmp(expected,alpha_pixels,sizeof expected));
+        layer.draw_task_head=NULL;lv_free(queued);scratch_failure=scratch_address_failure=false;
+    }
+    /* GE may already have changed scratch even when submit itself reports an
+     * error. Every uncertain point retains scratch and the scheduler's task. */
+    for(fail_at=1;fail_at<=3;fail_at++) {
+        memset(alpha_pixels,0x40,sizeof alpha_pixels);memcpy(whole,alpha_pixels,sizeof whole);
+        lv_draw_task_t *queued=lv_draw_add_task(&layer,&t.area,LV_DRAW_TASK_TYPE_FILL);
+        queued->draw_dsc=&d;queued->clip_area=t.clip_area;queued->preferred_draw_unit_id=AIC_GE2D_DRAW_UNIT_ID;
+        lv_draw_aic_ge2d_unit_t unit={0};reset_calls();lv_draw_aic_ge2d_stats_reset();
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit,&layer)==1);
+        assert(queued->state==LV_DRAW_TASK_STATE_IN_PROGRESS && unit.task_act==queued);
+        assert(fill_dma_faulted && scratch_live && fill_alpha_surface.data==scratch);
+        assert(submits==1 && emits==(fail_at>=2) && syncs==(fail_at>=3));
+        assert(g_ge2d_stats.errors==1 && !g_ge2d_stats.fill_completed && !g_ge2d_stats.fill_sw_fallback);
+        assert(!memcmp(whole,alpha_pixels,sizeof whole));
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit,&layer)==LV_DRAW_UNIT_IDLE);
+        verify_latched(&t);assert(scratch_live);
+        /* Synchronous mock only: actual target cannot release or reset faults. */
+        lv_aic_ge2d_alpha_release(&fill_alpha_surface);layer.draw_task_head=NULL;lv_free(queued);
+    }
+    fail_at=0;alpha_model=false;allowed_dst=saved;
+    printf("PASS %u ARGB fill scenes, %u channel/guard comparisons, max error %u; split/fallback/fault lifetime OK\n",scenes,channels,worst);
+}
+
+
+static void gradient_fill_contract(void)
+{
+    const void *saved=allowed_dst;allowed_dst=alpha_pixels;alpha_model=true;
+    lv_draw_buf_t dst,reference;
+    uint8_t expected[sizeof alpha_pixels],whole[sizeof alpha_pixels];
+    assert(lv_draw_buf_init(&dst,32,32,LV_COLOR_FORMAT_ARGB8888,160,alpha_pixels,sizeof alpha_pixels)==LV_RESULT_OK);
+    assert(lv_draw_buf_init(&reference,32,32,LV_COLOR_FORMAT_ARGB8888,160,expected,sizeof expected)==LV_RESULT_OK);
+    lv_layer_t layer={0},sw_layer={0};
+    layer.draw_buf=&dst;layer.color_format=LV_COLOR_FORMAT_ARGB8888;
+    layer.buf_area=(lv_area_t){100,200,131,231};
+    sw_layer=layer;sw_layer.draw_buf=&reference;
+    lv_draw_fill_dsc_t d;lv_draw_fill_dsc_init(&d);
+    d.grad.stops_count=2;d.grad.stops[1].frac=255;
+    d.grad.stops[0].opa=d.grad.stops[1].opa=255;
+    lv_draw_task_t t={0};t.type=LV_DRAW_TASK_TYPE_FILL;t.draw_dsc=&d;t.target_layer=&layer;
+    const uint32_t colors[][2]={{0x00ff80,0xff0080},{0xe0c080,0x102030},{0x153b91,0xf2ce07}};
+    const unsigned lengths[]={1,2,3,7,16,24,31,32};
+    unsigned scenes=0,worst=0;
+    for(unsigned dir=0;dir<2;dir++) for(unsigned c=0;c<3;c++)
+    for(unsigned len=0;len<8;len++) {
+        d.grad.dir=dir?LV_GRAD_DIR_VER:LV_GRAD_DIR_HOR;
+        d.grad.stops[0].color=lv_color_hex(colors[c][0]);
+        d.grad.stops[1].color=lv_color_hex(colors[c][1]);d.opa=LV_OPA_COVER;
+        t.area=dir?(lv_area_t){100,200,131,199+(int)lengths[len]}:
+                   (lv_area_t){100,200,99+(int)lengths[len],231};
+        /* Clip only perpendicular to the ramp; retain guards and row padding. */
+        t.clip_area=dir?(lv_area_t){105,200,126,231}:(lv_area_t){100,205,131,226};
+        memset(alpha_pixels,0xa5,sizeof alpha_pixels);
+        for(unsigned y=0;y<32;y++) for(unsigned x=0;x<32;x++) {
+            uint8_t *p=alpha_pixels+y*160+x*4;
+            p[0]=(x*17+y*3)%256;p[1]=(y*11+x*7)%256;p[2]=(x*5+y*13)%256;p[3]=255;
+        }
+        memcpy(expected,alpha_pixels,sizeof expected);
+        lv_draw_task_t sw=t;sw.target_layer=&sw_layer;
+        lv_draw_sw_fill(&sw,&d,&sw.area);
+        reset_calls();
+        assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_OK);
+        assert(submits==1 && emits==1 && syncs==1 && !scratch_live);
+        assert(captured.type==(dir?GE_V_LINEAR_GRADIENT:GE_H_LINEAR_GRADIENT));
+        lv_area_t visible;assert(lv_area_intersect(&visible,&t.area,&t.clip_area));
+        for(unsigned y=0;y<32;y++) for(unsigned b=0;b<160;b++) {
+            bool inside=b<128 && (int)(100+b/4)>=visible.x1 && (int)(100+b/4)<=visible.x2 &&
+                (int)(200+y)>=visible.y1 && (int)(200+y)<=visible.y2;
+            int error=(int)alpha_pixels[y*160+b]-expected[y*160+b];if(error<0) error=-error;
+            if((unsigned)error>worst) worst=error;
+            if(error>(inside?3:0)) fprintf(stderr,"gradient dir=%u len=%u y=%u b=%u got=%u want=%u error=%d\n",
+                dir,lengths[len],y,b,alpha_pixels[y*160+b],expected[y*160+b],error);
+            assert(error<=(inside?3:0));
+        }
+        scenes++;
+    }
+    /* A crop along the gradient axis keeps the original task coordinate by
+     * programming GE with the two LVGL-calculated endpoint colors. */
+    for(unsigned dir=0;dir<2;dir++) for(unsigned c=0;c<3;c++) for(unsigned part=0;part<3;part++) {
+        d.grad.dir=dir?LV_GRAD_DIR_VER:LV_GRAD_DIR_HOR;
+        d.grad.stops[0].color=lv_color_hex(colors[c][0]);
+        d.grad.stops[1].color=lv_color_hex(colors[c][1]);d.opa=LV_OPA_COVER;
+        t.area=layer.buf_area;
+        t.clip_area=dir ? (lv_area_t){100,204+(int)part*4,131,219+(int)part*4} :
+                           (lv_area_t){104+(int)part*4,200,119+(int)part*4,231};
+        memset(alpha_pixels,0xa5,sizeof alpha_pixels);
+        for(unsigned y=0;y<32;y++) for(unsigned x=0;x<32;x++) {
+            uint8_t *p=alpha_pixels+y*160+x*4;
+            p[0]=(x*17+y*3)%256;p[1]=(y*11+x*7)%256;p[2]=(x*5+y*13)%256;p[3]=255;
+        }
+        memcpy(expected,alpha_pixels,sizeof expected);
+        lv_draw_task_t sw=t;sw.target_layer=&sw_layer;lv_draw_sw_fill(&sw,&d,&sw.area);
+        reset_calls();assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_OK);
+        assert(submits==1 && emits==1 && syncs==1);
+        lv_area_t visible;assert(lv_area_intersect(&visible,&t.area,&t.clip_area));
+        for(unsigned y=0;y<32;y++) for(unsigned b=0;b<160;b++) {
+            bool inside=b<128 && (int)(100+b/4)>=visible.x1 && (int)(100+b/4)<=visible.x2 &&
+                (int)(200+y)>=visible.y1 && (int)(200+y)<=visible.y2;
+            int error=(int)alpha_pixels[y*160+b]-expected[y*160+b];if(error<0) error=-error;
+            if((unsigned)error>worst) worst=error;
+            assert(error<=(inside?3:0));
+        }
+        scenes++;
+    }
+    /* All admitted ramp lengths: compare the Q16 descriptor model to the native
+     * stop calculator, including 255/256 where stop positioning changes next. */
+    d.opa=255;
+    for(unsigned dir=0;dir<2;dir++) for(unsigned c=0;c<3;c++) for(int n=1;n<=256;n++) {
+        d.grad.dir=dir?LV_GRAD_DIR_VER:LV_GRAD_DIR_HOR;
+        d.grad.stops[0].color=lv_color_hex(colors[c][0]);
+        d.grad.stops[1].color=lv_color_hex(colors[c][1]);
+        struct ge_fillrect f={0};f.type=dir?GE_V_LINEAR_GRADIENT:GE_H_LINEAR_GRADIENT;
+        f.start_color=lv_color_to_u32(d.grad.stops[0].color)|0xff000000U;
+        f.end_color=lv_color_to_u32(d.grad.stops[1].color)|0xff000000U;
+        f.dst_buf.crop.width=f.dst_buf.crop.height=n;
+        t.area=dir?(lv_area_t){100,200,131,199+n}:(lv_area_t){100,200,99+n,231};
+        assert(gradient_geometry_supported(&t,&t.area,&d));
+        for(int i=0;i<n;i++) {
+            lv_color_t color;lv_opa_t opa;
+            lv_draw_sw_grad_color_calculate(&d.grad,n,i,&color,&opa);
+            uint32_t native=lv_color_to_u32(color),model=gradient_model(&f,i,i);
+            for(unsigned shift=0;shift<24;shift+=8) {
+                int e=(int)((native>>shift)&255)-(int)((model>>shift)&255);if(e<0)e=-e;
+                assert(e<=2);
+            }
+        }
+    }
+    d.grad.dir=LV_GRAD_DIR_HOR;d.opa=128;t.area=t.clip_area=layer.buf_area;
+    memset(alpha_pixels,0x40,sizeof alpha_pixels);reset_calls();
+    assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_OK);memcpy(whole,alpha_pixels,sizeof whole);
+    memset(alpha_pixels,0x40,sizeof alpha_pixels);
+    for(int part=0;part<2;part++) {
+        t.clip_area=(lv_area_t){100,200+part*16,131,215+part*16};reset_calls();
+        assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_OK);
+    }
+    assert(!memcmp(whole,alpha_pixels,sizeof whole));
+    /* Large ramps, unsupported descriptors, and replacement
+     * must all reject before cache maintenance, allocation or submission. */
+    lv_draw_fill_dsc_t saved_d=d;
+    for(unsigned reason=0;reason<8;reason++) {
+        d=saved_d;t.area=t.clip_area=layer.buf_area;
+        if(reason==0)t.area.x2=t.area.x1+256;
+        if(reason==1)d.grad.stops_count=1;
+        if(reason==2)d.grad.stops[1].opa=254;
+        if(reason==3)d.grad.stops[0].frac=1;
+        if(reason==4)d.grad.extend=LV_GRAD_EXTEND_REFLECT;
+        if(reason==5)d.grad.dir=LV_GRAD_DIR_LINEAR;
+        if(reason==6)d.radius=2;
+        unsigned allocs=scratch_allocations;reset_calls();memcpy(whole,alpha_pixels,sizeof whole);
+        lv_result_t result=reason==7?lv_draw_aic_ge2d_fill_replace(&t,0x00123456):lv_draw_aic_ge2d_fill(&t);
+        assert(result==LV_RESULT_INVALID && !submits && !caches &&
+               scratch_allocations==allocs && !memcmp(whole,alpha_pixels,sizeof whole));
+    }
+    /* Scheduler software fallback remains reserved for staging failures. */
+    d=saved_d;t.area=layer.buf_area;
+    for(unsigned reason=0;reason<2;reason++) {
+        t.clip_area=layer.buf_area;
+        scratch_failure=reason==0;scratch_address_failure=reason==1;
+        memset(alpha_pixels,0x40,sizeof alpha_pixels);memcpy(expected,alpha_pixels,sizeof expected);
+        lv_draw_task_t sw=t;sw.target_layer=&sw_layer;lv_draw_sw_fill(&sw,&d,&sw.area);
+        lv_draw_task_t *queued=lv_draw_add_task(&layer,&t.area,LV_DRAW_TASK_TYPE_FILL);
+        queued->draw_dsc=&d;queued->clip_area=t.clip_area;queued->preferred_draw_unit_id=AIC_GE2D_DRAW_UNIT_ID;
+        lv_draw_aic_ge2d_unit_t unit={0};reset_calls();lv_draw_aic_ge2d_stats_reset();
+        assert(lv_draw_aic_ge2d_dispatch(&unit.base_unit,&layer)==1);
+        assert(queued->state==LV_DRAW_TASK_STATE_FINISHED && !unit.task_act && !submits && !scratch_live);
+        assert(g_ge2d_stats.fill_sw_fallback==1 && !memcmp(expected,alpha_pixels,sizeof expected));
+        layer.draw_task_head=NULL;lv_free(queued);scratch_failure=scratch_address_failure=false;
+    }
+    t.clip_area=layer.buf_area;
+    for(fail_at=1;fail_at<=3;fail_at++) {
+        memset(alpha_pixels,0x40,sizeof alpha_pixels);memcpy(whole,alpha_pixels,sizeof whole);reset_calls();
+        assert(lv_draw_aic_ge2d_fill(&t)==LV_RESULT_INVALID);
+        assert(fill_dma_faulted && scratch_live && !memcmp(whole,alpha_pixels,sizeof whole));
+        assert(submits==1 && emits==(fail_at>=2) && syncs==(fail_at>=3));
+        verify_latched(&t);
+        lv_aic_ge2d_alpha_release(&fill_alpha_surface);
+    }
+    fail_at=0;alpha_model=false;allowed_dst=saved;
+    printf("PASS %u gradient pixel scenes; max error %u; 1..256 ramp, clip, fallback and fault contracts\n",scenes,worst);
+}

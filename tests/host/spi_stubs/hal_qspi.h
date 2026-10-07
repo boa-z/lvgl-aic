@@ -1,0 +1,4 @@
+#pragma once
+#define HAL_QSPI_STATUS_OK 0U
+#define HAL_QSPI_STATUS_IN_PROGRESS 1U
+#define HAL_QSPI_STATUS_TRAN_DONE (1U << 31)
