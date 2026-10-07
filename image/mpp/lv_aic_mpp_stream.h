@@ -2,8 +2,7 @@
  * @file lv_aic_mpp_stream.h
  * @brief Minimal LVGL-FS stream helpers for MPP header/packet feeding.
  *
- * Phase 2A only needs FILE sources. VARIABLE/AICP/BMP/fake paths are out of
- * scope and must return errors rather than partial behavior.
+ * FILE and borrowed read-only memory use the same bounded stream interface.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -20,11 +19,14 @@ extern "C" {
 
 typedef struct {
     lv_fs_file_t file;
+    const uint8_t *memory;
     bool opened;
     uint32_t size;
     uint32_t cursor;
 } lv_aic_mpp_stream_t;
 
+lv_fs_res_t lv_aic_mpp_stream_open_memory(lv_aic_mpp_stream_t *stream,
+                                          const void *data, uint32_t size);
 lv_fs_res_t lv_aic_mpp_stream_open_file(lv_aic_mpp_stream_t *stream, const char *path);
 lv_fs_res_t lv_aic_mpp_stream_read(lv_aic_mpp_stream_t *stream, void *buf, uint32_t bytes,
                                    uint32_t *read_bytes);

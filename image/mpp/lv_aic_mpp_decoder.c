@@ -1,15 +1,12 @@
 /**
  * @file lv_aic_mpp_decoder.c
- * @brief ArtInChip MPP JPEG/PNG decoder for LVGL 9.6 (Phase 2A).
+ * @brief ArtInChip MPP JPEG/PNG decoder with FILE/RAW inputs and bounded cache.
  *
- * FILE (.jpg/.jpeg/.png) only. No cache, no GE2D, no YUV hack: MPP is asked
- * for native RGB888 (JPEG, PNG RGB) or ARGB8888 (PNG RGBA) so the SW renderer
- * consumes pixels directly.
- *
- * Buffer ownership: session owns CMA allocation_base; draw_buf.data points at
- * the aligned base; PNG alpha/stride post-process may replace it with a heap
- * buffer (tracked as heap_buf). Close releases both without leaks. All
- * failures return LV_RESULT_INVALID.
+ * MPP produces native RGB888/ARGB8888, usable by software and GE2D consumers.
+ * Encoded memory is borrowed; the packet is copied before synchronous decode.
+ * Session-owned CMA or post-processed heap storage remains alive while readers
+ * or the component LRU retain it. Invalidation defers release of active data.
+ * No global allocator/cache handlers or SDK core files are replaced.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -17,6 +14,11 @@
 #define AIC_LVGL_USE_PRIVATE_API 1
 #include "lv_aic_mpp_decoder.h"
 #include "lv_aic_mpp_format.h"
+#include "lv_aic_bmp_header.h"
+#include "lv_aic_fake_image.h"
+#include "lv_aic_fake_fs.h"
+/* Component-local software codec tag, never passed to mpp_decoder_create. */
+#define LV_AIC_CODEC_BMP ((enum mpp_codec_type)-1)
 #include "lv_aic_mpp_stream.h"
 
 #if AIC_LVGL_USE_MPP_DEC && AIC_LVGL_BSP_MPP
@@ -40,7 +42,7 @@
 #define LV_AIC_MPP_MAX_DIMENSION 4096U
 #define LV_AIC_MPP_MAX_PIXELS (8U * 1024U * 1024U)
 
-typedef struct {
+typedef struct lv_aic_mpp_session {
     lv_draw_buf_t draw_buf;
     void *allocation_base;
     uint32_t cma_size;
@@ -49,6 +51,12 @@ typedef struct {
     uint32_t width;
     uint32_t height;
     lv_color_format_t color_format;
+    struct lv_aic_mpp_session *older, *newer;
+    const void *key;
+    lv_image_src_t key_type;
+    lv_image_decoder_args_t args;
+    uint32_t refs, cache_cost;
+    bool cached, invalidated;
 } lv_aic_mpp_session_t;
 
 typedef struct {
@@ -61,6 +69,15 @@ typedef struct {
 static lv_image_decoder_t *g_aic_mpp_decoder;
 static lv_aic_mpp_decode_stats_t g_aic_mpp_last_stats;
 static lv_aic_mpp_cma_stats_t g_aic_mpp_cma_stats;
+
+#ifndef AIC_LVGL_MPP_CACHE_BYTES
+#define AIC_LVGL_MPP_CACHE_BYTES (512U * 1024U)
+#endif
+#define LV_AIC_MPP_CACHE_ENTRIES 16U
+static lv_aic_mpp_session_t *g_cache_oldest, *g_cache_newest;
+static lv_aic_mpp_cache_stats_t g_cache = { .limit_bytes = AIC_LVGL_MPP_CACHE_BYTES };
+static uint32_t g_open_sessions;
+static bool lv_aic_mpp_cache_evict_one(void);
 
 static uint32_t lv_aic_mpp_align_up(uint32_t value, uint32_t align)
 {
@@ -77,6 +94,8 @@ static uint32_t lv_aic_mpp_align_up(uint32_t value, uint32_t align)
 static void *lv_aic_mpp_cma_alloc(uint32_t size)
 {
     void *ptr = aicos_malloc_align(MEM_CMA, size, CACHE_LINE_SIZE);
+    while (!ptr && lv_aic_mpp_cache_evict_one())
+        ptr = aicos_malloc_align(MEM_CMA, size, CACHE_LINE_SIZE);
 
     if (ptr != NULL) {
         g_aic_mpp_cma_stats.current_cma_bytes += size;
@@ -247,6 +266,53 @@ static bool lv_aic_mpp_is_png_path(const char *src)
     return lv_aic_mpp_has_ext(src, "png");
 }
 
+/* RAW descriptors borrow encoded bytes for the duration of open. Actual image
+ * geometry comes from the bitstream, never from the caller's header. */
+static lv_result_t lv_aic_mpp_source_open(const void *src, lv_aic_mpp_stream_t *stream,
+                                          enum mpp_codec_type *codec)
+{
+    lv_fs_res_t result;
+    lv_image_src_t type;
+    if (!src || !stream || !codec) return LV_RESULT_INVALID;
+    type = lv_image_src_get_type(src);
+    if (type == LV_IMAGE_SRC_FILE) {
+        if (lv_aic_mpp_is_jpeg_path(src)) *codec = MPP_CODEC_VIDEO_DECODER_MJPEG;
+        else if (lv_aic_mpp_is_png_path(src)) *codec = MPP_CODEC_VIDEO_DECODER_PNG;
+        else if (lv_aic_mpp_has_ext(src, "bmp")) *codec = LV_AIC_CODEC_BMP;
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+        else if (lv_aic_mpp_has_ext(src, "aicp")) *codec = MPP_CODEC_VIDEO_DECODER_AICP;
+#endif
+        else return LV_RESULT_INVALID;
+        result = lv_aic_mpp_stream_open_file(stream, src);
+    }
+    else if (type == LV_IMAGE_SRC_VARIABLE) {
+        const lv_image_dsc_t *image = src;
+        if ((image->header.cf != LV_COLOR_FORMAT_RAW && image->header.cf != LV_COLOR_FORMAT_RAW_ALPHA) ||
+            (image->header.flags & LV_IMAGE_FLAGS_COMPRESSED) || !image->data ||
+            image->data_size < 2 || image->data_size > LV_AIC_MPP_MAX_FILE_BYTES)
+            return LV_RESULT_INVALID;
+        if (image->data[0] == 0xff && image->data[1] == 0xd8)
+            *codec = MPP_CODEC_VIDEO_DECODER_MJPEG;
+        else if (image->data[0] == 'B' && image->data[1] == 'M')
+            *codec = LV_AIC_CODEC_BMP;
+        else if (image->data_size >= 8 && memcmp(image->data,"\x89PNG\r\n\x1a\n",8) == 0)
+            *codec = MPP_CODEC_VIDEO_DECODER_PNG;
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+        else if (image->data_size >= 6 && memcmp(image->data, "AICP", 4) == 0)
+            *codec = MPP_CODEC_VIDEO_DECODER_AICP;
+#endif
+        else return LV_RESULT_INVALID;
+        result = lv_aic_mpp_stream_open_memory(stream,image->data,image->data_size);
+    }
+    else return LV_RESULT_INVALID;
+    if (result != LV_FS_RES_OK) return LV_RESULT_INVALID;
+    if (!stream->size || stream->size > LV_AIC_MPP_MAX_FILE_BYTES) {
+        lv_aic_mpp_stream_close(stream);
+        return LV_RESULT_INVALID;
+    }
+    return LV_RESULT_OK;
+}
+
 static int lv_aic_mpp_alloc_ext_frame(struct frame_allocator *p, struct mpp_frame *frame,
                                       int width, int height, enum mpp_pixel_format format)
 {
@@ -330,8 +396,12 @@ static lv_result_t lv_aic_mpp_parse_jpeg_header(lv_aic_mpp_stream_t *stream, int
         }
         if (marker == 0xFFC0U || marker == 0xFFC1U) {
             uint8_t precision;
-            if (lv_aic_mpp_stream_read(stream, sof, 15U, &got) != LV_FS_RES_OK ||
-                got != 15U) {
+            /* SOF has six fixed bytes followed by three bytes per component.
+             * A grayscale SOF is shorter than the RGB SOF; never read into
+             * the following marker to satisfy a fixed RGB-sized read. */
+            if (size < 8U ||
+                lv_aic_mpp_stream_read(stream, sof, 6U, &got) != LV_FS_RES_OK ||
+                got != 6U) {
                 return LV_RESULT_INVALID;
             }
             precision = sof[0];
@@ -344,9 +414,13 @@ static lv_result_t lv_aic_mpp_parse_jpeg_header(lv_aic_mpp_stream_t *stream, int
             if (*width <= 0 || *height <= 0) {
                 return LV_RESULT_INVALID;
             }
-            if (*components != 1 && *components != 3) {
+            if (*components != 1 && *components != 3 && *components != 4) {
                 return LV_RESULT_INVALID;
             }
+            uint32_t component_bytes = 3U * (uint32_t)*components;
+            if (size != 8U + component_bytes ||
+                lv_aic_mpp_stream_read(stream, sof, component_bytes, &got) != LV_FS_RES_OK ||
+                got != component_bytes) return LV_RESULT_INVALID;
             return LV_RESULT_OK;
         }
         {
@@ -432,7 +506,120 @@ static void lv_aic_mpp_session_release(lv_aic_mpp_session_t *session)
     lv_free(session);
 }
 
-static lv_result_t lv_aic_mpp_decode_file(const char *src, enum mpp_codec_type codec,
+/* LRU ownership is independent of LVGL's generic cache: no global draw-buffer
+ * handlers or SDK allocator hooks are replaced. Entries include decode args. */
+static void lv_aic_mpp_cache_unlink(lv_aic_mpp_session_t *s)
+{
+    if (s->older) s->older->newer = s->newer; else g_cache_oldest = s->newer;
+    if (s->newer) s->newer->older = s->older; else g_cache_newest = s->older;
+}
+
+static void lv_aic_mpp_cache_make_newest(lv_aic_mpp_session_t *s)
+{
+    s->newer = NULL; s->older = g_cache_newest;
+    if (g_cache_newest) g_cache_newest->newer = s; else g_cache_oldest = s;
+    g_cache_newest = s;
+}
+
+static void lv_aic_mpp_cache_remove(lv_aic_mpp_session_t *s)
+{
+    lv_aic_mpp_cache_unlink(s);
+    g_cache.bytes -= s->cache_cost; g_cache.entries--;
+    if (s->key_type == LV_IMAGE_SRC_FILE) lv_free((void *)s->key);
+    s->cached = false;
+    lv_aic_mpp_session_release(s);
+}
+
+static bool lv_aic_mpp_cache_evict_one(void)
+{
+    lv_aic_mpp_session_t *s;
+    for (s = g_cache_oldest; s; s = s->newer) {
+        if (!s->refs) {
+            lv_aic_mpp_cache_remove(s); g_cache.evictions++;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool lv_aic_mpp_cache_key_matches(const lv_aic_mpp_session_t *s, const void *src)
+{
+    if (!src || s->key_type != lv_image_src_get_type(src)) return false;
+    return s->key_type == LV_IMAGE_SRC_FILE ? strcmp(s->key,src) == 0 : s->key == src;
+}
+
+void lv_aic_mpp_cache_drop(const void *src)
+{
+    lv_aic_mpp_session_t *s = g_cache_oldest;
+    /* File header entries retain decoder pointers and source dimensions. */
+    lv_image_header_cache_drop(src);
+    while (s) {
+        lv_aic_mpp_session_t *next = s->newer;
+        if (!src || lv_aic_mpp_cache_key_matches(s,src)) {
+            s->invalidated = true;
+            if (!s->refs) lv_aic_mpp_cache_remove(s);
+        }
+        s = next;
+    }
+}
+
+void lv_aic_mpp_cache_set_limit(uint32_t bytes)
+{
+    g_cache.limit_bytes = bytes;
+    if (!bytes) lv_aic_mpp_cache_drop(NULL);
+    while (g_cache.bytes > bytes && lv_aic_mpp_cache_evict_one()) {}
+}
+
+const lv_aic_mpp_cache_stats_t *lv_aic_mpp_cache_stats(void) { return &g_cache; }
+
+static bool lv_aic_mpp_cache_acquire(lv_image_decoder_dsc_t *dsc)
+{
+    lv_aic_mpp_session_t *s;
+    if (dsc->args.no_cache || !g_cache.limit_bytes) return false;
+    for (s = g_cache_newest; s; s = s->older) {
+        if (!s->invalidated && lv_aic_mpp_cache_key_matches(s,dsc->src) &&
+            s->args.premultiply == dsc->args.premultiply &&
+            s->args.stride_align == dsc->args.stride_align &&
+            s->args.use_indexed == dsc->args.use_indexed) {
+            s->refs++; g_open_sessions++; g_cache.hits++;
+            lv_aic_mpp_cache_unlink(s); lv_aic_mpp_cache_make_newest(s);
+            dsc->decoded = s->heap_buf ? s->heap_buf : &s->draw_buf;
+            dsc->user_data = s;
+            return true;
+        }
+    }
+    g_cache.misses++;
+    return false;
+}
+
+static void lv_aic_mpp_cache_insert(lv_image_decoder_dsc_t *dsc, lv_aic_mpp_session_t *s)
+{
+    uint64_t cost;
+    size_t key_bytes = dsc->src_type == LV_IMAGE_SRC_FILE ? strlen(dsc->src) + 1 : 0;
+    if (dsc->args.no_cache || !g_cache.limit_bytes) return;
+    cost = sizeof(*s) + key_bytes + (s->heap_buf ?
+           s->heap_buf->data_size + sizeof(lv_draw_buf_t) : s->cma_size);
+    if (cost > g_cache.limit_bytes) return;
+    while (cost + g_cache.bytes > g_cache.limit_bytes || g_cache.entries >= LV_AIC_MPP_CACHE_ENTRIES) {
+        if (!lv_aic_mpp_cache_evict_one()) return;
+    }
+    s->key = key_bytes ? lv_strdup(dsc->src) : dsc->src;
+    if (!s->key) return; /* Allocation failure preserves the uncached decode. */
+    s->key_type = dsc->src_type; s->args = dsc->args;
+    s->cache_cost = (uint32_t)cost; s->cached = true;
+    lv_aic_mpp_cache_make_newest(s); g_cache.entries++; g_cache.bytes += s->cache_cost;
+}
+
+static bool lv_aic_bmp_read_header(lv_aic_mpp_stream_t *stream, lv_aic_bmp_header_t *header)
+{
+    uint8_t bytes[70];
+    uint32_t got = 0;
+    return lv_aic_mpp_stream_read(stream, bytes, sizeof(bytes), &got) == LV_FS_RES_OK &&
+           got >= 54 &&
+           lv_aic_bmp_parse_header(bytes, got, stream->size, header);
+}
+
+static lv_result_t lv_aic_mpp_decode_source(const void *src, enum mpp_codec_type codec,
                                           enum mpp_pixel_format mpp_fmt,
                                           lv_color_format_t lv_fmt, int width, int height,
                                           bool use_post_process, lv_image_decoder_dsc_t *dsc,
@@ -465,7 +652,7 @@ static lv_result_t lv_aic_mpp_decode_file(const char *src, enum mpp_codec_type c
     memset(&packet, 0, sizeof(packet));
     memset(&frame, 0, sizeof(frame));
 
-    if (lv_aic_mpp_stream_open_file(&stream, src) != LV_FS_RES_OK) {
+    if (lv_aic_mpp_source_open(src, &stream, &codec) != LV_RESULT_OK) {
         return LV_RESULT_INVALID;
     }
     file_len = lv_aic_mpp_stream_size(&stream);
@@ -484,6 +671,37 @@ static lv_result_t lv_aic_mpp_decode_file(const char *src, enum mpp_codec_type c
     session->height = (uint32_t)height;
     session->color_format = lv_fmt;
 
+    if (codec == LV_AIC_CODEC_BMP) {
+        lv_aic_bmp_header_t bmp;
+        if (!lv_aic_bmp_read_header(&stream, &bmp) || bmp.width != session->width ||
+            bmp.height != session->height ||
+            (bmp.bpp == 16 ? LV_COLOR_FORMAT_RGB565 :
+             bmp.bpp == 24 ? LV_COLOR_FORMAT_RGB888 : LV_COLOR_FORMAT_ARGB8888) != lv_fmt) goto fail;
+        ext_alloc.session = session;
+        uint32_t output_stride = lv_aic_mpp_align_up(bmp.width * (bmp.bpp / 8U), 8U);
+        if (lv_aic_mpp_alloc_ext_frame(&ext_alloc.allocator, &frame,
+                                       output_stride, bmp.height, mpp_fmt) != 0) goto fail;
+        for (uint32_t y = 0; y < bmp.height; y++) {
+            uint32_t source_row = bmp.top_down ? y : bmp.height - 1U - y;
+            uint32_t bytes = bmp.width * (bmp.bpp / 8U);
+            if (lv_aic_mpp_stream_seek(&stream, bmp.offset + source_row * bmp.stride) != LV_FS_RES_OK ||
+                lv_aic_mpp_stream_read(&stream, (uint8_t *)session->allocation_base + y * output_stride,
+                                       bytes, &read_done) != LV_FS_RES_OK || read_done != bytes) goto fail;
+            if (bmp.rgb555) {
+                uint8_t *row = (uint8_t *)session->allocation_base + y * output_stride;
+                for (uint32_t x = 0; x < bmp.width; x++) {
+                    uint16_t pixel = (uint16_t)row[2*x] | (uint16_t)row[2*x+1] << 8;
+                    uint16_t green = (pixel >> 5) & 31U;
+                    pixel = (uint16_t)(((pixel & 0x7c00U) << 1) |
+                             (((green << 1) | (green >> 4)) << 5) | (pixel & 31U));
+                    row[2*x] = (uint8_t)pixel; row[2*x+1] = (uint8_t)(pixel >> 8);
+                }
+            }
+        }
+        /* Pixels were written by CPU, unlike the MPP hardware path. */
+        aicos_dcache_clean_invalid_range((unsigned long *)session->allocation_base, session->cma_size);
+        goto decoded_buffer;
+    }
     dec = mpp_decoder_create(codec);
     if (dec == NULL) {
         goto fail;
@@ -536,6 +754,7 @@ static lv_result_t lv_aic_mpp_decode_file(const char *src, enum mpp_codec_type c
     mpp_decoder_put_frame(dec, &frame);
     mpp_decoder_destory(dec);
     dec = NULL;
+decoded_buffer:
     lv_aic_mpp_stream_close(&stream);
 
     cma_base = session->allocation_base;
@@ -586,6 +805,8 @@ stats:
         g_aic_mpp_last_stats.color_format = lv_fmt;
     }
 
+    session->refs = 1;
+    g_open_sessions++;
     *out_session = session;
     return LV_RESULT_OK;
 
@@ -603,124 +824,95 @@ static lv_result_t lv_aic_mpp_info_cb(lv_image_decoder_t *decoder,
                                       lv_image_decoder_dsc_t *dsc,
                                       lv_image_header_t *header)
 {
-    const char *src;
-    lv_aic_mpp_stream_t stream;
-    int width = 0;
-    int height = 0;
-
+    lv_aic_mpp_stream_t stream = {0};
+    enum mpp_codec_type codec;
+    lv_color_format_t cf = LV_COLOR_FORMAT_RGB888;
+    int width = 0, height = 0, components = 0;
+    lv_result_t result;
     (void)decoder;
-    if (dsc == NULL || header == NULL) {
-        return LV_RESULT_INVALID;
-    }
-    if (dsc->src_type != LV_IMAGE_SRC_FILE) {
-        return LV_RESULT_INVALID;
-    }
-    src = (const char *)dsc->src;
-    if (src == NULL) {
-        return LV_RESULT_INVALID;
-    }
-
-    if (lv_aic_mpp_is_jpeg_path(src)) {
-        int components = 0;
-        memset(&stream, 0, sizeof(stream));
-        if (lv_aic_mpp_stream_open_file(&stream, src) != LV_FS_RES_OK) {
-            return LV_RESULT_INVALID;
-        }
-        if (lv_aic_mpp_parse_jpeg_header(&stream, &width, &height,
-                                         &components) != LV_RESULT_OK) {
-            lv_aic_mpp_stream_close(&stream);
-            return LV_RESULT_INVALID;
-        }
-        lv_aic_mpp_stream_close(&stream);
-        if (width <= 0 || height <= 0 ||
-            width > (int)LV_AIC_MPP_MAX_DIMENSION ||
-            height > (int)LV_AIC_MPP_MAX_DIMENSION ||
-            (uint64_t)width * (uint64_t)height > LV_AIC_MPP_MAX_PIXELS) {
-            return LV_RESULT_INVALID;
-        }
-        header->w = (uint32_t)width;
-        header->h = (uint32_t)height;
-        header->cf = LV_COLOR_FORMAT_RGB888;
-        header->stride = 0U;
+    /* SDK pseudo-images carry only metadata. The GE unit owns their fill
+     * semantics, including CPU fallback; never open them as filesystem data. */
+#if AIC_LVGL_USE_GE2D
+    lv_aic_fake_image_t fake;
+    if (dsc && header && dsc->src && lv_image_src_get_type(dsc->src) == LV_IMAGE_SRC_FILE &&
+        lv_aic_fake_image_parse(dsc->src, &fake)) {
+        memset(header, 0, sizeof(*header));
+        header->magic = LV_IMAGE_HEADER_MAGIC;
+        header->w = fake.width; header->h = fake.height;
+        /* A replacement may clear destination alpha, while a blended fill
+         * may leave background pixels visible. Native image coverage queries
+         * must not advertise either as an opaque source. */
+        header->cf = (fake.argb >> 24) == 255 ? LV_COLOR_FORMAT_XRGB8888 : LV_COLOR_FORMAT_ARGB8888;
+        header->stride = fake.width * 4U;
         return LV_RESULT_OK;
     }
-
-    if (lv_aic_mpp_is_png_path(src)) {
-        lv_color_format_t cf = LV_COLOR_FORMAT_RGB888;
-        memset(&stream, 0, sizeof(stream));
-        if (lv_aic_mpp_stream_open_file(&stream, src) != LV_FS_RES_OK) {
-            return LV_RESULT_INVALID;
+#endif
+    if (!dsc || !header ||
+        lv_aic_mpp_source_open(dsc->src,&stream,&codec) != LV_RESULT_OK)
+        return LV_RESULT_INVALID;
+    if (codec == LV_AIC_CODEC_BMP) {
+        lv_aic_bmp_header_t bmp;
+        result = lv_aic_bmp_read_header(&stream, &bmp) ? LV_RESULT_OK : LV_RESULT_INVALID;
+        if (result == LV_RESULT_OK) {
+            width = bmp.width; height = bmp.height;
+            cf = bmp.bpp == 16 ? LV_COLOR_FORMAT_RGB565 :
+                 bmp.bpp == 24 ? LV_COLOR_FORMAT_RGB888 : LV_COLOR_FORMAT_ARGB8888;
         }
-        if (lv_aic_mpp_parse_png_header(&stream, &width, &height, &cf) != LV_RESULT_OK) {
-            lv_aic_mpp_stream_close(&stream);
-            return LV_RESULT_INVALID;
-        }
-        lv_aic_mpp_stream_close(&stream);
-        if (width <= 0 || height <= 0 ||
-            width > (int)LV_AIC_MPP_MAX_DIMENSION ||
-            height > (int)LV_AIC_MPP_MAX_DIMENSION ||
-            (uint64_t)width * (uint64_t)height > LV_AIC_MPP_MAX_PIXELS) {
-            return LV_RESULT_INVALID;
-        }
-        header->w = (uint32_t)width;
-        header->h = (uint32_t)height;
-        header->cf = cf;
-        header->stride = 0U;
-        return LV_RESULT_OK;
     }
-
-    return LV_RESULT_INVALID;
+    else if (codec == MPP_CODEC_VIDEO_DECODER_MJPEG) {
+        result = lv_aic_mpp_parse_jpeg_header(&stream,&width,&height,&components);
+        /* Four-component AICP is not a CMYK JPEG decoder contract. */
+        if (components == 4) result = LV_RESULT_INVALID;
+    }
+#ifdef AIC_MPP_AICP_DEC_ENABLE
+    else if (codec == MPP_CODEC_VIDEO_DECODER_AICP) {
+        uint8_t magic[4];
+        uint32_t got = 0;
+        result = LV_RESULT_INVALID;
+        if (lv_aic_mpp_stream_read(&stream, magic, sizeof(magic), &got) == LV_FS_RES_OK &&
+            got == sizeof(magic) && memcmp(magic, "AICP", 4) == 0) {
+            result = lv_aic_mpp_parse_jpeg_header(&stream, &width, &height, &components);
+            if (components == 4) {
+#ifdef AIC_VE_DRV_V31
+                cf = LV_COLOR_FORMAT_ARGB8888;
+#else
+                result = LV_RESULT_INVALID;
+#endif
+            }
+        }
+    }
+#endif
+    else result = lv_aic_mpp_parse_png_header(&stream,&width,&height,&cf);
+    lv_aic_mpp_stream_close(&stream);
+    if (result != LV_RESULT_OK || width <= 0 || height <= 0 ||
+        width > (int)LV_AIC_MPP_MAX_DIMENSION || height > (int)LV_AIC_MPP_MAX_DIMENSION ||
+        (uint64_t)width * height > LV_AIC_MPP_MAX_PIXELS) return LV_RESULT_INVALID;
+    memset(header,0,sizeof(*header));
+    header->magic = LV_IMAGE_HEADER_MAGIC;
+    header->w = width; header->h = height; header->cf = cf;
+    return LV_RESULT_OK;
 }
 
 static lv_result_t lv_aic_mpp_open_cb(lv_image_decoder_t *decoder,
                                       lv_image_decoder_dsc_t *dsc)
 {
-    const char *src;
+    lv_aic_mpp_stream_t stream = {0};
     lv_aic_mpp_session_t *session = NULL;
-
+    enum mpp_codec_type codec;
+    enum mpp_pixel_format mpp_fmt;
     (void)decoder;
-    if (dsc == NULL) {
+    if (!dsc || !dsc->src || !dsc->header.w || !dsc->header.h)
         return LV_RESULT_INVALID;
-    }
-    if (dsc->src_type != LV_IMAGE_SRC_FILE) {
+    if (lv_aic_mpp_cache_acquire(dsc)) return LV_RESULT_OK;
+    if (lv_aic_mpp_source_open(dsc->src,&stream,&codec) != LV_RESULT_OK)
         return LV_RESULT_INVALID;
-    }
-    src = (const char *)dsc->src;
-    if (src == NULL || dsc->header.w == 0U || dsc->header.h == 0U) {
+    lv_aic_mpp_stream_close(&stream);
+    if (!lv_aic_mpp_format_from_lvgl(dsc->header.cf,&mpp_fmt)) return LV_RESULT_INVALID;
+    if (lv_aic_mpp_decode_source(dsc->src,codec,mpp_fmt,dsc->header.cf,
+                                dsc->header.w,dsc->header.h,true,dsc,&session) != LV_RESULT_OK)
         return LV_RESULT_INVALID;
-    }
-
-    if (lv_aic_mpp_is_jpeg_path(src)) {
-        if (dsc->header.cf != LV_COLOR_FORMAT_RGB888) {
-            return LV_RESULT_INVALID;
-        }
-        if (lv_aic_mpp_decode_file(src, MPP_CODEC_VIDEO_DECODER_MJPEG, MPP_FMT_RGB_888,
-                                   LV_COLOR_FORMAT_RGB888, (int)dsc->header.w,
-                                   (int)dsc->header.h, false, dsc,
-                                   &session) != LV_RESULT_OK) {
-            return LV_RESULT_INVALID;
-        }
-        return LV_RESULT_OK;
-    }
-
-    if (lv_aic_mpp_is_png_path(src)) {
-        enum mpp_pixel_format mpp_fmt;
-        if (dsc->header.cf != LV_COLOR_FORMAT_RGB888 &&
-            dsc->header.cf != LV_COLOR_FORMAT_ARGB8888) {
-            return LV_RESULT_INVALID;
-        }
-        if (!lv_aic_mpp_format_from_lvgl(dsc->header.cf, &mpp_fmt)) {
-            return LV_RESULT_INVALID;
-        }
-        if (lv_aic_mpp_decode_file(src, MPP_CODEC_VIDEO_DECODER_PNG, mpp_fmt, dsc->header.cf,
-                                   (int)dsc->header.w, (int)dsc->header.h, true, dsc,
-                                   &session) != LV_RESULT_OK) {
-            return LV_RESULT_INVALID;
-        }
-        return LV_RESULT_OK;
-    }
-
-    return LV_RESULT_INVALID;
+    lv_aic_mpp_cache_insert(dsc,session);
+    return LV_RESULT_OK;
 }
 
 static void lv_aic_mpp_close_cb(lv_image_decoder_t *decoder,
@@ -735,7 +927,11 @@ static void lv_aic_mpp_close_cb(lv_image_decoder_t *decoder,
     session = (lv_aic_mpp_session_t *)dsc->user_data;
     dsc->user_data = NULL;
     dsc->decoded = NULL;
-    lv_aic_mpp_session_release(session);
+    if (!session) return;
+    session->refs--; g_open_sessions--;
+    if (!session->cached) lv_aic_mpp_session_release(session);
+    else if (!session->refs && (session->invalidated || g_cache.bytes > g_cache.limit_bytes))
+        lv_aic_mpp_cache_remove(session);
 }
 
 int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
@@ -753,7 +949,13 @@ int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
     if (g_aic_mpp_decoder == NULL) {
         return LV_AIC_ERR_NO_MEMORY;
     }
+#if AIC_LVGL_USE_GE2D
+    if (!lv_aic_fake_fs_install()) {
+        LV_LOG_WARN("SDK .fake paths require the application's L filesystem drive");
+    }
+#endif
 
+    g_aic_mpp_decoder->name = "AIC MPP";
     lv_image_decoder_set_info_cb(g_aic_mpp_decoder, lv_aic_mpp_info_cb);
     lv_image_decoder_set_open_cb(g_aic_mpp_decoder, lv_aic_mpp_open_cb);
     lv_image_decoder_set_close_cb(g_aic_mpp_decoder, lv_aic_mpp_close_cb);
@@ -764,13 +966,30 @@ int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
     return LV_AIC_OK;
 }
 
+bool lv_aic_mpp_decoder_can_deinit(void)
+{
+    return g_open_sessions == 0
+#if AIC_LVGL_USE_GE2D
+           && lv_aic_fake_fs_idle()
+#endif
+           ;
+}
+
 void lv_aic_mpp_decoder_deinit(lv_image_decoder_t *decoder)
 {
     if (decoder == NULL || decoder != g_aic_mpp_decoder) {
         return;
     }
+    if (!lv_aic_mpp_decoder_can_deinit()) {
+        LV_LOG_ERROR("Close all MPP image descriptors and pseudo-files before decoder deinit");
+        return;
+    }
+    lv_aic_mpp_cache_drop(NULL);
     lv_image_decoder_delete(decoder);
     g_aic_mpp_decoder = NULL;
+#if AIC_LVGL_USE_GE2D
+    lv_aic_fake_fs_restore();
+#endif
 }
 
 const lv_aic_mpp_decode_stats_t *lv_aic_mpp_decoder_last_stats(void)
@@ -785,12 +1004,14 @@ const lv_aic_mpp_cma_stats_t *lv_aic_mpp_cma_stats(void)
 
 void lv_aic_mpp_cma_stats_reset(void)
 {
+    uint32_t current = g_aic_mpp_cma_stats.current_cma_bytes;
     memset(&g_aic_mpp_cma_stats, 0, sizeof(g_aic_mpp_cma_stats));
+    g_aic_mpp_cma_stats.current_cma_bytes = current;
+    g_aic_mpp_cma_stats.peak_cma_bytes = current;
 }
 
-/* Phase 2A has no custom image cache. OSAL's try_cma path calls this when CMA
- * is exhausted; returning false makes allocation fail safe instead of hanging.
- * This replaces the legacy lv_mpp_dec.c stub without pulling its cache. */
+/* Legacy SDK hook may run outside the LVGL owner. Keep it inert: this decoder
+ * retries its own allocations by evicting idle entries under decoder ownership. */
 bool lv_drop_one_cached_image(void)
 {
     return false;
@@ -805,6 +1026,8 @@ int lv_aic_mpp_decoder_init(lv_image_decoder_t **decoder)
     }
     return LV_AIC_ERR_NO_BSP;
 }
+
+bool lv_aic_mpp_decoder_can_deinit(void) { return true; }
 
 void lv_aic_mpp_decoder_deinit(lv_image_decoder_t *decoder)
 {
