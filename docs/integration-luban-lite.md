@@ -1,113 +1,74 @@
-# Luban-Lite integration
+# Application-owned Luban-Lite integration
 
-This document describes the intended superproject integration. It is not a
-patch to the Luban-Lite SDK.
+Updated 2026-09-30. Earlier packages/custom layouts and kernel semaphore
+backports in historical records are superseded.
 
-## Layout
+## Layout and pins
 
-```text
-packages/
-├── artinchip/
-│   └── lvgl-ui/       # legacy reference; keep unchanged
-├── third-party/
-│   └── lvgl/          # LVGL v9.6.0 upstream
-└── custom/
-    └── lvgl-aic/      # this repository
-```
-
-## Submodules
-
-1. Add `packages/third-party/lvgl` as a submodule pinned to LVGL commit
-   `80ca777e37a2b176770726a02e07a6fb79ef0b39`.
-2. Add `packages/custom/lvgl-aic` as a submodule pinned to the reviewed
-   `lvgl-aic` commit.
-3. Do not copy LVGL source into `lvgl-aic` and do not use symlinks.
+The selected application owns Kconfig, SConscript, its entry point, and sibling
+third_party/lvgl and third_party/lvgl-aic submodules. The smoke consumer is
+application/rt-thread/lvgl-aic-smoke. Pin LVGL to
+80ca777e37a2b176770726a02e07a6fb79ef0b39 and this component to a reviewed gitlink.
+Do not copy upstream sources or use symlinks. Dependency upgrades are explicit.
 
 ## Kconfig
 
-Source the component Kconfig from the superproject's custom integration layer,
-and source it only when the explicit new-LVGL implementation choice is active.
-Do not source it unconditionally: the legacy ArtInChip LVGL package and the
-new upstream path must remain mutually exclusive.
+Source the component Kconfig from the selected application's Kconfig using its
+SDK-relative path. Disable LPKG_USING_LVGL. Enable KERNEL_RTTHREAD, LPKG_MPP,
+RT_USING_EVENT, AIC_LVGL_PORT and the required display/touch options. Set
+AIC_LVGL_TOUCH_DEVICE to the board device (gt911 for the smoke profiles).
+Board profiles must also select the actual framebuffer/touch/GE/decoder devices.
+MPP decoding and GE2D are independent opt-ins, off by default. Smoke pages
+require AIC_LVGL_MANUAL_TEST. Encoder and mouse are optional application-owned
+providers: register lv_aic_input_provider_t callbacks before lv_aic_init() and
+use the returned native indevs. AIC FreeType cache symbols remain a separate
+gap. Native FreeType is separate: AIC_LVGL_USE_FREETYPE selects
+the independent LPKG_USING_FREETYPE library; AIC_LVGL_FREETYPE_GLYPHS defaults to
+64. No vendor LVGL/font adapter is linked. The SDK emits symbols without CONFIG_
+in rtconfig.h. See [font integration](font-stage.md).
 
-Enable the new path only when the legacy ArtInChip LVGL path is disabled:
+## SCons and configuration ownership
 
-```text
-CONFIG_LPKG_USING_LVGL=y
-CONFIG_LVGL_V_9=y
-CONFIG_LPKG_LVGL_IMPL_AIC=y
-CONFIG_LPKG_MPP=y
-CONFIG_AIC_LVGL_PORT=y
-CONFIG_AIC_LVGL_USE_DISPLAY=y
-CONFIG_AIC_LVGL_USE_TOUCH=y
-CONFIG_AIC_LVGL_TOUCH_DEVICE="gt911"
-```
+The application invokes SConscript('third_party/lvgl-aic/SConscript'). This
+component collects its sibling LVGL src C files and its own port sources;
+do not collect the core a second time. Upstream RT-Thread entry points,
+examples/demos and the unrelated VG Lite driver are excluded.
 
-Luban-Lite's generated `rtconfig.h` uses the Kconfig symbol name without a
-`CONFIG_` prefix (for example, `AIC_LVGL_TOUCH_DEVICE`). The touch port
-therefore reads `AIC_LVGL_TOUCH_DEVICE`, not a guessed `CONFIG_...` macro.
+compat/lvgl_aic_build_config.h selects the reviewed lv_conf.h through explicit
+wrappers. LV_KCONFIG_IGNORE and the external bridge prevent legacy configuration
+from becoming a second source of truth. Current SDK SCons flags are global
+within the selected image: application directory ownership does not mean
+compiler-flag isolation. The image must not include the legacy LVGL package.
 
-## SCons
+Do not modify SDK packages/, kernel/, global Kconfig or upstream LVGL.
+Board profiles remain under target/configs because the SDK loader requires them.
+The consuming application owns thread/loop parameters in its own Kconfig.
 
-The superproject's `packages/custom/SConscript` owns the single upstream LVGL
-core group and invokes the `lvgl-aic` submodule's port group. It must:
+## RT-Thread adaptation
 
-- recursively collect `packages/third-party/lvgl/src/**/*.c` exactly once,
-  matching LVGL's CMake `GLOB_RECURSE` coverage;
-- exclude upstream RT-Thread entry points, examples, demos, and optional
-  C++/assembly sources;
-- force-include the custom build bridge
-  `packages/custom/lvgl_aic_build_config.h` for the target group;
-- the bridge defines the explicit compiler macros
-  `LV_CONF_PATH=lvgl_aic_target_config.h` and
-  `LV_CONF_KCONFIG_EXTERNAL_INCLUDE=lv_conf_kconfig_external.h`;
-- add `packages/custom/lvgl-aic/compat` to the include path. The unique wrapper
-  header includes `../lv_conf.h`, so the selected file is explicit without
-  relying on `lv_conf.h` include order;
-- point `LV_CONF_KCONFIG_EXTERNAL_INCLUDE` at the component's unique
-  `lv_conf_kconfig_external.h` bridge, so upstream RT-Thread/Kconfig defaults
-  cannot become a second configuration source;
-- add the LVGL public include roots and RT-Thread configuration include root;
-- leave `packages/artinchip/lvgl-ui` out of the link when the new choice is
-  active.
+Target builds use LV_OS_CUSTOM and compat/lv_aic_rtthread_os.{c,h}. An RT event
+bit implements binary notifications: repeated signals coalesce and receive
+clears the bit atomically. RT_USING_EVENT is mandatory. Do not backport
+RT_IPC_CMD_SET_VLIMIT or change SDK semaphore layout. The upstream RT-Thread
+backend is not the active adapter.
 
-The component's own `SConscript` compiles only its port sources. Neither
-SConscript may compile LVGL upstream a second time.
+Host OS contracts use a fake RT API. Actual scheduling and interrupt wakeups
+require board tests after integration changes.
 
-### RT-Thread semaphore compatibility
+## Build and evidence
 
-The pinned Luban-Lite RT-Thread baseline provides `rt_sem_control()` but not
-LVGL 9.6's `RT_IPC_CMD_SET_VLIMIT`. The integration superproject backports the
-narrow RT-Thread 5.1 semaphore value-limit behavior into the target kernel:
+Use a dedicated SDK worktree. Configuration, generated headers, bootloader
+staging and output change in that checkout; never run concurrent SDK profile
+builds there or build in the active product checkout.
 
-- `RT_IPC_CMD_SET_VLIMIT` is command `0x03`;
-- the existing semaphore storage is used for `max_value` (the structure size
-  is unchanged);
-- all semaphores default to `RT_SEM_VALUE_MAX`;
-- `rt_sem_control()` validates the requested limit and resumes waiters when
-  a lower limit is applied;
-- `rt_sem_release()` returns `-RT_EFULL` at the per-semaphore limit.
+From the SDK root, invoke
+application/rt-thread/lvgl-aic-smoke/third_party/lvgl-aic/tools/sdk/build.ps1
+with -Phase gate1, mpp or ge2d and -Jobs 8. Development builds use
+-AllowComponentDirty to permit a working tree or component HEAD differing from
+the parent index pin; source state is archived. Do not promote unpublished
+component commits to the SDK release pin. See [tools](../tools/sdk/README.md)
+for exact Windows and shell commands.
 
-LVGL's upstream `lv_rtthread.c` remains the sole OSAL implementation. Neither
-LVGL upstream nor the original ArtInChip LVGL package is patched. The kernel
-backport is kept in the superproject and is covered by the target semaphore
-checks in `docs/phase1.5-gate1.md`.
-
-## Link verification
-
-Before building, verify that the link input contains exactly one LVGL source
-tree and one of:
-
-- legacy `packages/artinchip/lvgl-ui/lvgl_v9/lvgl`; or
-- `packages/third-party/lvgl` plus `packages/custom/lvgl-aic`.
-
-Never link both paths.
-
-## Configuration
-
-The target SCons group passes `LV_CONF_PATH` as a compiler definition, not as a
-CMake cache variable. It also checks the `LV_AIC_LV_CONF_MARKER` in the
-selected file before defining the group. The wrapper is needed for the
-Windows command-line toolchain, whose shell strips quotes from an absolute
-`-D` value. Do not use the old LVGL 9.1 CMake variables as if they were v9.6
-options.
+The link-map gate requires app third-party symbols and rejects legacy lvgl-ui.
+output/lvgl-evidence/<phase> contains images, ELF/map, config, logs, source
+patches/untracked archives and hashes. No build tool flashes hardware.

@@ -1,72 +1,95 @@
 # Architecture
 
-## Boundaries
+## Ownership and lifecycle
 
-`lvgl-aic` is a platform-adaptation component. It owns no product UI and no
-business state.
+The application owns its UI loop and pages. Sibling third_party/lvgl-aic owns
+platform adaptation; third_party/lvgl provides the unmodified pinned core.
+RT-Thread, OSAL, framebuffer/touch and MPP remain SDK interfaces.
 
-```text
-D50T/application
-      |
-    LVGL API
-      |
-packages/custom/lvgl-aic
-      |
-Display / touch / cache / optional GE2D / optional MPP
-      |
-ArtInChip Luban-Lite BSP and MPP
-```
+The caller calls lv_init(). lv_aic_init() installs the RT tick callback,
+creates display, optionally creates touch and registers MPP, then opens GE2D.
+Initialization errors unwind acquired resources. Teardown currently runs
+touch -> decoder -> GE2D -> display; it is not an exact reverse of init.
+The caller serializes LVGL access and stops UI work before deinitializing.
+Outstanding MPP readers refuse the entire teardown; close them and retry.
+GE opens again on each init cycle.
 
-## Phase 1
+The display owns the mpp_fb handle, LVGL display and software-rotation buffer.
+The physical framebuffer belongs to the BSP and is never freed by the port.
+Whole-display rotation uses software even when GE IMAGE transforms are enabled.
+Touch uses a worker and locked state; its IRQ callback wakes the worker without
+manipulating LVGL objects. Optional polling recovery defaults off. Encoder and
+mouse inputs use an application-owned provider callback: the application owns
+the board protocol and state source, while lvgl-aic owns the LVGL indev type,
+callback adapter and teardown. Providers must be registered before
+lv_aic_init() and are rejected after initialization.
 
-Phase 1 has one public integration entry point, `lv_aic_init()`:
+## Optional backends
 
-1. the caller calls `lv_init()`;
-2. the port sets the RT-Thread tick callback when the target OS is enabled;
-3. the display port creates one LVGL display and installs the ArtInChip
-   framebuffer flush callback;
-4. the input port creates one LVGL pointer device and connects it to the
-   ArtInChip touch device;
-5. the caller owns `lv_timer_handler()` and all product UI code.
+MPP accepts JPEG/PNG files via LVGL FS and borrowed RAW/RAW_ALPHA memory.
+Streams and MPP handles end after synchronous decode. A session owns CMA or
+post-processed heap pixels until its last reader and cache retention end.
+The component LRU defaults to 512 KiB / 16 entries, keys source plus decode
+options, copies file keys and defers release of invalidated active entries.
+Use lv_aic_mpp_cache_drop(source) before changing/releasing sources; it also
+drops LVGL header metadata. Generic LVGL image-cache invalidation alone is
+insufficient. No core or global allocator/cache hook is replaced. See
+[resource ownership and limits](resource-stage.md).
 
-GE2D, MPP decoding, FreeType cache, encoder, and mouse are disabled for this
-phase.
+GE2D has its own unit, separate from lv_draw_sw_unit_t. It evaluates
+FILL/IMAGE/LAYER with task-local clip/destination data, then synchronously
+submits, emits and waits. Uncertain engine failure retains the task IN_PROGRESS;
+never blend in software over a destination the failed submission may have
+partially changed. Unsupported work declines or falls back before submission.
 
-## Phase 3A
+FILL blends partial opacity on opaque RGB565/RGB888/XRGB8888 targets. Partial
+straight ARGB8888 uses bounded GE raw fill followed by native CPU composition;
+see [fill ownership and fallback](ge-fill-argb-stage.md). Its executor rechecks address/geometry
+and intersects the saved task clip with the layer buffer before cache/DMA work.
 
-Phase 3A adds an independent GE2D draw unit, registered by `lv_aic_init()`
-through `lv_draw_aic_ge2d_init()`. It claims exactly one kind of work —
-`LV_DRAW_TASK_TYPE_FILL` that is opaque, has `radius == 0`, no gradient, a
-destination format GE2D can write, and a buffer inside the GE address window —
-and leaves every other task to the software renderer.
+IMAGE handles RGB/ARGB/XRGB, alpha, bounded scaling and right-angle rotation
+plus scale. Unscaled arbitrary angles use the SDK's mpp_ge_rotate path with
+the same source/global alpha rules and clipped destination crop. LAYER reuses
+the same bounded scaler/rotator, including unscaled arbitrary angles, when the child layer buffer is accessible;
+ordinary D13x heap sources use software. No global layer allocator or LVGL
+cache handler is replaced. Cache maintenance is region-local.
 
-The unit runs synchronously on the dispatching thread: `ge_fillrect` ->
-`mpp_ge_emit` -> `mpp_ge_sync`, all three return codes checked. There is no
-render thread and no task queue, so the unit owns nothing but the task it is
-executing, which is why it is an independent `lv_draw_aic_ge2d_unit_t` rather
-than an alias of `lv_draw_sw_unit_t`. A GE failure marks the task FAILED, never
-FINISHED.
+BITBLT maps simple LVGL single-color keys (low == high) to the SDK RGB
+comparator. The application executor stages LVGL ranges, RGB565, premultiplied,
+antialiased and transformed keys into straight ARGB8888 before GE, so the
+comparison space is explicit and independent of undocumented packed comparator
+semantics. Recolor+key, rounded/special blends and YUV keys remain software.
+Host contracts verify the staging pixels and command ownership, not hardware
+cache coherency or panel output.
 
-It is gated on `mpp_ge_open()`: if the device is unavailable the unit is still
-registered and declines every task, so the software renderer keeps the display
-alive. The destination cache is prepared inside the backend for the touched
-region only; the global LVGL draw-buffer handlers are deliberately left
-untouched.
+Native FreeType is owned by upstream lv_init/lv_deinit. Applications own font
+instances, fallback chains and all objects/styles referring to them. The optional
+SDK FreeType library supplies the rasterizer; no legacy lvgl-ui adapter is used.
+Delete font users before deleting fonts, then deinitialize LVGL. The native
+glyph cache is count-bounded per cache, not a global byte budget. See
+[font ownership](font-stage.md).
 
-IMAGE, LAYER, scaling, rotation and asynchronous execution are Phase 3B and
-later. MPP decoding, the FreeType cache, encoder and mouse remain separate.
+See [capabilities](capabilities.md) and [validation](validation.md).
 
-## Display ownership
+The optional SDK image carousel is compiled from component-owned widgets/.
+Its public header exposes functions and the class symbol; instance state stays
+private. LVGL class internals are accessed through lvgl_aic_private.h, while
+layout/image/scroll operations use current public APIs. See
+[image roller](image-roller-stage.md) for source ownership and API differences.
 
-The display port owns the `mpp_fb` handle, screen information, any temporary
-software-rotation buffer, and the LVGL display object. The physical framebuffer
-is owned by the BSP. The port must not free or reallocate it.
+Native GIF is an optional upstream widget selected by AIC_LVGL_USE_GIF. The
+application owns its objects, source strings/descriptors and borrowed RAW bytes.
+Each live file-backed GIF retains its file until replacement/deletion. Delete
+widgets before closing their filesystem/display. Its software-decoded canvas is
+separate from MPP's compressed-image CMA/cache lifetime; no legacy SDK GIF hooks
+are imported. The manual shell only queues requests for the UI timer to handle.
+See [GIF ownership and board gate](gif-stage.md).
 
-## Error handling
-
-Initialization functions return a negative `lv_aic_result_t` on failure. They
-must not print an error and continue with a partially initialized display or
-input device.
-
-The validation status is tracked in `docs/validation.md`; source inspection or
-a host build is not hardware validation.
+The common upstream widget surface remains application-owned. The host widget
+contracts enable canvas, chart, dropdown, roller, slider, table, tabview,
+textarea and tileview, plus the modern control set of arc, button, buttonmatrix,
+calendar, checkbox, keyboard, led, line, msgbox, spinbox and switch. They check
+construction, basic state mutation, lookup and teardown. LVGL 9.6 marks list and
+menu deprecated, so they are intentionally excluded. Vendor camera/player/
+video-window controls remain outside this component and should be supplied by
+the application.

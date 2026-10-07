@@ -1,61 +1,88 @@
 # Compatibility
 
-## Supported baseline
+Fixed baseline: LVGL v9.6.0 (80ca777e37a2b176770726a02e07a6fb79ef0b39),
+Luban-Lite v1.3.2 reference (c5807f9e7d18292f920dafaa018b8174635085c4),
+D13x/D133ECS with RT-Thread. Other SoCs are not certified. The guard accepts
+9.6.x; upgrading the upstream pin still requires validation.
 
-| Item | Fixed value |
-|---|---|
-| LVGL tag | `v9.6.0` |
-| LVGL commit | `80ca777e37a2b176770726a02e07a6fb79ef0b39` |
-| Luban-Lite reference | `c5807f9e7d18292f920dafaa018b8174635085c4` |
-| Primary SoC | ArtInChip D13x / D133ECS |
-| Kernel | RT-Thread |
-| Renderer in Phase 1 | LVGL software renderer |
+Display/touch use public LVGL entry points. Decoder and GE2D require private
+decoder/task/unit definitions through compat/lvgl_aic_private.h. Do not describe
+them as private-API independent. Run production-source contracts and target
+builds on upgrades, followed by relevant board regression.
 
-The compile-time guard in `compat/lvgl_aic_compat.h` intentionally rejects
-LVGL versions other than 9.6.x.
+Targets select LV_OS_CUSTOM with compat/lv_aic_rtthread_os.h; host builds use
+LV_OS_NONE except isolated OS contracts. The RT event adapter avoids SDK kernel
+patches. Touch uses OSAL and the RT device interface. RT_USING_EVENT, RT-Thread
+and MPP interfaces are required; disable LPKG_USING_LVGL in the application.
 
-## Public/private API policy
+Earlier D50T images have software-display/touch, MPP and incremental GE2D
+observations. The 2026-09-30 application-owned integration passed six host
+contracts and software/MPP/GE2D build/image gates; its board regression is
+pending. Mocks do not prove GE pixels, cache coherency, IRQ wakeups or speed.
+The solid-fill candidate adds a seventh production-source host contract and
+board numeric probes. The resource stage adds an eighth contract covering
+compressed memory inputs and cache lifetime, plus board parity/cache probes.
+Hardware acceptance for both new capabilities is still pending.
+See [capabilities](capabilities.md), [validation](validation.md) and
+[transform gates](phase3c-transform.md).
 
-Display and touch code use public LVGL APIs. The GE2D implementation lives in
-`draw/ge2d/` and, like the MPP decoder, isolates the private headers it needs
-behind `compat/lvgl_aic_private.h`.
+Camera image widget private dependencies: lv_image_t subclass layout, display
+layer_head and lv_layer_t next/draw_task_head are accessed only through
+compat/lvgl_aic_private.h. The layer scan defers source retirement while queued
+tasks may still open it; it does not dispatch, cancel or synchronously wait for
+tasks. The camera contract covers this conservative gate and source lifetime.
 
-MPP decoder depends on LVGL 9.6 image decoder private API.
-`image/mpp/lv_aic_mpp_decoder.c` and the three
-`draw/ge2d/lv_draw_aic_ge2d*.c` files are the only translation units that
-enable `AIC_LVGL_USE_PRIVATE_API` and include
-`compat/lvgl_aic_private.h`; format and stream helpers stay public-only.
+AIC canvas uses native lv_canvas_t subclass layout and clears its draw_buf
+member during destruction through compat/lvgl_aic_private.h. Owned draw-buffer
+metadata stays inside the instance; do not replace its source with native buffer
+setters. Mutate/resize only outside active rendering, as required for mutable
+canvas images. Host allocation-failure and pixel contracts plus target live-link
+gates must be rerun when changing the LVGL pin. No vendor canvas archive is used.
 
-The GE2D unit needs the private header for the `lv_draw_task_t` and
-`lv_draw_unit_t` definitions it reads (`state`, `type`, `draw_dsc`,
-`preference_score`, `preferred_draw_unit_id`, `target_layer`, `clip_area`) and
-for the `lv_draw_aic_ge2d_unit_t` base member. The create/dispatch entry points
-it calls (`lv_draw_create_unit`, `lv_draw_get_available_task`,
-`lv_draw_layer_alloc_buf`, `lv_draw_dispatch_request`) are all public. It does
-not depend on any other private structure.
+Image roller loop compensation uses `lv_obj_scroll_by_raw` and the native
+`lv_anim_t` exec/start/end/current fields through `compat/lvgl_aic_private.h`.
+SCROLL_BEGIN supplies the scroll animation's callback; `lv_anim_get` finds only
+that animation on the roller, so unrelated owner animations are not rebased.
+This depends on the pinned native scroll callback interpreting values as the
+negative scroll offset. Rerun the pointer/loop/selection contracts when upgrading
+LVGL; do not replace this with a bounded public scroll call, which cancels snap.
 
-## OS integration decision
+IMAGE/LAYER masks use `lv_aic_sw_image_mask_copy` and
+`lv_aic_sw_layer_mask_copy` in the SHA-guarded generated native software-image
+unit. Both call private `apply_mask`, sharing the premultiplied RGB/alpha
+correction and native whole-image centering semantics. The IMAGE bridge converts
+decoded RGB/ARGB sources to a private four-byte copy before masking. The generated
+mask paths also validate decoded dimensions/stride/data footprint before pixel
+access; malformed masks follow native unmasked policy. Rerun mask,
+premultiplied and multipass contracts when upgrading the pinned LVGL source.
 
-The configuration selects LVGL 9.6's `LV_OS_RTTHREAD` backend and sets the
-software draw-thread priority explicitly. The Phase 1 touch producer uses the
-ArtInChip OSAL (`aicos_thread_t`, `aicos_sem_t`, `aicos_mutex_t`) rather than
-LVGL 9.6 private `lv_thread_*` types, because those types are no longer public.
-This is a BSP event-source integration and does not duplicate LVGL's core
-object/timer implementation.
+GE IMAGE color keys use the SDK comparator only for the simple single-value
+RGB888/XRGB8888/straight-ARGB copy. `lv_aic_sw_colorkey_copy` is generated in
+the same SHA-guarded software-image unit for LVGL range semantics, RGB565
+conversion, premultiplied unmapping and transformed/filtered staging. It emits
+straight ARGB8888 into bounded CMA storage; do not infer undocumented GE
+packed-color comparator behavior from this application-owned extension. Rerun
+the GE scale and generated-source integration checks when upgrading LVGL.
 
-The touch callback runs in the RT-Thread device callback/worker path and only
-copies state. It does not call LVGL from an ISR.
+Native vector rendering uses `tools/sdk/stage_vector.py` to replace the pinned
+software backend locally. Its source hash guards private vector subtask/context
+layout and ThorVG canvas semantics. The replacement drains each subtask under
+its own intersected scissor and stages target representation explicitly; run the
+vector surface and actual manual-probe contracts on any LVGL/ThorVG upgrade.
+The live symbol owner and generated bytes are checked in final firmware.
+Multiply/screen, destination-over, additive and vector subtractive erasure now
+use explicit premultiplied composition with a second surface sharing the budget. Gradient/pattern paint opacity
+also participates, with an exact opaque endpoint. Alpha-less targets preserve
+reduced-alpha RGB against black. See [operator scope](vector-operators-stage.md);
+rerun the analytic, ordered-subtask and allocation/rebind failure matrix when
+changing the backend. SRC_IN/DST_IN/NONE additionally use A8 geometry coverage;
+pattern sampling workspace shares the same staging budget. Pinned ThorVG push/
+clip APIs consume transferred paints even on failure. Rerun the
+[coverage and ownership matrix](vector-coverage-stage.md) on upgrades.
 
-## Validation status
-
-| Area | Status |
-|---|---|
-| Repository skeleton | complete |
-| LVGL 9.6 host compile | PASS |
-| D13x software display | hardware validation pending |
-| GT911 touch | hardware validation pending |
-| VSync/PAN/rotation board test | hardware validation pending |
-| MPP decoder | code complete, board validation pending |
-| GE2D draw unit (opaque FILL) | code complete, board validation pending |
-
-A missing board test must be reported as `Hardware validation pending`.
+SVG opacity uses unused upper render-object flag bits without changing the pinned
+structure ABI. `stage_svg_layers.py` extends the SHA-guarded SVG renderer and
+keeps intermediate targets straight ARGB for both vector and layer writers.
+Root viewport transforms and non-inherited/explicitly inherited opacity have
+separate contexts; span layout advances even when paint is skipped. Rerun the
+[opacity and lifetime contracts](svg-opacity-stage.md) when upgrading LVGL.
