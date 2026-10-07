@@ -20,9 +20,23 @@
 #if AIC_LVGL_USE_DISPLAY && AIC_LVGL_BSP_MPP
 
 #include <rtconfig.h>
+#ifndef AIC_LVGL_DISPLAY_ROTATION
+#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
+#define AIC_LVGL_DISPLAY_ROTATION (LV_ROTATE_DEGREE / 90)
+#else
+#define AIC_LVGL_DISPLAY_ROTATION 0
+#endif
+#endif
+#if AIC_LVGL_DISPLAY_ROTATION < 0 || AIC_LVGL_DISPLAY_ROTATION > 3
+#error "AIC_LVGL_DISPLAY_ROTATION must be 0..3"
+#endif
 #include <aic_core.h>
 #include <aic_osal.h>
 #include <mpp_fb.h>
+#if AIC_LVGL_USE_GE2D
+#include "lv_draw_aic_ge2d_display.h"
+#include "lv_draw_aic_ge2d.h"
+#endif
 
 #ifndef CACHE_LINE_SIZE
 #define CACHE_LINE_SIZE 32U
@@ -45,6 +59,7 @@ typedef struct {
     bool use_pan_display;
     bool use_rotation;
     bool powered_on;
+    bool dma_quarantined;
 } lv_aic_display_ctx_t;
 
 static uint32_t lv_aic_align_up(uint32_t value, uint32_t alignment)
@@ -85,7 +100,7 @@ static void lv_aic_cache_clean(const void *address, size_t size)
                                      lv_aic_align_up((uint32_t)size, CACHE_LINE_SIZE));
 }
 
-#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
+#if AIC_LVGL_DISPLAY_ROTATION != 0
 static void *lv_aic_alloc_cma(size_t size)
 {
     return aicos_malloc_align(MEM_CMA, size, CACHE_LINE_SIZE);
@@ -157,6 +172,8 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
         return;
     }
 
+    if (ctx->dma_quarantined) return; /* Keep LVGL source ownership until reboot. */
+
     if (!lv_display_flush_is_last(display)) {
         lv_display_flush_ready(display);
         return;
@@ -174,16 +191,38 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
         const int32_t source_stride = (int32_t)ctx->lv_buffer_stride;
         const int32_t destination_stride = (int32_t)ctx->info.stride;
 
-        /* Phase 1 deliberately uses the LVGL software rotate path. GE2D is
-         * introduced only after this baseline is validated. */
-        lv_aic_cache_clean(active->data, ctx->rotation_buffer_size);
-        lv_draw_rotate(active->data, destination,
-                       lv_display_get_horizontal_resolution(display),
-                       lv_display_get_vertical_resolution(display),
-                       source_stride, destination_stride,
-                       lv_display_get_rotation(display),
-                       ctx->lv_color_format);
-        lv_aic_cache_clean(destination, ctx->framebuffer_size);
+        int rotated = 0;
+#if AIC_LVGL_USE_GE2D
+        lv_draw_buf_t source = *active;
+        lv_draw_buf_t target = {0};
+        source.header.w = lv_display_get_horizontal_resolution(display);
+        source.header.h = lv_display_get_vertical_resolution(display);
+        source.header.stride = source_stride;
+        target.data = destination;
+        target.data_size = ctx->framebuffer_size;
+        target.header.w = ctx->info.width;
+        target.header.h = ctx->info.height;
+        target.header.stride = destination_stride;
+        target.header.cf = ctx->lv_color_format;
+        rotated = lv_draw_aic_ge2d_display_rotate(&source, &target, lv_display_get_rotation(display));
+        if (rotated < 0) {
+            LV_LOG_ERROR("GE display DMA fault; retaining buffers until reboot");
+            ctx->last_presented_valid = false;
+            ctx->dma_quarantined = true;
+            /* Completion is unknown: do not release LVGL's source for reuse. */
+            return;
+        }
+#endif
+        if (!rotated) {
+            lv_aic_cache_clean(active->data, ctx->rotation_buffer_size);
+            lv_draw_rotate(active->data, destination,
+                           lv_display_get_horizontal_resolution(display),
+                           lv_display_get_vertical_resolution(display),
+                           source_stride, destination_stride,
+                           lv_display_get_rotation(display),
+                           ctx->lv_color_format);
+            lv_aic_cache_clean(destination, ctx->framebuffer_size);
+        }
         buffer_index = ctx->present_index;
     } else {
         void *framebuffer = lv_aic_framebuffer_at(ctx, 0U);
@@ -241,7 +280,7 @@ int lv_aic_display_init(lv_display_t **display)
     lv_color_format_t color_format;
     void *buffer1;
     void *buffer2 = NULL;
-#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
+#if AIC_LVGL_DISPLAY_ROTATION != 0
     lv_display_rotation_t rotation = LV_DISPLAY_ROTATION_0;
     uint32_t rotation_buffer_size = 0U;
 #endif
@@ -250,6 +289,9 @@ int lv_aic_display_init(lv_display_t **display)
         return LV_AIC_ERR_INVALID_STATE;
     }
     *display = NULL;
+#if AIC_LVGL_USE_GE2D
+    if (lv_draw_aic_ge2d_faulted()) return LV_AIC_ERR_DISPLAY;
+#endif
 
     ctx = (lv_aic_display_ctx_t *)lv_malloc_zeroed(sizeof(*ctx));
     if (ctx == NULL) {
@@ -312,8 +354,8 @@ int lv_aic_display_init(lv_display_t **display)
     buffer1 = lv_aic_framebuffer_at(ctx, 0U);
 #endif
 
-#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
-    rotation = (lv_display_rotation_t)(LV_ROTATE_DEGREE / 90);
+#if AIC_LVGL_DISPLAY_ROTATION != 0
+    rotation = (lv_display_rotation_t)AIC_LVGL_DISPLAY_ROTATION;
     ctx->use_rotation = (rotation != LV_DISPLAY_ROTATION_0);
     if (ctx->use_rotation) {
         int32_t logical_width = (int32_t)ctx->info.width;
@@ -378,7 +420,7 @@ int lv_aic_display_init(lv_display_t **display)
     lv_display_set_driver_data(ctx->display, ctx);
     lv_display_set_physical_resolution(ctx->display, (int32_t)ctx->info.width,
                                        (int32_t)ctx->info.height);
-#if defined(LV_DISPLAY_ROTATE_EN) && defined(LV_ROTATE_DEGREE)
+#if AIC_LVGL_DISPLAY_ROTATION != 0
     lv_display_set_rotation(ctx->display, rotation);
 #endif
     lv_display_set_buffers_with_stride(ctx->display, buffer1, buffer2,
@@ -403,6 +445,16 @@ void lv_aic_display_deinit(lv_display_t *display)
         return;
     }
 
+    /* Draw-unit faults can precede flush and still reference this display's
+     * target layer. The local rotation flag alone cannot prove DMA quiescence. */
+#if AIC_LVGL_USE_GE2D
+    if (lv_draw_aic_ge2d_faulted()) ctx->dma_quarantined = true;
+#endif
+    if (ctx->dma_quarantined) {
+        ctx->last_presented_valid = false;
+        LV_LOG_ERROR("GE display DMA fault; deinit requires reboot");
+        return;
+    }
     lv_display_set_driver_data(display, NULL);
     lv_display_delete(display);
 

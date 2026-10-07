@@ -13,6 +13,15 @@
 
 #if defined(AIC_LVGL_USE_PRIVATE_API)
 #include <lvgl_private.h>
+/* Component-generated bridges to the pinned native software pixel kernels. */
+bool lv_aic_sw_recolor_copy(const lv_draw_buf_t *src, lv_draw_buf_t *dst,
+                            lv_color_t color, lv_opa_t opacity);
+bool lv_aic_sw_colorkey_copy(const lv_draw_buf_t *src, lv_draw_buf_t *dst,
+                             const lv_image_colorkey_t *key);
+int lv_aic_sw_layer_mask_copy(const lv_draw_image_dsc_t *dsc, const lv_area_t *area,
+                              const lv_draw_buf_t *src, lv_draw_buf_t *dst);
+int lv_aic_sw_image_mask_copy(const lv_draw_image_dsc_t *dsc, const lv_area_t *area,
+                              const lv_draw_buf_t *src, lv_draw_buf_t *dst);
 #endif
 
 #endif /* LVGL_AIC_PRIVATE_H */

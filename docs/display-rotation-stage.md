@@ -1,0 +1,119 @@
+# Whole-display GE rotation
+
+The display flush path can now submit 90/180/270 degree whole-frame copies
+through the component's existing synchronous GE device. This is independent
+of IMAGE/LAYER rotation and requires the configured display rotation buffer.
+No SDK display driver or upstream LVGL source is modified.
+
+在 GE 可用且源/目标格式、几何、容量和物理地址符合要求时使用硬件。
+显示旋转 90/270 对应 MPP 270/90，沿用 SDK 的方向约定。
+支持 RGB565、RGB888、XRGB8888、ARGB8888；整帧复制不启用 alpha 混合。
+
+Cache preparation cleans the source and cleans/invalidates the destination
+before submission. After successful sync, the hardware-written destination
+is presented without a CPU clean overwriting it. Unsupported inputs decline
+before submission and use the existing software path. A bitblt/emit/sync
+failure suppresses presentation and invalidates snapshot availability for
+that flush; it does not retry into a potentially active DMA destination.
+
+Buffer validation rejects overlapping ranges, address overflow, inaccessible
+memory, insufficient capacity/stride, mismatched formats and dimensions.
+The initial geometry bound is 4096 on each axis.
+
+Host validation: 13/13 tests passed, including three rotations across four
+formats, padded strides, cache/submission ordering, failures at each engine
+step, unavailable engine, overlap and address/capacity rejection.
+These use mocked hardware and do not prove actual pixels, cache coherency,
+PAN/VSync interaction or board throughput.
+
+## Target build evidence
+
+Application-owned Kconfig `AIC_LVGL_DISPLAY_ROTATION` selects 0/1/2/3
+quarter turns, independently of the SDK legacy LVGL menu.
+Build with `tools/sdk/build.ps1 -Phase ge2d -WithFonts -WithGif -WithWidgets -Rotation 90`.
+The script also accepts 180 and 270, stores separate evidence directories
+and restores the smoke defconfig after success or failure.
+
+90-degree cross-build passed at component `2a80f72`, SDK `305cff9a`:
+boot/app build, static configuration checks, image checks and manifest PASS.
+The live map contains `lv_draw_aic_ge2d_display_rotate`.
+Evidence: SDK `output/lvgl-evidence/ge2d-fonts-gif-widgets-rotate90`.
+Image SHA256:
+`0882c5c520600c13b13ea9560e086e84d56aba3bd60bfdcbf8e869a85e45f292`.
+All three source repositories were clean in that manifest. Board NOT_RUN.
+
+The real display init/flush/deinit path is also exercised with mocked BSP and
+GE calls: hardware failure suppresses PAN/VSync and index advancement,
+software fallback presents, snapshot availability follows GE/PAN/VSync
+failures and recovery, and CMA allocation/free balances at teardown.
+
+Target configuration coverage is now complete for the three GE quarter-turns:
+the GE2D/widget/player profile passed 90°, 180° and 270° boot/app/static/image/
+manifest gates. Evidence directories are
+`output/lvgl-evidence/ge2d-widgets-player-rotate180-rotation-matrix-180` and
+`output/lvgl-evidence/ge2d-widgets-player-rotate270-rotation-matrix-270` for
+the latter two profiles. These are link and configuration checks; physical
+portrait/landscape pixels, cache coherency and throughput remain **NOT_RUN**.
+SPI and multiple displays are still outside this implementation.
+
+Video-plane admission now also rejects detached LVGL objects before querying a
+display. The player/camera plane contracts cover attached admission, rotation
+and lifecycle paths; an object must be attached to a display before enabling
+native scanout.
+
+
+## GE rotation DMA fault quarantine
+
+The whole-screen rotation path previously returned hardware errors without
+latching shared GE quarantine, released LVGL flush ownership and allowed a later
+software retry/deinit. An emit/sync failure does not prove DMA has stopped, so
+that could reuse or free a source still being read by GE. Rotation now quarantines
+the shared client on any bitblt/emit/sync failure and reports existing quarantine
+as failure rather than a software-fallback decline.
+
+Framebuffer flush now marks the display quarantined, invalidates snapshot state
+and deliberately withholds flush-ready. It does not present, advance buffers,
+retry in software or release the LVGL source. Deinit retains the display, rotation
+allocation and framebuffer handle; new display initialization is rejected while
+shared GE remains faulted. Reboot is the recovery boundary. A refresh waiting on
+the failed flush can remain blocked; this is deliberate resource retention, not a
+successful presentation or recoverable timeout. Pre-submission geometry decline
+still permits software fallback, and ordinary framebuffer ioctl error handling
+is unchanged.
+
+Validation: **68/68 host PASS**, injecting all three hardware failure stages,
+checking shared quarantine/no subsequent GE calls, and checking persistent flush,
+no software replay/snapshot, retained CMA and rejected reinitialization. Existing
+healthy deinit, software fallback and framebuffer failure tests still pass.
+Strict real-header D13x compilation PASS for both modified modules:
+- `output/quarantine-lv_draw_aic_ge2d_display.o`: SHA256
+  `0c7d7d15b6d6a4a0655385c6add3357697db4e3d41b8a3f743de0ad59af01ecf`.
+- `output/quarantine-lv_aic_display.o`: SHA256
+  `c5e7ef9178f8e24bdf2e45b0c6174d37d06a9b158579fb0f37ad0a965c767778`.
+
+Objects are under SDK output. Host logs are component
+`output/ge-rotate-quarantine-build.log` and `output/ge-rotate-quarantine-tests.log`.
+Full rotated firmware refresh PASS at `c257ec7` / SDK `4ee81ce2`; see
+[validation.md](validation.md) for the clean manifest and image SHA256.
+Hardware fault acceptance remains pending.
+Hardware **NOT_RUN**. This fix is also a prerequisite for any future SPI GE
+conversion, which must additionally preserve its source lifetime on GE failure.
+
+## Shared draw fault teardown protection
+
+A draw-unit GE fault may occur before display flush, leaving the display's local
+rotation quarantine flag clear while DMA still references its target layer.
+Display deinit now also checks shared GE fault state before deleting LVGL objects,
+freeing rotation storage or closing the framebuffer. It invalidates snapshot state
+and retains all display resources until reboot. This deliberately retains other
+displays sharing the failed engine because per-display DMA ownership is not tracked.
+
+Validation: **68/68 host PASS**, including two initialized displays, a shared fault,
+retained driver contexts/CMA/framebuffer handles and invalidated snapshot state.
+Normal teardown remains covered. D13x real-header compilation PASS; SDK object
+`output/shared-teardown-lv_aic_display.o` SHA256:
+`098e054e85f615e333bc2a7b636524939fce507c58230ecd4ddefdaaa0177c25`.
+Host logs: `output/ge-shared-teardown-build.log`,
+`output/ge-shared-teardown-tests.log`. SPI target compilation/partial link also
+PASS as preparation for the target compiler check. This follow-up has no refreshed
+full firmware or physical-board evidence yet; hardware **NOT_RUN**.
