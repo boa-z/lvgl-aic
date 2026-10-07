@@ -29,6 +29,14 @@ bool lv_aic_pixel_format_to_mpp(lv_color_format_t lv_fmt,
     case LV_COLOR_FORMAT_XRGB8888:
         *mpp_fmt = MPP_FMT_XRGB_8888;
         return true;
+    case LV_COLOR_FORMAT_I420: *mpp_fmt = MPP_FMT_YUV420P; return true;
+    case LV_COLOR_FORMAT_I422: *mpp_fmt = MPP_FMT_YUV422P; return true;
+    case LV_COLOR_FORMAT_I444: *mpp_fmt = MPP_FMT_YUV444P; return true;
+    case LV_COLOR_FORMAT_I400: *mpp_fmt = MPP_FMT_YUV400; return true;
+    case LV_COLOR_FORMAT_NV12: *mpp_fmt = MPP_FMT_NV12; return true;
+    case LV_COLOR_FORMAT_NV21: *mpp_fmt = MPP_FMT_NV21; return true;
+    case LV_COLOR_FORMAT_YUY2: *mpp_fmt = MPP_FMT_YUYV; return true;
+    case LV_COLOR_FORMAT_UYVY: *mpp_fmt = MPP_FMT_UYVY; return true;
     default:
         return false;
     }
@@ -54,6 +62,14 @@ bool lv_aic_pixel_format_from_mpp(enum mpp_pixel_format mpp_fmt,
     case MPP_FMT_XRGB_8888:
         *lv_fmt = LV_COLOR_FORMAT_XRGB8888;
         return true;
+    case MPP_FMT_YUV420P: *lv_fmt = LV_COLOR_FORMAT_I420; return true;
+    case MPP_FMT_YUV422P: *lv_fmt = LV_COLOR_FORMAT_I422; return true;
+    case MPP_FMT_YUV444P: *lv_fmt = LV_COLOR_FORMAT_I444; return true;
+    case MPP_FMT_YUV400: *lv_fmt = LV_COLOR_FORMAT_I400; return true;
+    case MPP_FMT_NV12: *lv_fmt = LV_COLOR_FORMAT_NV12; return true;
+    case MPP_FMT_NV21: *lv_fmt = LV_COLOR_FORMAT_NV21; return true;
+    case MPP_FMT_YUYV: *lv_fmt = LV_COLOR_FORMAT_YUY2; return true;
+    case MPP_FMT_UYVY: *lv_fmt = LV_COLOR_FORMAT_UYVY; return true;
     /* BGR-family outputs have no distinct LVGL enum. Rejecting them keeps a
      * channel swap from being silently labeled as a valid format. */
     default:
