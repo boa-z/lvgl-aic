@@ -23,6 +23,82 @@
  * Every AIC_LVGL_USE_* symbol that is read with `#if` must be listed here:
  * a bare `#define X` makes `#if X` a compile error, not a false branch. */
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
+#ifdef AIC_LVGL_USE_LOTTIE
+#undef AIC_LVGL_USE_LOTTIE
+#define AIC_LVGL_USE_LOTTIE 1
+#endif
+#ifdef AIC_LVGL_USE_SVG
+#undef AIC_LVGL_USE_SVG
+#define AIC_LVGL_USE_SVG 1
+#endif
+#ifdef AIC_LVGL_USE_VECTOR
+#undef AIC_LVGL_USE_VECTOR
+#define AIC_LVGL_USE_VECTOR 1
+#endif
+#ifdef AIC_LVGL_BUILD_DEMO_MUSIC
+#undef AIC_LVGL_BUILD_DEMO_MUSIC
+#define AIC_LVGL_BUILD_DEMO_MUSIC 1
+#endif
+#ifdef AIC_LVGL_BUILD_DEMO_WIDGETS
+#undef AIC_LVGL_BUILD_DEMO_WIDGETS
+#define AIC_LVGL_BUILD_DEMO_WIDGETS 1
+#endif
+#ifdef AIC_LVGL_BUILD_DEMO_BENCHMARK
+#undef AIC_LVGL_BUILD_DEMO_BENCHMARK
+#define AIC_LVGL_BUILD_DEMO_BENCHMARK 1
+#endif
+#ifdef AIC_LVGL_USE_CANVAS
+#undef AIC_LVGL_USE_CANVAS
+#define AIC_LVGL_USE_CANVAS 1
+#endif
+#ifdef AIC_LVGL_USE_IMG_ROLLER
+#undef AIC_LVGL_USE_IMG_ROLLER
+#define AIC_LVGL_USE_IMG_ROLLER 1
+#endif
+#ifdef AIC_LVGL_USE_SWIPE_V1
+#undef AIC_LVGL_USE_SWIPE_V1
+#define AIC_LVGL_USE_SWIPE_V1 1
+#endif
+#ifdef AIC_LVGL_USE_VIDEO_WINDOW
+#undef AIC_LVGL_USE_VIDEO_WINDOW
+#define AIC_LVGL_USE_VIDEO_WINDOW 1
+#endif
+#ifdef AIC_LVGL_USE_VIDEO_PLANE
+#undef AIC_LVGL_USE_VIDEO_PLANE
+#define AIC_LVGL_USE_VIDEO_PLANE 1
+#endif
+#ifdef AIC_LVGL_USE_PLAYER
+#undef AIC_LVGL_USE_PLAYER
+#define AIC_LVGL_USE_PLAYER 1
+#endif
+#ifdef AIC_LVGL_USE_APNG_WIDGET
+#undef AIC_LVGL_USE_APNG_WIDGET
+#define AIC_LVGL_USE_APNG_WIDGET 1
+#endif
+#ifdef AIC_LVGL_USE_APNG
+#undef AIC_LVGL_USE_APNG
+#define AIC_LVGL_USE_APNG 1
+#endif
+#ifdef AIC_LVGL_USE_PLAYER_SESSION
+#undef AIC_LVGL_USE_PLAYER_SESSION
+#define AIC_LVGL_USE_PLAYER_SESSION 1
+#endif
+#ifdef AIC_LVGL_USE_SPI_SDK
+#undef AIC_LVGL_USE_SPI_SDK
+#define AIC_LVGL_USE_SPI_SDK 1
+#endif
+#ifdef AIC_LVGL_USE_BARCODE
+#undef AIC_LVGL_USE_BARCODE
+#define AIC_LVGL_USE_BARCODE 1
+#endif
+#ifdef AIC_LVGL_USE_CAMERA
+#undef AIC_LVGL_USE_CAMERA
+#define AIC_LVGL_USE_CAMERA 1
+#endif
+#ifdef AIC_LVGL_USE_VIN
+#undef AIC_LVGL_USE_VIN
+#define AIC_LVGL_USE_VIN 1
+#endif
 #ifdef AIC_LVGL_USE_MPP_DEC
 #undef AIC_LVGL_USE_MPP_DEC
 #define AIC_LVGL_USE_MPP_DEC 1
@@ -34,6 +110,18 @@
 #ifdef AIC_LVGL_USE_TOUCH
 #undef AIC_LVGL_USE_TOUCH
 #define AIC_LVGL_USE_TOUCH 1
+#endif
+#ifdef AIC_LVGL_USE_GIF
+#undef AIC_LVGL_USE_GIF
+#define AIC_LVGL_USE_GIF 1
+#endif
+#ifdef AIC_LVGL_USE_FT_CACHE
+#undef AIC_LVGL_USE_FT_CACHE
+#define AIC_LVGL_USE_FT_CACHE 1
+#endif
+#ifdef AIC_LVGL_USE_FREETYPE
+#undef AIC_LVGL_USE_FREETYPE
+#define AIC_LVGL_USE_FREETYPE 1
 #endif
 #ifdef AIC_LVGL_USE_DISPLAY
 #undef AIC_LVGL_USE_DISPLAY
@@ -51,6 +139,16 @@
 #define LV_OS_CUSTOM_INCLUDE "lv_aic_rtthread_os.h"
 #else
 #define LV_USE_OS LV_OS_NONE
+#endif
+
+/* Vector/matrix profiles need floating-point text as well as arithmetic.
+ * RT-Thread's formatter lacks %f; use LVGL's native bounded formatter by default. */
+#if (defined(AIC_LVGL_USE_VECTOR) && AIC_LVGL_USE_VECTOR) || \
+    (defined(AIC_LVGL_USE_SVG) && AIC_LVGL_USE_SVG) || \
+    (defined(AIC_LVGL_USE_LOTTIE) && AIC_LVGL_USE_LOTTIE)
+#ifndef LV_USE_STDLIB_SPRINTF
+#define LV_USE_STDLIB_SPRINTF LV_STDLIB_BUILTIN
+#endif
 #endif
 
 #if defined(KERNEL_RTTHREAD) || defined(__RTTHREAD__)
@@ -100,9 +198,6 @@
 #ifndef LV_DRAW_THREAD_PRIO
 #define LV_DRAW_THREAD_PRIO 20
 #endif
-#ifndef LV_DRAW_THREAD_STACK_SIZE
-#define LV_DRAW_THREAD_STACK_SIZE 4096
-#endif
 
 /* Phase 1 deliberately enables only the software renderer. */
 #ifndef LV_USE_DRAW_SW
@@ -117,14 +212,94 @@
 #ifndef LV_USE_DRAW_SW_ASM
 #define LV_USE_DRAW_SW_ASM LV_DRAW_SW_ASM_NONE
 #endif
+#ifndef AIC_LVGL_USE_LOTTIE
+#define AIC_LVGL_USE_LOTTIE 0
+#endif
+#ifndef LV_USE_LOTTIE
+#define LV_USE_LOTTIE AIC_LVGL_USE_LOTTIE
+#endif
+#if AIC_LVGL_USE_LOTTIE
+#ifndef LV_USE_CANVAS
+#define LV_USE_CANVAS 1
+#endif
+#endif
+#ifndef AIC_LVGL_USE_SVG
+#define AIC_LVGL_USE_SVG 0
+#endif
+#ifndef LV_USE_SVG
+#define LV_USE_SVG AIC_LVGL_USE_SVG
+#endif
+#ifndef AIC_LVGL_USE_VECTOR
+#define AIC_LVGL_USE_VECTOR (AIC_LVGL_USE_SVG || AIC_LVGL_USE_LOTTIE)
+#endif
 #ifndef LV_USE_VECTOR_GRAPHIC
-#define LV_USE_VECTOR_GRAPHIC 0
+#define LV_USE_VECTOR_GRAPHIC AIC_LVGL_USE_VECTOR
 #endif
 #ifndef LV_USE_THORVG
-#define LV_USE_THORVG 0
+#define LV_USE_THORVG AIC_LVGL_USE_VECTOR
 #endif
 #ifndef LV_USE_THORVG_INTERNAL
-#define LV_USE_THORVG_INTERNAL 0
+#define LV_USE_THORVG_INTERNAL AIC_LVGL_USE_VECTOR
+#endif
+#if AIC_LVGL_USE_VECTOR
+#ifndef LV_USE_FLOAT
+#define LV_USE_FLOAT 1
+#endif
+#ifndef LV_USE_MATRIX
+#define LV_USE_MATRIX 1
+#endif
+#if LV_DRAW_SW_DRAW_UNIT_CNT != 1
+#error "Application ThorVG profile requires one software draw unit"
+#endif
+#endif
+
+/* Explicit target demos share the ordinary application-owned LVGL build. */
+#if defined(AIC_LVGL_BUILD_DEMO_BENCHMARK) && AIC_LVGL_BUILD_DEMO_BENCHMARK
+#define LV_USE_DEMO_BENCHMARK 1
+#define LV_USE_SYSMON 1
+#define LV_USE_PERF_MONITOR 1
+#endif
+#if (defined(AIC_LVGL_BUILD_DEMO_WIDGETS) && AIC_LVGL_BUILD_DEMO_WIDGETS) || \
+    (defined(AIC_LVGL_BUILD_DEMO_BENCHMARK) && AIC_LVGL_BUILD_DEMO_BENCHMARK)
+#define LV_USE_DEMO_WIDGETS 1
+#ifndef LV_FONT_MONTSERRAT_12
+#define LV_FONT_MONTSERRAT_12 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_14
+#define LV_FONT_MONTSERRAT_14 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_16
+#define LV_FONT_MONTSERRAT_16 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_18
+#define LV_FONT_MONTSERRAT_18 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_20
+#define LV_FONT_MONTSERRAT_20 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_24
+#define LV_FONT_MONTSERRAT_24 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_26
+#define LV_FONT_MONTSERRAT_26 1
+#endif
+#endif
+
+#if defined(AIC_LVGL_BUILD_DEMO_MUSIC) && AIC_LVGL_BUILD_DEMO_MUSIC
+#define LV_USE_DEMO_MUSIC 1
+/* Fonts for both upstream compact and large layouts. */
+#ifndef LV_FONT_MONTSERRAT_12
+#define LV_FONT_MONTSERRAT_12 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_16
+#define LV_FONT_MONTSERRAT_16 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_22
+#define LV_FONT_MONTSERRAT_22 1
+#endif
+#ifndef LV_FONT_MONTSERRAT_32
+#define LV_FONT_MONTSERRAT_32 1
+#endif
 #endif
 
 /* Keep diagnostics available without enabling high-frequency logging. */
@@ -196,10 +371,42 @@
 #define LV_USE_DEMO_MUSIC 0
 #endif
 #ifndef LV_USE_FREETYPE
+#if defined(AIC_LVGL_USE_FREETYPE) && AIC_LVGL_USE_FREETYPE
+#define LV_USE_FREETYPE 1
+#else
 #define LV_USE_FREETYPE 0
 #endif
+#endif
+#if LV_USE_FREETYPE
+/* Use the general glyph LRU; avoid the extra power-of-two L1 cache. */
+#ifndef LV_FREETYPE_CACHE_FT_GLYPH_L1
+#define LV_FREETYPE_CACHE_FT_GLYPH_L1 0
+#endif
+/* Native FreeType uses stdio paths (e.g. /data/font.ttf), not LVGL L: paths. */
+#ifndef LV_FREETYPE_USE_LVGL_PORT
+#define LV_FREETYPE_USE_LVGL_PORT 0
+#endif
+#ifndef LV_FREETYPE_CACHE_FT_GLYPH_CNT
+#ifdef AIC_LVGL_FREETYPE_GLYPHS
+#define LV_FREETYPE_CACHE_FT_GLYPH_CNT AIC_LVGL_FREETYPE_GLYPHS
+#else
+#define LV_FREETYPE_CACHE_FT_GLYPH_CNT 64
+#endif
+#endif
+#endif
+#ifndef LV_DRAW_THREAD_STACK_SIZE
+#if LV_USE_FREETYPE
+#define LV_DRAW_THREAD_STACK_SIZE (32 * 1024)
+#else
+#define LV_DRAW_THREAD_STACK_SIZE 4096
+#endif
+#endif
 #ifndef LV_USE_GIF
+#if defined(AIC_LVGL_USE_GIF) && AIC_LVGL_USE_GIF
+#define LV_USE_GIF 1
+#else
 #define LV_USE_GIF 0
+#endif
 #endif
 
 #endif /* LV_CONF_H */

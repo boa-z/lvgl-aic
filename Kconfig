@@ -13,6 +13,15 @@ config AIC_LVGL_USE_DISPLAY
     depends on AIC_LVGL_PORT
     depends on LPKG_MPP
 
+config AIC_LVGL_DISPLAY_ROTATION
+    int "Display rotation (0=0, 1=90, 2=180, 3=270 degrees)"
+    default 0
+    range 0 3
+    depends on AIC_LVGL_USE_DISPLAY
+    help
+      Application-owned display rotation. Allocates a CMA rotation buffer.
+      GE2D is used when available; unsupported geometry uses software.
+
 config AIC_LVGL_USE_TOUCH
     bool "Enable ArtInChip touch integration"
     default y
@@ -47,17 +56,190 @@ config AIC_LVGL_USE_GE2D
     depends on AIC_LVGL_PORT
     depends on LPKG_MPP
 
+config AIC_LVGL_GE2D_TRANSFORM_BYTES
+    int "Combined GE scale/rotate scratch budget (bytes; zero disables)"
+    default 2097152
+    range 0 8388608
+    depends on AIC_LVGL_USE_GE2D
+    help
+        Combined limit for both padded ARGB buffers used by arbitrary-angle
+        scaling. Unsupported geometry/allocation falls back before target DMA.
+
+config AIC_LVGL_GE2D_ALPHA_BYTES
+    int "GE straight-ARGB destination staging budget (bytes; zero disables)"
+    default 2097152
+    range 0 8388608
+    depends on AIC_LVGL_USE_GE2D
+    help
+        GE transforms into one clipped CMA surface; native CPU blending then
+        preserves destination alpha. Additional to recolor/transform budgets.
+        Zero or insufficient storage selects software before any target write.
+        Uncertain DMA retains storage and stops rendering until reboot.
+
+config AIC_LVGL_GE2D_RECOLOR_BYTES
+    int "GE recolor source staging budget (bytes; zero disables)"
+    default 1048576
+    range 0 8388608
+    depends on AIC_LVGL_USE_GE2D
+    help
+        CPU recolor uses the native LVGL kernel in one immutable-source CMA
+        copy, followed by GE transforms. This storage is additional to the
+        arbitrary scale/rotate scratch budget. Failure before DMA falls back;
+        uncertain DMA retains all referenced storage until reboot.
+
+config AIC_LVGL_GE2D_MASK_BYTES
+    int "GE layer mask source staging budget (bytes; zero disables)"
+    default 1048576
+    range 0 8388608
+    depends on AIC_LVGL_USE_GE2D
+    help
+        Native CPU layer masking uses an immutable-source CMA copy, followed
+        by GE transforms/composition. Additional to recolor, transform and
+        destination-alpha budgets. Rejection before DMA selects software;
+        uncertain DMA retains the copy with all other referenced storage.
+
+config AIC_LVGL_GE2D_COLORKEY_BYTES
+    int "GE color-key source staging budget (bytes; zero disables)"
+    default 1048576
+    range 0 8388608
+    depends on AIC_LVGL_USE_GE2D
+    help
+        LVGL range/RGB565/premultiplied or filtered color keys use one
+        immutable straight-ARGB CMA copy before GE composition. Additional to
+        mask, recolor, transform and destination-alpha budgets. Rejection
+        before DMA selects software; uncertain DMA retains the copy.
+
 config AIC_LVGL_USE_MPP_DEC
     bool "Enable ArtInChip MPP image decoder"
     default n
     depends on AIC_LVGL_PORT
     depends on LPKG_MPP
 
-config AIC_LVGL_USE_FT_CACHE
-    bool "Enable optional ArtInChip FreeType cache"
+config AIC_LVGL_MPP_CACHE_BYTES
+    int "MPP decoded-image cache budget (bytes; zero disables)"
+    default 524288
+    range 0 8388608
+    depends on AIC_LVGL_USE_MPP_DEC
+    help
+        Application-owned LRU cache, at most 16 entries. Active decoder users
+        are never evicted. Explicitly invalidate mutable sources before reuse.
+
+config AIC_LVGL_USE_FREETYPE
+    bool "Enable native LVGL FreeType bitmap fonts"
     default n
     depends on AIC_LVGL_PORT
-    depends on LPKG_USING_FREETYPE
+    select LPKG_USING_FREETYPE
+    help
+        Use upstream LVGL 9.6 fonts and its glyph cache. The SDK supplies only
+        the FreeType library; no legacy lvgl-ui font adapter is linked.
+
+config AIC_LVGL_FREETYPE_GLYPHS
+    int "FreeType cached glyph count per font cache"
+    default 64
+    range 8 512
+    depends on AIC_LVGL_USE_FREETYPE
+
+config AIC_LVGL_USE_LOTTIE
+    bool "Enable native LVGL Lottie animation widget"
+    default n
+    depends on AIC_LVGL_PORT
+    select AIC_LVGL_USE_VECTOR
+    help
+        Build the native LVGL 9.6 canvas widget and pinned ThorVG JSON loader.
+        Uses software rendering and caller-owned ARGB8888 buffers. This is
+        the native lv_lottie API, not binary/source compatibility with RLottie.
+        Expressions, external bitmap assets and audio are not enabled.
+
+config AIC_LVGL_USE_SVG
+    bool "Enable native LVGL SVG image decoder"
+    default n
+    depends on AIC_LVGL_PORT
+    select AIC_LVGL_USE_VECTOR
+    help
+        Enable the LVGL 9.6 SVG parser/image decoder over the software vector
+        renderer. Supports file and variable image resources. This is separate
+        from ThorVG's SVG loader and does not enable SVG animation or Lottie.
+
+config AIC_LVGL_SVG_LAYER_BYTES
+    int "Cumulative SVG opacity layers per submission (bytes)"
+    default 4194304
+    range 4096 16777216
+    depends on AIC_LVGL_USE_SVG
+    help
+        Compose group/element opacity after child paints overlap. This bounds
+        eagerly allocated opacity layer pixels per SVG submission, including
+        pending siblings, separately from vector scratch and parser storage.
+        An over-budget or failed isolated element is skipped with a warning.
+
+config AIC_LVGL_USE_VECTOR
+    bool "Enable native vector graphics with internal ThorVG software rendering"
+    default n
+    depends on AIC_LVGL_PORT
+    select RT_USING_CPLUSPLUS
+    help
+        Build the pinned LVGL 9.6 vector API, matrices and internal ThorVG C++
+        renderer as application dependencies. Uses one software draw unit.
+        Does not enable Lottie/SVG loaders or GE vector acceleration.
+
+config AIC_LVGL_VECTOR_SURFACE_BYTES
+    int "Native vector target staging limit (bytes)"
+    default 4194304
+    range 4096 16777216
+    depends on AIC_LVGL_USE_VECTOR
+    help
+        CPU vector drawing uses clipped premultiplied ARGB scratch while
+        preserving the target representation and existing backdrop. This is
+        a combined budget for target/source surfaces, optional A8 coverage
+        and pattern coverage workspace, additional to layer, GE and parser
+        storage. Oversized or failed staging skips that vector task and leaves
+        its target unchanged.
+
+config AIC_LVGL_BUILD_DEMO_WIDGETS
+    bool "Build upstream LVGL widgets demo"
+    default n
+    depends on AIC_LVGL_PORT
+    help
+        Application-owned LVGL 9.6 demo sources and required built-in fonts.
+        Call lv_demo_widgets on the LVGL owner thread after display setup.
+        This option does not start a demo or replace application screens.
+
+config AIC_LVGL_BUILD_DEMO_MUSIC
+    bool "Build upstream LVGL music interface demo"
+    default n
+    depends on AIC_LVGL_PORT
+    help
+        Application-owned upstream music UI, assets and required fonts.
+        This is a visual/animation demo, not the SDK media/audio player.
+        Call lv_demo_music on the UI owner thread after display setup.
+        Native LV_DEMO_MUSIC layout options apply; nothing starts automatically.
+
+config AIC_LVGL_BUILD_DEMO_BENCHMARK
+    bool "Build upstream LVGL rendering benchmark"
+    default n
+    depends on AIC_LVGL_PORT
+    select AIC_LVGL_BUILD_DEMO_WIDGETS
+    help
+        Includes native system/performance monitoring and the widgets scene.
+        Call lv_demo_benchmark on a dedicated active screen on the UI thread.
+        Upstream owns timers and top-layer objects for the whole benchmark.
+        Do not delete/switch its screen while running. Results require hardware.
+
+config AIC_LVGL_USE_GIF
+    bool "Enable native LVGL GIF widget"
+    default n
+    depends on AIC_LVGL_PORT
+    help
+        Use the upstream LVGL 9.6 animated GIF widget. The application owns
+        the source file and the GIF object lifetime; no SDK decoder is linked.
+
+config AIC_LVGL_USE_FT_CACHE
+    bool "Enable FreeType cache statistics and selective purge"
+    default n
+    depends on AIC_LVGL_PORT && AIC_LVGL_USE_FREETYPE
+    help
+        Application-owned SDK-compatible entry statistics and filtered purge.
+        Call between refreshes; referenced glyphs prevent eviction. Counts are
+        native cache entries, not a global font memory budget.
 
 config AIC_LVGL_DEBUG_STATS
     bool "Enable lvgl-aic platform statistics"
@@ -69,4 +251,116 @@ config AIC_LVGL_MANUAL_TEST
     default n
     depends on AIC_LVGL_PORT
 
+config AIC_LVGL_USE_IMG_ROLLER
+    bool "Enable ArtInChip image roller adapted for LVGL 9.6"
+    default n
+    depends on AIC_LVGL_PORT
+
+config AIC_LVGL_USE_SWIPE_V1
+    bool "Enable ArtInChip four-position swipe adapted for LVGL 9.6"
+    default n
+    depends on AIC_LVGL_PORT
+
+config AIC_LVGL_USE_VIDEO_WINDOW
+    bool "Enable ArtInChip transparent video window for LVGL 9.6"
+    default n
+    depends on AIC_LVGL_PORT && AIC_LVGL_USE_GE2D && AIC_LVGL_USE_MPP_DEC
+    help
+        Alpha-zero replacement rectangle for a lower video layer. This widget
+        does not open a camera, start a player or configure a display layer.
+
+config AIC_LVGL_USE_VIN
+    bool "Build application-owned VIN capture session support"
+    default n
+    depends on AIC_LVGL_PORT && AIC_MPP_VIN && AIC_DVP_DRV && AIC_USING_CAMERA
+    help
+        Internal capture lifecycle and explicit frame leases. The application
+        must exclusively own VIN; camera widget integration is a separate layer.
+
 endmenu
+
+config AIC_LVGL_USE_CAMERA
+    bool "Enable application-owned asynchronous camera image widget"
+    default n
+    depends on AIC_LVGL_USE_VIN
+    help
+        Camera control with worker-owned VIN capture and immutable YUV images.
+        Explicit application colorimetry and YUV decoder initialization required.
+        Defaults to LVGL composition; optional video-plane output and barcode
+        decoding require their explicit component features and configuration.
+
+config AIC_LVGL_USE_APNG
+    bool "Build asynchronous application-owned APNG playback"
+    default n
+    depends on AIC_LVGL_PORT && LPKG_MPP && AIC_VE_DRV
+    help
+        Bounded APNG parsing, MPP PNG decode, RGBA composition and timing.
+        Independent of SDK player/audio. Pause, rational rate and replay are
+        available through a worker and immutable RGB frame publication.
+        Native file paths and explicit memory budgets are required.
+        Up to four independent APNG instances share serialized SDK decode.
+        Closing instances keep reservations until all image readers release.
+        Enable the separate APNG image widget option for LVGL integration.
+
+config AIC_LVGL_USE_APNG_WIDGET
+    bool "Build asynchronous LVGL APNG image widget"
+    default n
+    depends on AIC_LVGL_USE_APNG
+    help
+        Application-owned image widget with source replacement, playback,
+        pause, rational rate, replay and asynchronous deletion cleanup.
+
+config AIC_LVGL_USE_PLAYER_SESSION
+    bool "Build application-owned background media playback"
+    default n
+    depends on AIC_LVGL_PORT && AIC_MPP_PLAYER_INTERFACE && AIC_MPP_PLAYER_VIDEO_EXT_RENDER
+    help
+        Worker-side playback session, bounded CMA allocator and immutable
+        RGB/YUV frame publication bridge with deferred decoder-frame return,
+        coherent SDK events and an asynchronous prepare/start/pause/volume/
+        close/seek worker. Uses SDK external-render timing, not a second scheduler.
+        Seek drains readers and rebuilds the SDK session. No video-plane ownership.
+
+config AIC_LVGL_USE_PLAYER
+    bool "Build asynchronous LVGL player widget"
+    default n
+    depends on AIC_LVGL_USE_PLAYER_SESSION
+    help
+        RGB/YUV image widget with deferred source replacement, playback,
+        pause/resume, seek, stop/replay, guarded auto-restart, volume, slave widgets and
+        asynchronous deletion cleanup.
+        Explicit CMA budget and RGB/YUV decoder initialization required.
+
+config AIC_LVGL_USE_VIDEO_PLANE
+    bool "Enable explicit native video-plane sessions"
+    depends on AIC_LVGL_PORT
+    default n
+    help
+        Owner-thread native RGB/YUV frame scanout with exclusive ownership and
+        deferred release after VSync. Does not automatically change UI alpha
+        or bind a widget. Do not combine with unmanaged video-layer writers.
+
+config AIC_LVGL_USE_CANVAS
+    bool "Enable application-owned AIC canvas"
+    default n
+    depends on AIC_LVGL_PORT
+
+config AIC_LVGL_USE_BARCODE
+    bool "Enable application-owned SDK barcode worker adapter"
+    depends on AIC_LVGL_PORT && !AIC_USING_BARCODE_DEMO
+    default n
+    help
+        Links the SDK decoder archive without enabling the SDK barcode demo.
+        Synchronous worker API, CPU-coherent camera Y planes, exclusive decoder
+        use. Vendor internal memory has no shutdown/budget API. D13x verified
+        at compile/link level only. Optional camera widget integration decodes
+        on the VIN worker and delivers callbacks on the LVGL owner. Enabling
+        this alone does not configure/start a camera or register a callback.
+
+config AIC_LVGL_USE_SPI_SDK
+    bool "Enable checked SDK SPI transfer bridge"
+    default n
+    depends on AIC_LVGL_PORT && AIC_QSPI_DRV && RT_USING_SPI
+    help
+        Worker-only checked submission and completion preserving short writes,
+        driver timeouts and HAL status errors. Does not initialize a panel or enable SPI displays.
