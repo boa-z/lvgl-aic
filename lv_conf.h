@@ -47,9 +47,9 @@
 #undef AIC_LVGL_BUILD_DEMO_BENCHMARK
 #define AIC_LVGL_BUILD_DEMO_BENCHMARK 1
 #endif
-#ifdef AIC_LVGL_BUILD_DEMO_METER
-#undef AIC_LVGL_BUILD_DEMO_METER
-#define AIC_LVGL_BUILD_DEMO_METER 1
+#ifdef AIC_LVGL_OFFICIAL_DEMOS
+#undef AIC_LVGL_OFFICIAL_DEMOS
+#define AIC_LVGL_OFFICIAL_DEMOS 1
 #endif
 #ifdef AIC_LVGL_USE_CANVAS
 #undef AIC_LVGL_USE_CANVAS
@@ -309,9 +309,17 @@
 #endif
 #endif
 
-#if defined(AIC_LVGL_BUILD_DEMO_METER) && AIC_LVGL_BUILD_DEMO_METER
-/* Meter labels use the built-in 14px font; vendor ui_font_regular stays
- * a target asset concern, not a component build dependency. */
+#ifdef AIC_LVGL_OFFICIAL_DEMO_MULTI_LANG
+/* multi_lang_demo renders its Chinese strings with LVGL's built-in CJK font
+ * (it falls back to Montserrat 14, which has no CJK glyphs). The demo asks
+ * for the v8 SimSun switch; LVGL 9 ships Source Han Sans SC instead and
+ * demos/official/compat maps the font name. */
+#ifndef LV_FONT_SIMSUN_16_CJK
+#define LV_FONT_SIMSUN_16_CJK 1
+#endif
+#ifndef LV_FONT_SOURCE_HAN_SANS_SC_16_CJK
+#define LV_FONT_SOURCE_HAN_SANS_SC_16_CJK 1
+#endif
 #ifndef LV_FONT_MONTSERRAT_14
 #define LV_FONT_MONTSERRAT_14 1
 #endif

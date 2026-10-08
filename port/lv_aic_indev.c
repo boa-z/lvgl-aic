@@ -12,6 +12,7 @@
  */
 
 #include "lv_aic_indev.h"
+#include "lv_aic_display.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -125,16 +126,21 @@ static int32_t lv_aic_scale_touch_coordinate(int32_t value, int32_t source_range
 
 static void lv_aic_touch_transform(const lv_aic_touch_ctx_t *ctx, int16_t *x, int16_t *y)
 {
-    const int32_t physical_width = lv_display_get_original_horizontal_resolution(ctx->display);
-    const int32_t physical_height = lv_display_get_original_vertical_resolution(ctx->display);
-    int32_t transformed_x = lv_aic_scale_touch_coordinate(*x, ctx->info.range_x, physical_width);
-    int32_t transformed_y = lv_aic_scale_touch_coordinate(*y, ctx->info.range_y, physical_height);
+    /* The touch panel covers the scanout panel; in virtual-resolution mode
+     * that differs from the LVGL resolution, so scale to the panel first and
+     * then map through the letterbox fit. */
+    int32_t panel_width = lv_display_get_original_horizontal_resolution(ctx->display);
+    int32_t panel_height = lv_display_get_original_vertical_resolution(ctx->display);
+    lv_aic_display_panel_size(ctx->display, &panel_width, &panel_height);
+    int32_t transformed_x = lv_aic_scale_touch_coordinate(*x, ctx->info.range_x, panel_width);
+    int32_t transformed_y = lv_aic_scale_touch_coordinate(*y, ctx->info.range_y, panel_height);
 
     /* LVGL 9.6 applies display rotation to indev points after this callback.
      * Keep the callback in native physical coordinates to avoid a double
      * rotation. */
-    transformed_x = LV_CLAMP(0, transformed_x, physical_width - 1);
-    transformed_y = LV_CLAMP(0, transformed_y, physical_height - 1);
+    transformed_x = LV_CLAMP(0, transformed_x, panel_width - 1);
+    transformed_y = LV_CLAMP(0, transformed_y, panel_height - 1);
+    lv_aic_display_panel_to_logical(ctx->display, &transformed_x, &transformed_y);
     *x = (int16_t)transformed_x;
     *y = (int16_t)transformed_y;
 }

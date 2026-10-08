@@ -28,7 +28,7 @@ option(AIC_BUILD_MANUAL_PREVIEW "Build native software reference screenshots" OF
 option(AIC_BUILD_FREETYPE_TESTS "Test native FreeType and glyph caches" OFF)
 option(AIC_BUILD_SDL_SMOKE "Build the interactive SDL2 smoke window" OFF)
 option(AIC_BUILD_MUSIC_DEMO_TESTS "Render the target music demo configuration" OFF)
-option(AIC_BUILD_METER_DEMO_TESTS "Test the application-owned meter cluster demo" OFF)
+option(AIC_BUILD_OFFICIAL_DEMO_TESTS "Run the official SDK demos through the demo runner" OFF)
 option(AIC_BUILD_TARGET_DEMO_TESTS "Render the target widgets/benchmark configuration" OFF)
 option(AIC_BUILD_SDL_DEMOS "Build the official LVGL 9.6 demos for the SDL target" OFF)
 if(AIC_BUILD_SDL_DEMOS AND NOT AIC_BUILD_SDL_SMOKE)
@@ -232,6 +232,7 @@ set(AIC_SOURCES
     "${AIC_ROOT}/image/mpp/lv_aic_yuv_image.c"
     "${AIC_ROOT}/port/lv_aic.c"
     "${AIC_ROOT}/port/lv_aic_display.c"
+    "${AIC_ROOT}/port/lv_aic_display_fit.c"
     "${AIC_ROOT}/port/lv_aic_indev.c"
     "${AIC_ROOT}/common/lv_aic_pixel_format.c"
     "${AIC_ROOT}/image/mpp/lv_aic_mpp_format.c"
@@ -239,6 +240,15 @@ set(AIC_SOURCES
     "${AIC_ROOT}/image/mpp/lv_aic_mpp_decoder.c")
 list(APPEND AIC_SOURCES "${AIC_ROOT}/image/mpp/lv_aic_bmp_header.c")
 add_library(lvgl_aic STATIC ${AIC_SOURCES})
+
+# Pure geometry: no LVGL, always built.
+add_executable(lvgl_aic_display_fit_contract display_fit_contract.c
+    "${AIC_ROOT}/port/lv_aic_display_fit.c")
+target_include_directories(lvgl_aic_display_fit_contract PRIVATE "${AIC_ROOT}/port")
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(lvgl_aic_display_fit_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+add_test(NAME lvgl_aic_display_fit_contract COMMAND lvgl_aic_display_fit_contract)
 target_include_directories(lvgl_aic
     PUBLIC "${AIC_ROOT}/include"
     PRIVATE "${AIC_ROOT}/compat"
@@ -691,7 +701,8 @@ if(AIC_SDK_ROOT)
         target_compile_options(lvgl_aic_yuv_mpp_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     endif()
     add_test(NAME lvgl_aic_yuv_mpp_contract COMMAND lvgl_aic_yuv_mpp_contract)
-    add_executable(lvgl_aic_display_flush_contract display_flush_contract.c)
+    add_executable(lvgl_aic_display_flush_contract display_flush_contract.c
+        "${AIC_ROOT}/port/lv_aic_display_fit.c")
     target_include_directories(lvgl_aic_display_flush_contract PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/display_stubs" "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs"
         "${AIC_ROOT}/include" "${AIC_ROOT}/compat" "${AIC_ROOT}/draw/ge2d"
@@ -1520,17 +1531,84 @@ if(AIC_BUILD_MUSIC_DEMO_TESTS)
     set_tests_properties(lvgl_aic_music_demo_contract PROPERTIES TIMEOUT 60)
 endif()
 
-if(AIC_BUILD_METER_DEMO_TESTS)
-    target_compile_definitions(lvgl PUBLIC AIC_LVGL_BUILD_DEMO_METER=1)
-    add_executable(lvgl_aic_meter_demo_contract meter_demo_contract.c
-        "${AIC_ROOT}/demos/meter_demo/meter_ui.c")
-    target_include_directories(lvgl_aic_meter_demo_contract PRIVATE "${AIC_ROOT}")
-    target_link_libraries(lvgl_aic_meter_demo_contract PRIVATE lvgl)
+if(AIC_BUILD_OFFICIAL_DEMO_TESTS)
+    # Official SDK demos compiled unmodified, one object library per demo with
+    # the same renames as the target build. Vendor code: warnings allowed.
+    set(AIC_OFFICIAL_DEMOS meter:meter_demo dashboard:dashboard_demo slide:slide_demo
+        multi_lang:multi_lang_demo demo_hub:demo_hub image:image_demo)
+    set(AIC_OFFICIAL_OBJECTS)
+    set(AIC_OFFICIAL_DEFINES)
+    # The same Kconfig symbol as on target: lv_conf.h then enables the CJK font
+    # multi_lang_demo uses. PUBLIC so the demo sources see it too.
+    target_compile_definitions(lvgl PUBLIC AIC_LVGL_OFFICIAL_DEMO_MULTI_LANG=1)
+    foreach(entry IN LISTS AIC_OFFICIAL_DEMOS)
+        string(REPLACE ":" ";" parts "${entry}")
+        list(GET parts 0 name)
+        list(GET parts 1 dir)
+        string(TOUPPER "${name}" upper)
+        # Any depth (multi_lang_demo/screen), as the target SConscript does.
+        file(GLOB_RECURSE demo_sources "${AIC_ROOT}/demos/official/${dir}/*.c")
+        list(FILTER demo_sources EXCLUDE REGEX "/assets/")
+        # Every directory is an include root (demo_hub's "./components/x.h").
+        file(GLOB_RECURSE demo_entries LIST_DIRECTORIES true "${AIC_ROOT}/demos/official/${dir}/*")
+        set(demo_include_dirs "${AIC_ROOT}/demos/official/${dir}")
+        foreach(entry_path IN LISTS demo_entries)
+            if(IS_DIRECTORY "${entry_path}" AND NOT entry_path MATCHES "/assets")
+                list(APPEND demo_include_dirs "${entry_path}")
+            endif()
+        endforeach()
+        add_library(lvgl_aic_official_${name} OBJECT ${demo_sources})
+        target_include_directories(lvgl_aic_official_${name} PRIVATE
+            "${AIC_ROOT}/demos/official/compat" ${demo_include_dirs}
+            "${CMAKE_CURRENT_LIST_DIR}/official_stubs" "${AIC_ROOT}/include"
+            "${AIC_ROOT}/compat" "${CMAKE_CURRENT_LIST_DIR}/mpp_stubs"
+            # SDK headers demos reach through lv_aic_player.h (aic_player.h).
+            "${AIC_SDK_ROOT}/packages/artinchip/mpp/include"
+            "${AIC_SDK_ROOT}/packages/artinchip/mpp/middle_media/player/include"
+            "${AIC_SDK_ROOT}/bsp/artinchip/include/drv"
+            "${AIC_SDK_ROOT}/bsp/artinchip/include/uapi")
+        # The target toolchain (older GCC) accepts the vendor code's implicit
+        # declarations (missing <string.h> includes) with a warning; host GCC
+        # 14+ makes them errors. Genuinely missing functions still fail at link.
+        target_compile_options(lvgl_aic_official_${name} PRIVATE
+            -Wno-error=implicit-function-declaration)
+        target_compile_definitions(lvgl_aic_official_${name} PRIVATE
+            ui_init=lv_aic_official_${name}_ui_init
+            ui_font_regular=lv_aic_official_${name}_font
+            AIC_OFFICIAL_DEMO_NAME=${name})
+        # image_demo draws on the component canvas widget (AIC_LVGL_USE_CANVAS).
+        target_compile_definitions(lvgl_aic_official_${name} PRIVATE AIC_LVGL_USE_CANVAS=1)
+        if(name STREQUAL "demo_hub") # as OFFICIAL_RENAMES in the SConscript
+            target_compile_definitions(lvgl_aic_official_${name} PRIVATE
+                dashboard_ui_init=demo_hub_dashboard_ui_init)
+        endif()
+        target_link_libraries(lvgl_aic_official_${name} PRIVATE lvgl)
+        # v8 names for files that never include aic_ui.h (as on target).
+        target_compile_options(lvgl_aic_official_${name} PRIVATE
+            -include "${AIC_ROOT}/demos/official/compat/lv_aic_v8_compat.h")
+        # The SDK sources are C99-era (e.g. `static void f()` timer callbacks);
+        # match the target dialect instead of the host compiler's C23 default.
+        set_target_properties(lvgl_aic_official_${name} PROPERTIES
+            C_STANDARD 11 C_EXTENSIONS ON)
+        list(APPEND AIC_OFFICIAL_OBJECTS $<TARGET_OBJECTS:lvgl_aic_official_${name}>)
+        list(APPEND AIC_OFFICIAL_DEFINES AIC_LVGL_OFFICIAL_DEMO_${upper})
+    endforeach()
+    add_executable(lvgl_aic_official_demo_contract official_demo_contract.c
+        "${AIC_ROOT}/demos/official/lv_aic_official_demo.c"
+        "${CMAKE_CURRENT_LIST_DIR}/official_stubs/official_display_stub.c"
+        "${AIC_ROOT}/widgets/lv_aic_canvas.c" ${AIC_OFFICIAL_OBJECTS})
+    target_include_directories(lvgl_aic_official_demo_contract PRIVATE "${AIC_ROOT}"
+        "${AIC_ROOT}/include" "${AIC_ROOT}/compat")
+    target_compile_definitions(lvgl_aic_official_demo_contract PRIVATE ${AIC_OFFICIAL_DEFINES}
+        AIC_LVGL_USE_CANVAS=1)
+    target_link_libraries(lvgl_aic_official_demo_contract PRIVATE lvgl)
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(lvgl_aic_meter_demo_contract PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        set_source_files_properties(official_demo_contract.c
+            "${AIC_ROOT}/demos/official/lv_aic_official_demo.c"
+            PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror;-UNDEBUG")
     endif()
-    add_test(NAME lvgl_aic_meter_demo_contract COMMAND lvgl_aic_meter_demo_contract)
-    set_tests_properties(lvgl_aic_meter_demo_contract PROPERTIES TIMEOUT 60)
+    add_test(NAME lvgl_aic_official_demo_contract COMMAND lvgl_aic_official_demo_contract)
+    set_tests_properties(lvgl_aic_official_demo_contract PROPERTIES TIMEOUT 120)
 endif()
 
 add_executable(lvgl_aic_spi_overlap_worker_contract spi_overlap_worker_contract.c

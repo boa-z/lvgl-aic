@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithMeter, [switch]$WithCanCapture, [switch]$WithVector, [switch]$WithSvg, [switch]$WithLottie, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT, [ValidatePattern('^[a-z0-9][a-z0-9-]{0,31}$')][string]$EvidenceTag)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithMeter, [switch]$WithDashboard, [ValidateSet('meter','dashboard','slide','multi_lang','demo_hub','image')][string[]]$OfficialDemos=@(), [switch]$VirtualRes, [switch]$WithCanCapture, [switch]$WithVector, [switch]$WithSvg, [switch]$WithLottie, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT, [ValidatePattern('^[a-z0-9][a-z0-9-]{0,31}$')][string]$EvidenceTag)
 $ErrorActionPreference='Stop'
 if ($WithSvg -or $WithLottie) { $WithVector=$true }
 if (-not $SdkRoot) {
@@ -16,6 +16,12 @@ Set-Location $root
 if ($WithFonts -and $Phase -eq 'gate1') { throw '-WithFonts requires the mpp or ge2d resource profile' }
 if ($WithAicp -and $Phase -eq 'gate1') { throw '-WithAicp requires the mpp or ge2d resource profile' }
 if ($WithGif -and $Phase -eq 'gate1') { throw '-WithGif requires the mpp or ge2d resource profile' }
+# demo_hub's audio/video apps are built on the media player widget.
+if ($OfficialDemos -contains 'demo_hub') { $WithPlayer=[switch]$true }
+# image_demo: FreeType lyrics on the component canvas widget.
+if ($OfficialDemos -contains 'image') { $WithFonts=[switch]$true }
+# 8.8 MB + 3.6 MB of assets plus the other demos exceed the 14 MB rodata.
+if (($OfficialDemos -contains 'demo_hub') -and ($OfficialDemos -contains 'image')) { throw 'demo_hub and image do not fit in rodata together; build them separately' }
 if ($WithPlayer -and $Phase -eq 'gate1') { throw '-WithPlayer requires mpp or ge2d' }
 if ($WithApng -and $Phase -eq 'gate1') { throw '-WithApng requires mpp or ge2d' }
 if ($WithCamera) {
@@ -46,7 +52,11 @@ if ($WithSpi) { $variant += '-spi' }
 if ($WithCamera) { $variant += '-camera' }
 if ($WithDemos) { $variant += '-demos' }
 if ($WithMusic) { $variant += '-music' }
-if ($WithMeter) { $variant += '-meter' }
+# Official SDK demos (demos/official): -OfficialDemos meter,dashboard,slide;
+# -WithMeter/-WithDashboard are shorthands.
+$OfficialDemos=@(@($OfficialDemos) + $(if ($WithMeter) { 'meter' }) + $(if ($WithDashboard) { 'dashboard' }) | Where-Object { $_ } | Sort-Object -Unique)
+if ($OfficialDemos.Count) { $variant += '-od-' + ($OfficialDemos -join '-') }
+if ($VirtualRes) { $variant += '-vres' }
 if ($WithCanCapture) { $variant += '-cancap' }
 if ($WithVector) { $variant += '-vector' }
 if ($WithSvg) { $variant += '-svg' }
@@ -104,7 +114,7 @@ if ($Phase -eq 'ge2d') {
 $defPath=Join-Path $root "target/configs/$def"
 $originalDef=[IO.File]::ReadAllBytes($defPath)
 try {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $WithMeter -or $WithCanCapture -or $WithVector) {
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $OfficialDemos.Count -or $VirtualRes -or $WithCanCapture -or $WithVector) {
         [IO.File]::WriteAllBytes("$evidence/defconfig-original", $originalDef)
         $settings=@("CONFIG_AIC_LVGL_DISPLAY_ROTATION=$([int]($Rotation / 90))")
         if ($WithFonts) { $settings += @('CONFIG_AIC_LVGL_USE_FREETYPE=y', 'CONFIG_AIC_LVGL_USE_FT_CACHE=y', 'CONFIG_LPKG_USING_FREETYPE=y', 'CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64') }
@@ -118,7 +128,14 @@ try {
         if ($WithSvg) { $settings += 'CONFIG_AIC_LVGL_USE_SVG=y' }
         if ($WithVector) { $settings += 'CONFIG_AIC_LVGL_USE_VECTOR=y' }
         if ($WithMusic) { $settings += 'CONFIG_AIC_LVGL_BUILD_DEMO_MUSIC=y' }
-        if ($WithMeter) { $settings += 'CONFIG_AIC_LVGL_BUILD_DEMO_METER=y' }
+        # Official SDK demos are 1024x600 designs: imply the virtual resolution.
+        if ($OfficialDemos.Count) { $settings += @('CONFIG_AIC_LVGL_OFFICIAL_DEMOS=y', 'CONFIG_AIC_LVGL_VIRTUAL_RES=y', 'CONFIG_AIC_LVGL_MPP_CACHE_ENTRIES=64') }
+        if ($OfficialDemos -contains 'image') { $settings += 'CONFIG_AIC_LVGL_USE_CANVAS=y' }
+        foreach ($demo in @('meter','dashboard','slide','multi_lang','demo_hub','image')) {
+            $symbol='CONFIG_AIC_LVGL_OFFICIAL_DEMO_' + $demo.ToUpper()
+            $settings += $(if ($OfficialDemos -contains $demo) { "$symbol=y" } else { "# $symbol is not set" })
+        }
+        if ($VirtualRes) { $settings += 'CONFIG_AIC_LVGL_VIRTUAL_RES=y' }
         if ($WithCanCapture) { $settings += 'CONFIG_AIC_LVGL_USE_CAN_CAPTURE=y' }
         if ($WithDemos) { $settings += @('CONFIG_AIC_LVGL_BUILD_DEMO_WIDGETS=y','CONFIG_AIC_LVGL_BUILD_DEMO_BENCHMARK=y') }
         if ($WithCamera) { $settings += @('CONFIG_AIC_MPP_VIN=y','CONFIG_AIC_LVGL_USE_VIN=y','CONFIG_AIC_LVGL_USE_CAMERA=y') }
@@ -135,7 +152,7 @@ try {
     Run-Step 'app-config' @($scons,"--apply-def=$def")
     Run-Step 'app-build' @($scons,"-j$Jobs")
 } finally {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $WithMeter -or $WithCanCapture -or $WithVector) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $OfficialDemos.Count -or $VirtualRes -or $WithCanCapture -or $WithVector) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
 }
 $app='output/'+($def -replace '_defconfig$','')+'/images'
 $checkArgs=@("$PSScriptRoot/check_integration.py",'--root','.', '--map',"$app/d13x.map",'--phase',$Phase)
@@ -151,7 +168,7 @@ if ($WithSpi) { $checkArgs += '--with-spi' }
 if ($WithCamera) { $checkArgs += '--with-camera' }
 if ($WithDemos) { $checkArgs += '--with-demos' }
 if ($WithMusic) { $checkArgs += '--with-music' }
-if ($WithMeter) { $checkArgs += '--with-meter' }
+if ($OfficialDemos.Count) { $checkArgs += @('--official-demos', ($OfficialDemos -join ',')) }
 if ($WithCanCapture) { $checkArgs += '--with-can-capture' }
 if ($WithVector) { $checkArgs += '--with-vector' }
 if ($WithLottie) { $checkArgs += '--with-lottie' }

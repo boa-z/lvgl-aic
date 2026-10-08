@@ -12,7 +12,7 @@
 #include "lv_aic_gif_test.h"
 #include "lv_aic_apng_test.h"
 #include "lv_aic_can_capture.h"
-#include "lv_aic_meter_test.h"
+#include "lv_aic_demo_test.h"
 #include "lv_aic_plane_test.h"
 #include "lv_img_roller.h"
 #include "lv_swipe_v1.h"
@@ -148,8 +148,8 @@ static void lv_aic_manual_timer_callback(lv_timer_t *timer)
 #if defined(AIC_LVGL_USE_APNG_WIDGET) && AIC_LVGL_USE_APNG_WIDGET
     lv_aic_apng_test_poll();
 #endif
-#if defined(AIC_LVGL_BUILD_DEMO_METER) && AIC_LVGL_BUILD_DEMO_METER
-    lv_aic_meter_test_poll();
+#if defined(AIC_LVGL_OFFICIAL_DEMOS) && AIC_LVGL_OFFICIAL_DEMOS
+    lv_aic_demo_test_poll();
 #endif
 #if defined(AIC_LVGL_USE_CAN_CAPTURE) && AIC_LVGL_USE_CAN_CAPTURE
     lv_aic_can_capture_poll();
@@ -928,6 +928,11 @@ void lv_aic_manual_test_deinit(void)
 #endif
 #if defined(AIC_LVGL_USE_APNG_WIDGET) && AIC_LVGL_USE_APNG_WIDGET
     lv_aic_apng_test_deinit();
+#endif
+    /* A running official demo owns a screen and timers; tear it down with
+     * the page instead of leaving it behind. */
+#if defined(AIC_LVGL_OFFICIAL_DEMOS) && AIC_LVGL_OFFICIAL_DEMOS
+    lv_aic_demo_test_deinit();
 #endif
 #if LV_AIC_WIDGET_TEST
     if (lv_aic_widget_root) lv_obj_delete(lv_aic_widget_root);

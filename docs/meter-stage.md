@@ -1,3 +1,8 @@
+> **Superseded (2026-10-07).** This adapted 800x480 port was retired in favour of the
+> verbatim SDK meter under `demos/official/` on the virtual-resolution display
+> ([aic-demo-goals.md](aic-demo-goals.md), [virtual-resolution.md](virtual-resolution.md)).
+> Kept for its measurements and the MPP cache findings, which remain in the component.
+
 # Meter cluster demo stage (G1)
 
 Application-owned port of `packages/artinchip/lvgl-ui/aic_demo/meter_demo/`
@@ -23,9 +28,15 @@ mailbox pattern.
 - Bitmap widgets share one uniform scale (`lv_image_set_scale` about the
   top-left + `meter_fit()` positions) so the 1024x600 design letterboxes
   into any panel (800x480 -> zoom 200); background centers about its own
-  pivot. Needle strip frames stay vendored under `assets/point` for
-  phase 2 (scaled-rotation board validation); until then the reference
-  `LV_METER_SIMPLE_POINT` rotation path runs on all targets.
+  pivot. The overlay root zeroes the default theme padding (~20 px),
+  otherwise every child lands offset by the padding.
+- Needle: reference non-SIMPLE strip path. Frames `point_00001..74` swap
+  without rotation; the right half rotates `point_00075` about (210, 210).
+  The object is placed so the pivot lands on the scaled dial center
+  (`fit(design + pivot) - pivot`, since LVGL keeps the pivot fixed while
+  scaling). Frame 75 is pre-scaled once into an owned ARGB8888 draw buffer
+  (offscreen canvas) and rotated at scale 1.0: rotating the scaled strip
+  frame needs the GE2D copy+scale+rotate multipass on every redraw.
 - `ui_init()` is omitted so several demos can link together;
   `meter_ui_init()` is the entry (`meter_ui_configure()` first when
   non-defaults are wanted). New test-only APIs use the file prefix:
@@ -58,8 +69,8 @@ mailbox pattern.
   there into `rodata.fatfs` (14 MB partition, mounted at `/rodata`;
   `L:` maps to `/`). `packages/` sources are not referenced at build.
 - Binding: background `bg/bg_red.jpg`, three `warning/*.png`, all digit/
-  level/gear images via `lv_image` (MPP FILE decode); needle stays on the
-  simple rotation path, strip frames vendored for phase 2.
+  level/gear images via `lv_image` (MPP FILE decode), needle strip frames
+  bound per step.
 
 ## Board evidence (`demo-meter-toplayer` image, 2026-10-07)
 
@@ -115,11 +126,43 @@ mailbox pattern.
 - 待板级：刷机 → `lv_aic_meter_test show` → `lv_aic_capture dump`，
   确认背景 jpg + 3 警告 png 解码显示与 timer 跑帧。
 
-## Open (target/board)
+## Board run (2026-10-07, CAN capture): layout, needle and frame rate
 
-- Asset binding (`<root>/bg/bg_red.jpg` etc. via `lv_image` + MPP FILE
-  JPEG/PNG) needs `rodata/lvgl_data` packaging and a `-meter` image
-  (`build.ps1 -Phase ge2d -WithMeter -EvidenceTag ...`).
-- Board: single-display点亮 + `lv_aic_capture` 导出 + 9.1/9.6 fps/RAM
-  对比（目标差值 ≤10% 或解释）；触摸无交互需求，属纯展示页。
-- `dashboard_demo` 与本页管线重叠，G1 板级收口后再复用接入。
+Frames dumped with `tools/sdk/can_capture.py --trigger` (PCAN-USB, CRC
+verified). Evidence: SDK `output/lvgl-evidence/board-2026-10-07-meter-cancap/`
+(`meter-*.png`, `serial-*.log`).
+
+- Layout: the first dump showed the whole dial shifted (+20, +27) and
+  cropped right/bottom: default theme padding on the overlay root. Fixed;
+  the host contract now asserts a child's panel coordinates (it fails
+  without the fix).
+- Needle: no needle was drawn with assets (strip binding was pending).
+  Bound; `meter-right-half.png` shows the rotated red frame 75 pivoting
+  on the dial center.
+- `lv_aic_meter_test status [-v]` reports timer fires, the on-screen FPS
+  (presented frames per second, now shown top right as in the reference),
+  MPP cache hits/misses and GE2D interval counters; `-v` lists cache
+  entries. The gate raises the MPP cache budget to 4 MiB while the meter
+  runs (restored on close); `-WithMeter` builds use 64 cache entries.
+
+Frame rate, 800x480, meter running (FPS from `status`):
+
+| Change | Left half (frame swap) | Right half (rotate frame 75) |
+|--------|------------------------|------------------------------|
+| strip bound, 512 KiB / 16-entry cache | 5-6 | not sampled |
+| 4 MiB budget | 14 | 4 |
+| MPP cache shares GE/SW stride variants (no duplicate background) | 15-16 | 6-7 |
+| frame 75 pre-scaled, single-pass rotate | 15-17 | 9-19 (~14) |
+
+The cache dump explained the stalls: the GE2D unit opens images with
+`stride_align=false` while LVGL's SW unit defaults to `true`, so every
+image drawn by both was cached twice (two 1.87 MB backgrounds evicted
+everything else). The left half stays bounded by one needle PNG decode per
+step (75 distinct frames do not fit a cache budget).
+
+## Open
+
+- 9.1/9.6 fps/RAM comparison against the SDK reference build.
+- Left-half decode cost: pre-decoding the 74 strip frames at design zoom
+  would need ~13 MB; a smaller option is caching only every other frame.
+- `dashboard_demo` reuses this pipeline (next goal).

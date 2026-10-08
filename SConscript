@@ -87,18 +87,58 @@ if demo_enabled:
                 else:
                     relative = os.path.relpath(directory, cwd).replace(os.sep, '/')
                     src += Glob(relative + '/' + name, ondisk=True, source=True)
-if GetDepend('AIC_LVGL_BUILD_DEMO_METER'):
-    src += Glob('demos/meter_demo/*.c')
-    # Vendored vendor assets ride the normal INSTALL -> rodata.fatfs
-    # pipeline (dst is resolved under the image output tree by
-    # fsinstall.py, then packed from there by makefatfs.py).
-    # The trailing separator is load-bearing: fsinstall.py derives the
-    # destination suffix with str.replace(srcpath, ''), so without it the
-    # remainder is drive-rooted and files scatter outside the image tree
-    # (legacy SConscripts always pass 'assets/').
-    group += DefineGroup('Application-LVGL-Meter-Assets', [],
-                         depend=['AIC_LVGL_BUILD_DEMO_METER'],
-                         INSTALL=[('demos/meter_demo/assets/', 'rodata/lvgl_data')])
+# Official SDK demos, vendored verbatim under demos/official/<sdk dir>.
+# (Kconfig symbol, runner name, SDK aic_demo directory)
+OFFICIAL_DEMOS = (('AIC_LVGL_OFFICIAL_DEMO_METER', 'meter', 'meter_demo'),
+                  ('AIC_LVGL_OFFICIAL_DEMO_DASHBOARD', 'dashboard', 'dashboard_demo'),
+                  ('AIC_LVGL_OFFICIAL_DEMO_SLIDE', 'slide', 'slide_demo'),
+                  ('AIC_LVGL_OFFICIAL_DEMO_MULTI_LANG', 'multi_lang', 'multi_lang_demo'),
+                  ('AIC_LVGL_OFFICIAL_DEMO_DEMO_HUB', 'demo_hub', 'demo_hub'),
+                  ('AIC_LVGL_OFFICIAL_DEMO_IMAGE', 'image', 'image_demo'))
+
+
+def official_installs(name, sdk_dir):
+    """(source relative to the demo directory, rodata destination) pairs.
+    Default: assets/ -> rodata/lvgl_data/<name>. A source file installs into
+    a destination ending in '/'."""
+    if name == 'demo_hub':
+        # Per-resolution sets; the virtual 1024x600 display takes that one.
+        return [('assets/1024x600/lvgl_data/', 'rodata/lvgl_data/demo_hub')]
+    if name == 'image':
+        # Images under its own path, and only the font it opens at the
+        # hard-coded /rodata/lvgl_data/font/ (Lato-Regular.ttf is unused).
+        assets = os.path.join(cwd, 'demos', 'official', sdk_dir, 'assets')
+        return ([('assets/' + f, 'rodata/lvgl_data/image/') for f in sorted(os.listdir(assets))
+                 if os.path.isfile(os.path.join(assets, f))] +
+                [('assets/font/DroidSansFallback.ttf', 'rodata/lvgl_data/font/')])
+    return [('assets/', 'rodata/lvgl_data/' + name)]
+
+
+# Extra global symbols renamed per demo where two demos define the same one
+# (demo_hub's dashboard app and dashboard_demo both have dashboard_ui_init).
+OFFICIAL_RENAMES = {'demo_hub': ['dashboard_ui_init']}
+
+
+def official_tree(sdk_dir):
+    """C sources and include directories of a vendored demo (any depth,
+    e.g. multi_lang_demo/screen), excluding its assets. Every directory is an
+    include root: demo_hub includes "./components/x.h" relative to app/common."""
+    root = os.path.join(cwd, 'demos', 'official', sdk_dir)
+    sources, paths = [], []
+    for directory, subdirs, files in os.walk(root):
+        subdirs[:] = sorted(d for d in subdirs if d != 'assets')
+        paths.append(directory)
+        # Relative to this SConscript so objects land in the variant (output)
+        # tree; an absolute File() is built in place, inside the submodule.
+        relative = os.path.relpath(directory, cwd).replace(os.sep, '/')
+        sources += [File(relative + '/' + f) for f in sorted(files) if f.endswith('.c')]
+    return sources, paths
+
+
+official_demos = []
+if GetDepend('AIC_LVGL_OFFICIAL_DEMOS'):
+    src += [File('demos/official/lv_aic_official_demo.c')]
+    official_demos = [demo for demo in OFFICIAL_DEMOS if GetDepend(demo[0])]
 if GetDepend('AIC_LVGL_USE_LOTTIE'):
     src = [source for source in src if os.path.basename(str(source)) != 'lv_lottie.c']
     src += [File('compat/lv_aic_lottie.c'), File('widgets/lv_aic_lottie_resource.c')]
@@ -109,6 +149,31 @@ includes = [os.path.join(lvgl_root, 'src', 'widgets', 'image'), os.path.join(lvg
             os.path.join(lvgl_root, 'src', 'osal'), os.path.join(lvgl_root, 'env_support', 'rt-thread')]
 group = DefineGroup('Application-LVGL-9.6', src, depend=['AIC_LVGL_PORT'],
     CPPPATH=includes, CPPDEFINES=['LV_KCONFIG_IGNORE=1', 'LV_BUILD_EXAMPLES=0', 'LV_BUILD_DEMOS=' + ('1' if demo_enabled else '0')])
+for symbol, name, sdk_dir in official_demos:
+    # One group per demo so its LOCAL_ defines stay private: the SDK sources
+    # are compiled unmodified, with ui_init/ui_font_regular renamed so several
+    # demos link together, and a per-demo storage path (compat/aic_ui.h turns
+    # the AIC_OFFICIAL_DEMO_NAME token into "/rodata/lvgl_data/<name>").
+    # Assets ride INSTALL -> rodata.fatfs; the trailing separator is
+    # load-bearing: fsinstall.py derives the destination suffix with
+    # str.replace(srcpath, ''), otherwise files scatter outside the image.
+    demo_dir = 'demos/official/' + sdk_dir
+    demo_sources, demo_paths = official_tree(sdk_dir)
+    compat_header = os.path.join(cwd, 'demos', 'official', 'compat',
+                                 'lv_aic_v8_compat.h').replace('\\', '/')
+    group += DefineGroup('Application-LVGL-Official-' + name,
+                         demo_sources,
+                         depend=[symbol],
+                         # v8 names for files that never include aic_ui.h.
+                         LOCAL_CCFLAGS=' -include ' + compat_header,
+                         LOCAL_CPPPATH=[os.path.join(cwd, 'demos', 'official', 'compat')] + demo_paths,
+                         LOCAL_CPPDEFINES=['ui_init=lv_aic_official_%s_ui_init' % name,
+                                           'ui_font_regular=lv_aic_official_%s_font' % name,
+                                           'AIC_OFFICIAL_DEMO_NAME=' + name] +
+                                          ['%s=%s_%s' % (sym, name, sym)
+                                           for sym in OFFICIAL_RENAMES.get(name, [])],
+                         INSTALL=[(demo_dir + '/' + source, destination)
+                                  for source, destination in official_installs(name, sdk_dir)])
 if GetDepend('AIC_LVGL_USE_VECTOR'):
     # Keep C++ flags local to the pinned software vector backend.
     excluded_loaders = ('tvgSvg', 'tvgXmlParser')
@@ -150,9 +215,10 @@ if demo_enabled and GetDepend('AIC_LVGL_SMOKE_APP'):
     if GetDepend('AIC_LVGL_BUILD_DEMO_BENCHMARK'):
         for api in ('lv_demo_benchmark', 'lv_demo_benchmark_set_end_cb', 'lv_demo_benchmark_summary_display'):
             Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
-if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_BUILD_DEMO_METER'):
-    for api in ('configure', 'init', 'destroy', 'timer_fires', 'get_speed_step', 'get_needle_angle'):
-        Env.AppendUnique(LINKFLAGS=['-Wl,-u,meter_ui_' + api])
+if GetDepend('AIC_LVGL_SMOKE_APP') and official_demos:
+    for api in ('lv_aic_official_demo_show', 'lv_aic_official_demo_close',
+                'lv_aic_demo_test_poll', 'lv_aic_demo_test_deinit'):
+        Env.AppendUnique(LINKFLAGS=['-Wl,-u,' + api])
 if GetDepend('AIC_LVGL_SMOKE_APP') and GetDepend('AIC_LVGL_USE_CAN_CAPTURE'):
     for api in ('poll', 'deinit'):
         Env.AppendUnique(LINKFLAGS=['-Wl,-u,lv_aic_can_capture_' + api])

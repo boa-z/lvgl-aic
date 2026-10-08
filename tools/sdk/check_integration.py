@@ -269,7 +269,8 @@ def main():
     parser.add_argument("--with-camera", action="store_true")
     parser.add_argument("--with-demos", action="store_true")
     parser.add_argument("--with-music", action="store_true")
-    parser.add_argument("--with-meter", action="store_true")
+    parser.add_argument("--official-demos", default="",
+                        help="comma-separated official SDK demos expected in the image")
     parser.add_argument("--with-can-capture", action="store_true")
     parser.add_argument("--with-vector", action="store_true")
     parser.add_argument("--with-svg", action="store_true")
@@ -404,19 +405,30 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("Music demo live symbol absent: " + symbol)
         print("Upstream music UI final link: PASS (not audio playback)")
-    feature = "AIC_LVGL_BUILD_DEMO_METER"
-    enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
-    defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None
-    if enabled != args.with_meter or defined != args.with_meter:
-        fail("Meter demo profile mismatch")
-    if args.with_meter:
+    # Official SDK demos (demos/official): each selected demo's renamed
+    # ui_init must be live, with the runner and its shell gate.
+    selected = {name for name in args.official_demos.split(",") if name}
+    known = ("meter", "dashboard", "slide", "multi_lang", "demo_hub", "image")
+    if selected - set(known):
+        fail("Unknown official demo(s): " + ",".join(sorted(selected - set(known))))
+    official = {name: name in selected for name in known}
+    for name, wanted in official.items():
+        feature = "AIC_LVGL_OFFICIAL_DEMO_" + name.upper()
+        enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
+        defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None
+        if enabled != wanted or defined != wanted:
+            fail("Official " + name + " demo profile mismatch")
+    if any(official.values()):
+        if re.search(r"^#define AIC_LVGL_VIRTUAL_RES(?:\s|$)", header, re.MULTILINE) is None:
+            fail("Official demos require AIC_LVGL_VIRTUAL_RES on this panel")
         text = map_path.read_text(encoding="utf-8", errors="replace")
-        for symbol in ("meter_ui_init", "meter_ui_destroy",
-                       "meter_ui_timer_fires", "meter_ui_get_speed_step",
-                       "meter_ui_get_needle_angle"):
+        symbols = ["lv_aic_official_demo_show", "lv_aic_official_demo_close",
+                   "lv_aic_demo_test_poll"]
+        symbols += ["lv_aic_official_%s_ui_init" % name for name, wanted in official.items() if wanted]
+        for symbol in symbols:
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
-                fail("Meter demo live symbol absent: " + symbol)
-        print("Meter demo final link: PASS (not board execution)")
+                fail("Official demo live symbol absent: " + symbol)
+        print("Official demos final link: PASS (not board execution)")
     feature = "AIC_LVGL_USE_CAN_CAPTURE"
     enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
     defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None

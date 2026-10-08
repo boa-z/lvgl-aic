@@ -30,6 +30,16 @@
 #if AIC_LVGL_DISPLAY_ROTATION < 0 || AIC_LVGL_DISPLAY_ROTATION > 3
 #error "AIC_LVGL_DISPLAY_ROTATION must be 0..3"
 #endif
+/* rtconfig.h emits Kconfig bools as empty macros: test definedness only. */
+#ifdef AIC_LVGL_VIRTUAL_RES
+#define LV_AIC_VIRTUAL_RES 1
+#if AIC_LVGL_DISPLAY_ROTATION != 0
+#error "AIC_LVGL_VIRTUAL_RES requires AIC_LVGL_DISPLAY_ROTATION 0"
+#endif
+#else
+#define LV_AIC_VIRTUAL_RES 0
+#endif
+#include "lv_aic_display_fit.h"
 #include <aic_core.h>
 #include <aic_osal.h>
 #include <mpp_fb.h>
@@ -43,6 +53,13 @@
 #endif
 
 static volatile uint32_t lv_aic_display_flush_count;
+static uint32_t lv_aic_display_fps_start, lv_aic_display_fps_frames;
+static int lv_aic_display_fps_value;
+
+int lv_aic_display_fps(void)
+{
+    return lv_aic_display_fps_value;
+}
 
 typedef struct {
     struct mpp_fb *fb;
@@ -60,6 +77,13 @@ typedef struct {
     bool use_rotation;
     bool powered_on;
     bool dma_quarantined;
+    /* Virtual resolution: LVGL renders vres_buffer (vres_w x vres_h) and
+     * each present scales it into the fit rectangle of the panel. */
+    bool use_vres;
+    uint8_t *vres_buffer;
+    size_t vres_buffer_size;
+    int32_t vres_w, vres_h;
+    lv_aic_display_fit_t vres_fit;
 } lv_aic_display_ctx_t;
 
 static uint32_t lv_aic_align_up(uint32_t value, uint32_t alignment)
@@ -100,10 +124,29 @@ static void lv_aic_cache_clean(const void *address, size_t size)
                                      lv_aic_align_up((uint32_t)size, CACHE_LINE_SIZE));
 }
 
-#if AIC_LVGL_DISPLAY_ROTATION != 0
+#if AIC_LVGL_DISPLAY_ROTATION != 0 || LV_AIC_VIRTUAL_RES
 static void *lv_aic_alloc_cma(size_t size)
 {
     return aicos_malloc_align(MEM_CMA, size, CACHE_LINE_SIZE);
+}
+#endif
+
+#if LV_AIC_VIRTUAL_RES
+/* Nearest-neighbour fallback when GE2D declines the present scale. Slow, but
+ * keeps the panel correct; the GE2D path is the expected one. */
+static void lv_aic_vres_scale_cpu(lv_aic_display_ctx_t *ctx, const uint8_t *src,
+                                  uint32_t src_stride, uint8_t *dst)
+{
+    const lv_aic_display_fit_t *fit = &ctx->vres_fit;
+    const uint32_t bpp = lv_color_format_get_size(ctx->lv_color_format);
+    for (int32_t y = 0; y < fit->h; y++) {
+        const uint8_t *row = src + (size_t)(((int64_t)y * ctx->vres_h) / fit->h) * src_stride;
+        uint8_t *out = dst + (size_t)(fit->y + y) * ctx->info.stride + (size_t)fit->x * bpp;
+        for (int32_t x = 0; x < fit->w; x++) {
+            memcpy(out + (size_t)x * bpp,
+                   row + (size_t)(((int64_t)x * ctx->vres_w) / fit->w) * bpp, bpp);
+        }
+    }
 }
 #endif
 
@@ -224,6 +267,42 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
             lv_aic_cache_clean(destination, ctx->framebuffer_size);
         }
         buffer_index = ctx->present_index;
+#if LV_AIC_VIRTUAL_RES
+    } else if (ctx->use_vres) {
+        /* DIRECT mode keeps the whole virtual frame current, so every present
+         * scales it entirely: no seams from partial filtered updates. */
+        uint8_t *destination = lv_aic_framebuffer_at(ctx, ctx->present_index);
+        const uint32_t source_stride = ctx->lv_buffer_stride;
+        int scaled = 0;
+#if AIC_LVGL_USE_GE2D
+        lv_draw_buf_t source = *active;
+        lv_draw_buf_t target = {0};
+        source.header.w = (uint32_t)ctx->vres_w;
+        source.header.h = (uint32_t)ctx->vres_h;
+        source.header.stride = source_stride;
+        target.data = destination;
+        target.data_size = ctx->framebuffer_size;
+        target.header.w = ctx->info.width;
+        target.header.h = ctx->info.height;
+        target.header.stride = ctx->info.stride;
+        target.header.cf = ctx->lv_color_format;
+        scaled = lv_draw_aic_ge2d_display_scale(&source, &target, ctx->vres_fit.x,
+                                                ctx->vres_fit.y, ctx->vres_fit.w,
+                                                ctx->vres_fit.h);
+        if (scaled < 0) {
+            LV_LOG_ERROR("GE display DMA fault; retaining buffers until reboot");
+            ctx->last_presented_valid = false;
+            ctx->dma_quarantined = true;
+            return;
+        }
+#endif
+        if (!scaled) {
+            lv_aic_cache_clean(active->data, ctx->vres_buffer_size);
+            lv_aic_vres_scale_cpu(ctx, active->data, source_stride, destination);
+            lv_aic_cache_clean(destination, ctx->framebuffer_size);
+        }
+        buffer_index = ctx->present_index;
+#endif
     } else {
         void *framebuffer = lv_aic_framebuffer_at(ctx, 0U);
         buffer_index = (active->data == framebuffer) ? 0U : 1U;
@@ -233,10 +312,43 @@ static void lv_aic_flush_cb(lv_display_t *display, const lv_area_t *area, uint8_
     ctx->last_presented_valid = lv_aic_present(ctx, buffer_index);
     if (ctx->last_presented_valid) ctx->last_presented_index = buffer_index;
     lv_aic_display_flush_count++;
-    if (ctx->use_rotation && ctx->use_pan_display) {
+    {
+        /* Presented frames over the last full second (SDK fbdev_draw_fps). */
+        uint32_t now = lv_tick_get();
+        lv_aic_display_fps_frames++;
+        if (lv_tick_diff(now, lv_aic_display_fps_start) >= 1000U) {
+            lv_aic_display_fps_value = (int)lv_aic_display_fps_frames;
+            lv_aic_display_fps_frames = 0U;
+            lv_aic_display_fps_start = now;
+        }
+    }
+    if ((ctx->use_rotation || ctx->use_vres) && ctx->use_pan_display) {
         ctx->present_index = (ctx->present_index == 0U) ? 1U : 0U;
     }
     lv_display_flush_ready(display);
+}
+
+void lv_aic_display_panel_size(lv_display_t *display, int32_t *width, int32_t *height)
+{
+    lv_aic_display_ctx_t *ctx = display ? lv_display_get_driver_data(display) : NULL;
+    if (width == NULL || height == NULL) {
+        return;
+    }
+    if (ctx != NULL) {
+        *width = (int32_t)ctx->info.width;
+        *height = (int32_t)ctx->info.height;
+    } else if (display != NULL) {
+        *width = lv_display_get_original_horizontal_resolution(display);
+        *height = lv_display_get_original_vertical_resolution(display);
+    }
+}
+
+void lv_aic_display_panel_to_logical(lv_display_t *display, int32_t *x, int32_t *y)
+{
+    lv_aic_display_ctx_t *ctx = display ? lv_display_get_driver_data(display) : NULL;
+    if (ctx != NULL && ctx->use_vres) {
+        lv_aic_display_fit_map(&ctx->vres_fit, ctx->vres_w, ctx->vres_h, x, y);
+    }
 }
 
 int lv_aic_display_snapshot(lv_display_t *display, lv_draw_buf_t *copy, uint32_t *frame)
@@ -403,12 +515,61 @@ int lv_aic_display_init(lv_display_t **display)
     ctx->lv_buffer_stride = ctx->info.stride;
 #endif
 
-    ctx->display = lv_display_create((int32_t)ctx->info.width, (int32_t)ctx->info.height);
+#if LV_AIC_VIRTUAL_RES
+    {
+        const int32_t vw = AIC_LVGL_VIRTUAL_HRES;
+        const int32_t vh = AIC_LVGL_VIRTUAL_VRES;
+        if ((vw != (int32_t)ctx->info.width || vh != (int32_t)ctx->info.height) &&
+            lv_aic_display_fit(vw, vh, (int32_t)ctx->info.width, (int32_t)ctx->info.height,
+                               &ctx->vres_fit)) {
+            const uint32_t stride = lv_draw_buf_width_to_stride((uint32_t)vw, color_format);
+            const unsigned planes = ctx->use_pan_display ? 2U : 1U;
+            if ((uint32_t)vh > (UINT32_MAX / stride)) {
+                LV_LOG_ERROR("virtual resolution buffer size overflows 32-bit arithmetic");
+                mpp_fb_close(ctx->fb);
+                lv_free(ctx);
+                return LV_AIC_ERR_NO_MEMORY;
+            }
+            ctx->vres_buffer_size = (size_t)stride * (uint32_t)vh;
+            ctx->vres_buffer = (uint8_t *)lv_aic_alloc_cma(ctx->vres_buffer_size);
+            if (ctx->vres_buffer == NULL) {
+                LV_LOG_ERROR("failed to allocate the %dx%d virtual-resolution buffer",
+                             (int)vw, (int)vh);
+                mpp_fb_close(ctx->fb);
+                lv_free(ctx);
+                return LV_AIC_ERR_NO_MEMORY;
+            }
+            memset(ctx->vres_buffer, 0, ctx->vres_buffer_size);
+            lv_aic_cache_clean(ctx->vres_buffer, ctx->vres_buffer_size);
+            /* The fit rectangle is rewritten every present; the borders
+             * around it are cleared once on every scanout plane. */
+            for (unsigned i = 0; i < planes; i++) {
+                void *plane = lv_aic_framebuffer_at(ctx, i);
+                memset(plane, 0, ctx->framebuffer_size);
+                lv_aic_cache_clean(plane, ctx->framebuffer_size);
+            }
+            ctx->use_vres = true;
+            ctx->vres_w = vw;
+            ctx->vres_h = vh;
+            ctx->lv_buffer_stride = stride;
+            buffer1 = ctx->vres_buffer;
+            buffer2 = NULL;
+        }
+    }
+#endif
+
+    ctx->display = ctx->use_vres ? lv_display_create(ctx->vres_w, ctx->vres_h)
+                                 : lv_display_create((int32_t)ctx->info.width,
+                                                     (int32_t)ctx->info.height);
     if (ctx->display == NULL) {
         LV_LOG_ERROR("lv_display_create failed");
         if (ctx->rotation_buffer != NULL) {
             aicos_free_align(MEM_CMA, ctx->rotation_buffer);
             ctx->rotation_buffer = NULL;
+        }
+        if (ctx->vres_buffer != NULL) {
+            aicos_free_align(MEM_CMA, ctx->vres_buffer);
+            ctx->vres_buffer = NULL;
         }
         mpp_fb_close(ctx->fb);
         lv_free(ctx);
@@ -418,15 +579,27 @@ int lv_aic_display_init(lv_display_t **display)
     lv_display_set_color_format(ctx->display, color_format);
     lv_display_set_flush_cb(ctx->display, lv_aic_flush_cb);
     lv_display_set_driver_data(ctx->display, ctx);
-    lv_display_set_physical_resolution(ctx->display, (int32_t)ctx->info.width,
-                                       (int32_t)ctx->info.height);
+    if (ctx->use_vres) {
+        lv_display_set_physical_resolution(ctx->display, ctx->vres_w, ctx->vres_h);
+    } else {
+        lv_display_set_physical_resolution(ctx->display, (int32_t)ctx->info.width,
+                                           (int32_t)ctx->info.height);
+    }
 #if AIC_LVGL_DISPLAY_ROTATION != 0
     lv_display_set_rotation(ctx->display, rotation);
 #endif
     lv_display_set_buffers_with_stride(ctx->display, buffer1, buffer2,
-                                       ctx->use_rotation ? ctx->rotation_buffer_size : ctx->framebuffer_size,
-                                       ctx->use_rotation ? ctx->lv_buffer_stride : ctx->info.stride,
+                                       ctx->use_rotation ? ctx->rotation_buffer_size :
+                                       ctx->use_vres ? ctx->vres_buffer_size : ctx->framebuffer_size,
+                                       (ctx->use_rotation || ctx->use_vres) ? ctx->lv_buffer_stride
+                                                                            : ctx->info.stride,
                                        LV_DISPLAY_RENDER_MODE_DIRECT);
+    if (ctx->use_vres) {
+        LV_LOG_USER("virtual resolution %dx%d -> panel %ux%u at (%d,%d) %dx%d",
+                    (int)ctx->vres_w, (int)ctx->vres_h, (unsigned)ctx->info.width,
+                    (unsigned)ctx->info.height, (int)ctx->vres_fit.x, (int)ctx->vres_fit.y,
+                    (int)ctx->vres_fit.w, (int)ctx->vres_fit.h);
+    }
 
     *display = ctx->display;
     return LV_AIC_OK;
@@ -462,6 +635,10 @@ void lv_aic_display_deinit(lv_display_t *display)
         aicos_free_align(MEM_CMA, ctx->rotation_buffer);
         ctx->rotation_buffer = NULL;
     }
+    if (ctx->vres_buffer != NULL) {
+        aicos_free_align(MEM_CMA, ctx->vres_buffer);
+        ctx->vres_buffer = NULL;
+    }
 
     if (ctx->fb != NULL) {
         mpp_fb_close(ctx->fb);
@@ -471,6 +648,24 @@ void lv_aic_display_deinit(lv_display_t *display)
 }
 
 #else /* AIC_LVGL_USE_DISPLAY && AIC_LVGL_BSP_MPP */
+
+void lv_aic_display_panel_size(lv_display_t *display, int32_t *width, int32_t *height)
+{
+    if (display != NULL && width != NULL && height != NULL) {
+        *width = lv_display_get_original_horizontal_resolution(display);
+        *height = lv_display_get_original_vertical_resolution(display);
+    }
+}
+
+void lv_aic_display_panel_to_logical(lv_display_t *display, int32_t *x, int32_t *y)
+{
+    (void)display; (void)x; (void)y;
+}
+
+int lv_aic_display_fps(void)
+{
+    return 0;
+}
 
 int lv_aic_display_snapshot(lv_display_t *display, lv_draw_buf_t *copy, uint32_t *frame)
 {

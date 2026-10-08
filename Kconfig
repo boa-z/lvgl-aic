@@ -22,6 +22,31 @@ config AIC_LVGL_DISPLAY_ROTATION
       Application-owned display rotation. Allocates a CMA rotation buffer.
       GE2D is used when available; unsupported geometry uses software.
 
+config AIC_LVGL_VIRTUAL_RES
+    bool "Render at a virtual resolution and scale to the panel"
+    default n
+    depends on AIC_LVGL_USE_DISPLAY && AIC_LVGL_DISPLAY_ROTATION = 0
+    help
+      LVGL sees a fixed design resolution (e.g. the 1024x600 SDK demos)
+      and renders into a CMA buffer of that size; each presented frame is
+      scaled once by GE2D, aspect preserved, into the panel with black
+      borders. Touch points are mapped back. Keeps vendor demos close to
+      their official source on panels of another size. Costs one buffer
+      of the virtual size and a full-frame scale per frame; text is
+      resampled, so product UIs should target the panel natively.
+
+config AIC_LVGL_VIRTUAL_HRES
+    int "Virtual horizontal resolution"
+    default 1024
+    range 64 4096
+    depends on AIC_LVGL_VIRTUAL_RES
+
+config AIC_LVGL_VIRTUAL_VRES
+    int "Virtual vertical resolution"
+    default 600
+    range 64 4096
+    depends on AIC_LVGL_VIRTUAL_RES
+
 config AIC_LVGL_USE_TOUCH
     bool "Enable ArtInChip touch integration"
     default y
@@ -236,17 +261,63 @@ config AIC_LVGL_BUILD_DEMO_BENCHMARK
         Upstream owns timers and top-layer objects for the whole benchmark.
         Do not delete/switch its screen while running. Results require hardware.
 
-config AIC_LVGL_BUILD_DEMO_METER
-    bool "Build application-owned meter cluster demo"
+menuconfig AIC_LVGL_OFFICIAL_DEMOS
+    bool "Official SDK demos (verbatim, demos/official)"
     default n
     depends on AIC_LVGL_PORT
     help
-        Application-owned port of the SDK meter cluster (needle sweep,
-        speed/time/trip/gear/warning timers). Renders from the injected
-        asset root when set, otherwise built-in fallback shapes, so host
-        contracts run without vendor assets. Call
-        lv_aic_demo_meter_create on the UI owner thread after display
-        setup. Nothing starts automatically.
+        SDK aic_demo sources vendored unmodified under demos/official and
+        built through LVGL's v8 API map plus a small compat layer
+        (aic_ui.h, lv_port_disp.h). Each demo's ui_init/ui_font_regular is
+        renamed per demo at build time so several link together; assets
+        install under rodata/lvgl_data/<name>. They are designed for
+        1024x600: enable AIC_LVGL_VIRTUAL_RES on other panels. Shell:
+        lv_aic_demo list|show <name>|close|status. Nothing starts
+        automatically.
+
+if AIC_LVGL_OFFICIAL_DEMOS
+
+config AIC_LVGL_OFFICIAL_DEMO_METER
+    bool "meter_demo (instrument cluster, needle strip)"
+    default y
+
+config AIC_LVGL_OFFICIAL_DEMO_DASHBOARD
+    bool "dashboard_demo (image-filled speed arc)"
+    default y
+
+config AIC_LVGL_OFFICIAL_DEMO_SLIDE
+    bool "slide_demo (tabview with synced scrolling header)"
+    default y
+
+config AIC_LVGL_OFFICIAL_DEMO_MULTI_LANG
+    bool "multi_lang_demo (ini-driven Chinese/English UI, two screens)"
+    default y
+    help
+        Enables LVGL's built-in SimSun 16 CJK font for the Chinese strings.
+
+config AIC_LVGL_OFFICIAL_DEMO_DEMO_HUB
+    bool "demo_hub (launcher with 13 sub-apps; ~9 MB of 1024x600 assets)"
+    depends on AIC_LVGL_USE_PLAYER
+    default n
+    help
+        The SDK multi-app launcher (coffee, steam box, photo frame, 86box,
+        navigation, elevator, audio/video player, ...). The audio/video apps
+        use the media player widget; the camera app is a placeholder unless
+        AIC_USING_CAMERA. Its assets take most of the 14 MB rodata partition.
+
+config AIC_LVGL_OFFICIAL_DEMO_IMAGE
+    bool "image_demo (FreeType lyrics on two animated AIC canvases)"
+    depends on AIC_LVGL_USE_CANVAS && AIC_LVGL_USE_FREETYPE
+    default n
+    help
+        The SDK default canvas example: Chinese lyrics rendered with
+        FreeType (DroidSansFallback.ttf, 3.2 MB, at the path the demo
+        hard-codes: /rodata/lvgl_data/font/) into lv_aic_canvas buffers.
+        Uses the component's LVGL 9.6 canvas widget, not the SDK's
+        LVGL 9.1 prebuilt libaic_canvas. Does not fit in rodata together
+        with demo_hub.
+
+endif
 
 config AIC_LVGL_USE_CAN_CAPTURE
     bool "Stream framebuffer screenshots over classic CAN"
