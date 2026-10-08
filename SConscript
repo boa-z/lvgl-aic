@@ -4,6 +4,38 @@ import os
 
 Import('AIC_ROOT')
 cwd = GetCurrentDir()
+
+# The staging scripts under tools/sdk are Python 3 only. The SDK's OneStep commands (lunch/m)
+# run SCons under Python 2.7, so there each generate() runs in a Python 3 subprocess.
+import sys
+import json
+import runpy
+import subprocess
+
+
+def _python3():
+    names = ('python3.exe', 'python3')
+    candidates = [os.path.join(AIC_ROOT, 'tools', 'env', 'tools', 'Python38', 'python3.exe')]
+    for directory in os.environ.get('PATH', '').split(os.pathsep):
+        candidates += [os.path.join(directory, name) for name in names]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    raise RuntimeError('Python 3 is required to stage LVGL sources but was not found; '
+                       'put Python 3 on PATH (the SDK ships tools/env/tools/Python38).')
+
+
+def stage(name):
+    path = os.path.join(cwd, 'tools', 'sdk', name + '.py')
+    if sys.version_info[0] >= 3:
+        return runpy.run_path(path)
+
+    def generate(*arguments):
+        output = subprocess.check_output([_python3(), os.path.join(cwd, 'tools', 'sdk', 'stage_run.py'), path]
+                                         + [str(argument) for argument in arguments])
+        return json.loads(output.decode('utf-8'))
+    return {'generate': generate}
+
 group = []
 if not GetDepend('AIC_LVGL_PORT'):
     Return('group')
@@ -38,21 +70,20 @@ for directory, directories, files in os.walk(os.path.join(lvgl_root, 'src')):
 if not src:
     raise RuntimeError('Application LVGL sources are missing')
 # Keep premultiplied FILE/VARIABLE software fallback consistent with GE.
-import runpy
-stage_sw = runpy.run_path(os.path.join(cwd, 'tools', 'sdk', 'stage_sw_premult.py'))
+stage_sw = stage('stage_sw_premult')
 generated_sw = stage_sw['generate'](
     os.path.join(lvgl_root, 'src', 'draw', 'sw', 'lv_draw_sw_img.c'),
     os.path.join(AIC_ROOT, 'build', 'lvgl-sw-image.c'))
 src = [source for source in src if os.path.basename(str(source)) != 'lv_draw_sw_img.c']
 src += [File(generated_sw)]
 
-stage_rotation = runpy.run_path(os.path.join(cwd, 'tools', 'sdk', 'stage_sw_rotation.py'))
+stage_rotation = stage('stage_sw_rotation')
 generated_rotation = stage_rotation['generate'](lvgl_root, os.path.join(AIC_ROOT, 'build'))
 src = [source for source in src if os.path.basename(str(source)) not in ('lv_area.c', 'lv_draw_sw_transform.c', 'lv_image.c')]
 src += [File(path) for path in generated_rotation]
 
 if GetDepend('AIC_LVGL_USE_VECTOR'):
-    stage_vector = runpy.run_path(os.path.join(cwd, 'tools', 'sdk', 'stage_vector.py'))
+    stage_vector = stage('stage_vector')
     generated_vector = stage_vector['generate'](
         os.path.join(lvgl_root, 'src', 'draw', 'sw', 'lv_draw_sw_vector.c'),
         os.path.join(AIC_ROOT, 'build', 'lvgl-sw-vector.c'))
@@ -60,7 +91,7 @@ if GetDepend('AIC_LVGL_USE_VECTOR'):
     src += [File(generated_vector)]
 
 if GetDepend('AIC_LVGL_USE_SVG'):
-    stage_svg = runpy.run_path(os.path.join(cwd, 'tools', 'sdk', 'stage_svg.py'))
+    stage_svg = stage('stage_svg')
     generated_svg = stage_svg['generate'](lvgl_root, os.path.join(AIC_ROOT, 'build'))
     src = [source for source in src if os.path.basename(str(source)) not in ('lv_draw_image.c', 'lv_svg_decoder.c', 'lv_svg_render.c')]
     src += [File(path) for path in generated_svg]
@@ -182,8 +213,7 @@ if GetDepend('AIC_LVGL_USE_VECTOR'):
     vector_src = [source for source in Glob('../lvgl/src/libs/thorvg/*.cpp', ondisk=True, source=True)
                   if not os.path.basename(str(source)).startswith(excluded_loaders)]
     if GetDepend('AIC_LVGL_USE_LOTTIE'):
-        import runpy
-        stage_lottie = runpy.run_path(os.path.join(cwd, 'tools', 'sdk', 'stage_lottie.py'))
+        stage_lottie = stage('stage_lottie')
         generated_lottie = stage_lottie['generate'](
             os.path.join(lvgl_root, 'src', 'libs', 'thorvg', 'tvgLottieBuilder.cpp'),
             os.path.join(AIC_ROOT, 'build', 'lvgl-lottie-builder.cpp'))
@@ -335,9 +365,8 @@ if GetDepend('AIC_LVGL_USE_GE2D'):
 # 应用内生成经过指纹校验的 CMDQ 后端，不修改 SDK 源文件。
 # 链接替换仅作用于本应用；SDK 版本变化必须先复核补丁。
 if GetDepend('AIC_LVGL_USE_GE2D') and GetDepend('AIC_GE_CMDQ'):
-    import runpy
     from SCons.Script import File
-    stage_ge = runpy.run_path(os.path.join(cwd, 'tools', 'sdk', 'stage_ge_cmdq.py'))
+    stage_ge = stage('stage_ge_cmdq')
     generated_ge = stage_ge['generate'](AIC_ROOT, os.path.join(AIC_ROOT, 'build', 'lvgl-ge-cmdq.c'))
     ge_paths = includes + [os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'ge', 'include'),
                           os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'base', 'include')]
