@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Windows-native Gate 1 / MPP / GE2D board-test build. Run in a dedicated task checkout.
-param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithMeter, [switch]$WithDashboard, [ValidateSet('meter','dashboard','slide','multi_lang','demo_hub','image')][string[]]$OfficialDemos=@(), [switch]$VirtualRes, [switch]$WithCanCapture, [switch]$WithVector, [switch]$WithSvg, [switch]$WithLottie, [ValidateSet(0,90,180,270)][int]$Rotation=0, [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT, [ValidatePattern('^[a-z0-9][a-z0-9-]{0,31}$')][string]$EvidenceTag)
+param([ValidateSet('gate1','mpp','ge2d')][string]$Phase='gate1', [ValidateRange(1,64)][int]$Jobs=8, [switch]$AllowComponentDirty, [switch]$WithFonts, [switch]$WithGif, [switch]$WithWidgets, [switch]$WithAicp, [switch]$WithPlayer, [switch]$WithApng, [switch]$WithBarcode, [switch]$WithSpi, [switch]$WithCamera, [switch]$WithDemos, [switch]$WithMusic, [switch]$WithMeter, [switch]$WithDashboard, [ValidateSet('meter','dashboard','slide','multi_lang','demo_hub','image')][string[]]$OfficialDemos=@(), [switch]$VirtualRes, [switch]$WithCanCapture, [switch]$WithCanOta, [ValidatePattern('^[A-Za-z0-9_.+-]{1,47}$')][string]$OtaVersion='1.0.0', [switch]$WithVector, [switch]$WithSvg, [switch]$WithLottie, [ValidateSet(0,90,180,270)][int]$Rotation=0, [ValidateSet('rgb888','rgb565')][string]$FbFormat='rgb888', [ValidatePattern('^(\d{3,4}x\d{3,4})?$')][string]$TouchRange='', [string]$SdkRoot=$env:LVGL_AIC_SDK_ROOT, [ValidatePattern('^[a-z0-9][a-z0-9-]{0,31}$')][string]$EvidenceTag)
 $ErrorActionPreference='Stop'
 if ($WithSvg -or $WithLottie) { $WithVector=$true }
 if (-not $SdkRoot) {
@@ -58,6 +58,9 @@ $OfficialDemos=@(@($OfficialDemos) + $(if ($WithMeter) { 'meter' }) + $(if ($Wit
 if ($OfficialDemos.Count) { $variant += '-od-' + ($OfficialDemos -join '-') }
 if ($VirtualRes) { $variant += '-vres' }
 if ($WithCanCapture) { $variant += '-cancap' }
+if ($WithCanOta) { $variant += '-canota' }
+if ($FbFormat -ne 'rgb888') { $variant += "-fb$($FbFormat.Substring(3))" }
+if ($TouchRange) { $variant += "-tr$TouchRange" }
 if ($WithVector) { $variant += '-vector' }
 if ($WithSvg) { $variant += '-svg' }
 if ($WithLottie) { $variant += '-lottie' }
@@ -114,7 +117,7 @@ if ($Phase -eq 'ge2d') {
 $defPath=Join-Path $root "target/configs/$def"
 $originalDef=[IO.File]::ReadAllBytes($defPath)
 try {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $OfficialDemos.Count -or $VirtualRes -or $WithCanCapture -or $WithVector) {
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $OfficialDemos.Count -or $VirtualRes -or ($FbFormat -ne 'rgb888') -or $TouchRange -or $WithCanCapture -or $WithCanOta -or $WithVector) {
         [IO.File]::WriteAllBytes("$evidence/defconfig-original", $originalDef)
         $settings=@("CONFIG_AIC_LVGL_DISPLAY_ROTATION=$([int]($Rotation / 90))")
         if ($WithFonts) { $settings += @('CONFIG_AIC_LVGL_USE_FREETYPE=y', 'CONFIG_AIC_LVGL_USE_FT_CACHE=y', 'CONFIG_LPKG_USING_FREETYPE=y', 'CONFIG_AIC_LVGL_FREETYPE_GLYPHS=64') }
@@ -136,13 +139,19 @@ try {
             $settings += $(if ($OfficialDemos -contains $demo) { "$symbol=y" } else { "# $symbol is not set" })
         }
         if ($VirtualRes) { $settings += 'CONFIG_AIC_LVGL_VIRTUAL_RES=y' }
+        # Touch controller coordinate range (SDK default 1024x600; the D50T product sets the panel size).
+        if ($TouchRange) { $tx,$ty=$TouchRange -split 'x'; $settings += @("CONFIG_AIC_TOUCH_X_COORDINATE_RANGE=$tx", "CONFIG_AIC_TOUCH_Y_COORDINATE_RANGE=$ty") }
+        # Framebuffer pixel format (a Kconfig choice: one on, the other off).
+        if ($FbFormat -eq 'rgb565') { $settings += @('# CONFIG_AICFB_RGB888 is not set', 'CONFIG_AICFB_RGB565=y') }
         if ($WithCanCapture) { $settings += 'CONFIG_AIC_LVGL_USE_CAN_CAPTURE=y' }
+        if ($WithCanOta) { $settings += @('CONFIG_AIC_LVGL_SMOKE_CAN_OTA=y', "CONFIG_AIC_LVGL_SMOKE_CAN_OTA_VERSION=`"$OtaVersion`"") }
         if ($WithDemos) { $settings += @('CONFIG_AIC_LVGL_BUILD_DEMO_WIDGETS=y','CONFIG_AIC_LVGL_BUILD_DEMO_BENCHMARK=y') }
         if ($WithCamera) { $settings += @('CONFIG_AIC_MPP_VIN=y','CONFIG_AIC_LVGL_USE_VIN=y','CONFIG_AIC_LVGL_USE_CAMERA=y') }
         if ($WithApng) { $settings += @('CONFIG_AIC_LVGL_USE_APNG=y', 'CONFIG_AIC_LVGL_USE_APNG_WIDGET=y') }
         $content=[IO.File]::ReadAllText($defPath)
         foreach ($setting in $settings) {
-            $symbol=($setting -split '=')[0]
+            # "# X is not set" settings name their symbol in the comment form.
+            $symbol=[regex]::Replace(($setting -split '=')[0], '^# (\S+) is not set$', '$1')
             $content=[regex]::Replace($content, '(?m)^(?:# )?'+$symbol+'(?:=.*| is not set)\r?\n?', '')
         }
         $content=$content.TrimEnd()+[Environment]::NewLine+($settings -join [Environment]::NewLine)+[Environment]::NewLine
@@ -152,7 +161,7 @@ try {
     Run-Step 'app-config' @($scons,"--apply-def=$def")
     Run-Step 'app-build' @($scons,"-j$Jobs")
 } finally {
-    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $OfficialDemos.Count -or $VirtualRes -or $WithCanCapture -or $WithVector) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
+    if ($WithFonts -or $WithGif -or $WithWidgets -or $Rotation -or $WithAicp -or $WithPlayer -or $WithApng -or $WithBarcode -or $WithSpi -or $WithCamera -or $WithDemos -or $WithMusic -or $OfficialDemos.Count -or $VirtualRes -or ($FbFormat -ne 'rgb888') -or $TouchRange -or $WithCanCapture -or $WithCanOta -or $WithVector) { [IO.File]::WriteAllBytes($defPath, $originalDef) }
 }
 $app='output/'+($def -replace '_defconfig$','')+'/images'
 $checkArgs=@("$PSScriptRoot/check_integration.py",'--root','.', '--map',"$app/d13x.map",'--phase',$Phase)
@@ -170,6 +179,7 @@ if ($WithDemos) { $checkArgs += '--with-demos' }
 if ($WithMusic) { $checkArgs += '--with-music' }
 if ($OfficialDemos.Count) { $checkArgs += @('--official-demos', ($OfficialDemos -join ',')) }
 if ($WithCanCapture) { $checkArgs += '--with-can-capture' }
+if ($WithCanOta) { $checkArgs += '--with-can-ota' }
 if ($WithVector) { $checkArgs += '--with-vector' }
 if ($WithLottie) { $checkArgs += '--with-lottie' }
 if ($WithSvg) { $checkArgs += '--with-svg' }

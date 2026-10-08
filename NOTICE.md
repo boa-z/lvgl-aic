@@ -32,4 +32,14 @@ Files or code sections migrated from those paths must retain their original
 `Copyright`, `SPDX-License-Identifier`, and `Authors` notices. The final source
 file history must identify the original path and the material modification.
 
+## Vendored ArtInChip SDK demos
+
+`demos/official/` holds unmodified copies (their SDK `SConscript` files
+excluded) of `packages/artinchip/lvgl-ui/aic_demo/{meter_demo,dashboard_demo,
+slide_demo,multi_lang_demo,image_demo,demo_hub}` from the Luban-Lite SDK at
+`fb5e9f61`, including their image, font and language assets (`demo_hub`:
+1024x600 set only). Their original ArtInChip notices are kept in each file;
+adaptation is limited to `demos/official/compat/` and the build files.
+`compat/aic_ui_sdk.h` is the SDK `aic_ui.h`, unmodified.
+
 This file must never contain credentials, access tokens, or private keys.

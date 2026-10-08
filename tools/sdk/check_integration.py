@@ -272,6 +272,7 @@ def main():
     parser.add_argument("--official-demos", default="",
                         help="comma-separated official SDK demos expected in the image")
     parser.add_argument("--with-can-capture", action="store_true")
+    parser.add_argument("--with-can-ota", action="store_true")
     parser.add_argument("--with-vector", action="store_true")
     parser.add_argument("--with-svg", action="store_true")
     parser.add_argument("--with-lottie", action="store_true")
@@ -440,6 +441,21 @@ def main():
             if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
                 fail("CAN capture live symbol absent: " + symbol)
         print("CAN capture final link: PASS (not board execution)")
+    # The OTA endpoint belongs to the smoke app (lvgl-aic-smoke/ota), not lvgl-aic.
+    feature = "AIC_LVGL_SMOKE_CAN_OTA"
+    enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
+    defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None
+    if enabled != args.with_can_ota or defined != args.with_can_ota:
+        fail("CAN OTA profile mismatch")
+    if args.with_can_ota:
+        text = map_path.read_text(encoding="utf-8", errors="replace")
+        for symbol in ("lv_aic_can_ota_start", "lv_aic_can_ota_stop",
+                       "lv_aic_can_ota_widget_create", "lv_aic_can_ota_widget_present_view",
+                       "meter_uds_init", "UDSServerPoll", "meter_update_init",
+                       "meter_package_init", "meter_aic_update_backend"):
+            if not re.search(r"^\s+0x[0-9a-f]+\s+" + symbol + r"\s*$", text, re.MULTILINE):
+                fail("CAN OTA live symbol absent: " + symbol)
+        print("CAN OTA final link: PASS (not board execution)")
     feature = "AIC_LVGL_USE_VECTOR"
     enabled = re.search(r"^CONFIG_" + feature + r"=y$", config, re.MULTILINE) is not None
     defined = re.search(r"^#define " + feature + r"(?:\s|$)", header, re.MULTILINE) is not None

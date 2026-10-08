@@ -24,7 +24,8 @@ LVGL_AIC_SDK_ROOT=/path/to/sdk PHASE=mpp ALLOW_COMPONENT_DIRTY=1 bash applicatio
 
 Dirty component builds are opt-in. Windows archives logs, image, ELF, map,
 configuration, source patches, untracked sources and hashes under SDK
-output/lvgl-evidence/{gate1,mpp,ge2d}. Image filenames are unchanged.
+output/lvgl-evidence/<phase>[-<switches>][-<EvidenceTag>] (for example
+`ge2d-od-dashboard-meter-cancap-canota-bench`). Image filenames are unchanged.
 The shell entry builds and verifies in output/. Do not flash historical copies
 under build/lvgl-evidence; those are no longer refreshed.
 Python helpers accept LVGL_AIC_SDK_ROOT; check_integration.py takes --root.
@@ -34,11 +35,34 @@ GE2D profile: build.ps1 -Phase ge2d -Jobs 8 -AllowComponentDirty.
 The GE2D manual screen has a top-right Next / Prev button to switch between
 the baseline (1/3), rotation (2/3) and combined-transform (3/3) pages
 without a shell command.
-Windows flash image: output/lvgl-evidence/ge2d/images/
-d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img.
+Flash image: `<evidence>/images/d13x_D50T-2-Lite_page_2k_block_128k_v1.0.0.img`.
+Burn it whole with the SDK's `tools/scripts/upgcmd.exe -p image <img>` and
+`upgcmd shcmd reset` (board shell `aicupg` enters USB upgrade mode);
+`artinchip-flash` 0.1.0 never writes rodata/data, so staged assets go stale.
 For real framebuffer export see [capture instructions](../../docs/framebuffer-capture.md).
 For the existing development UART upgrade route and defconfig requirements see
 [UART upgrade](../../docs/d50t-uart-upgrade.md).
+
+## Build switches (build.ps1)
+
+Each switch overlays the isolated smoke defconfig for one build and restores
+it afterwards; the effective defconfig is archived with the evidence, and
+`check_integration.py` verifies that the enabled set matches the live link.
+
+| Switch | Effect |
+|--------|--------|
+| `-Phase gate1\|mpp\|ge2d` | software / + MPP decoding / + GE2D draw unit |
+| `-OfficialDemos meter,dashboard,slide,multi_lang,demo_hub,image` | verbatim SDK demos ([official demos](../../demos/official/README.md)); implies `-VirtualRes`; `demo_hub` implies `-WithPlayer`, `image` implies `-WithFonts` and the canvas; `demo_hub` and `image` do not fit in rodata together |
+| `-VirtualRes` | LVGL renders 1024x600, GE2D scales to the panel ([virtual resolution](../../docs/virtual-resolution.md)) |
+| `-WithMeter`, `-WithDashboard` | shorthands for `-OfficialDemos meter` / `dashboard` |
+| `-WithCanCapture` | CAN screenshot stream ([CAN capture](../../docs/can-capture-stage.md)) |
+| `-WithCanOta [-OtaVersion X]` | the smoke app's CAN OTA endpoint (`AIC_LVGL_SMOKE_CAN_OTA`; lives in lvgl-aic-smoke, not in this component) |
+| `-WithFonts`, `-WithGif`, `-WithAicp`, `-WithApng`, `-WithPlayer`, `-WithCamera`, `-WithBarcode`, `-WithSpi` | optional decoders, media and peripherals (see the stage documents) |
+| `-WithWidgets`, `-WithDemos`, `-WithMusic`, `-WithVector`, `-WithSvg`, `-WithLottie` | native/adapted widgets, upstream demos, ThorVG vector/SVG/Lottie |
+| `-Rotation 0\|90\|180\|270` | display rotation profile |
+| `-FbFormat rgb888\|rgb565` | framebuffer pixel format (`AICFB_*`); suffix `-fb565` ([RGB565 and touch](../../docs/rgb565-touch-stage.md)) |
+| `-TouchRange 800x480` | `AIC_TOUCH_X/Y_COORDINATE_RANGE` (SDK default 1024x600, the product sets the panel size); suffix `-tr800x480` |
+| `-EvidenceTag <tag>` | suffix of the evidence directory |
 
 ## Application-owned integration (2026-09-30)
 

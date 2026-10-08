@@ -16,9 +16,23 @@ cmake --build build/host
 ctest --test-dir build/host --output-on-failure
 ```
 
-Without AIC_SDK_ROOT, five tests cover OS notifications, platform lifecycle,
-manual pages and disabled features. With SDK ABI headers, eight tests run.
-AIC BSP/board validation remains a separate pending step.
+Without AIC_SDK_ROOT only the SDK-independent contracts build. With
+`-DAIC_SDK_ROOT=<sdk>` the SDK ABI headers enable the MPP/GE2D/media
+contracts (74 tests at 2026-10-08); `-DAIC_BUILD_OFFICIAL_DEMO_TESTS=ON` adds
+the official SDK demo runner contract (75). Feature options below add their
+own contracts. Host results never replace board validation.
+
+The smoke application's CAN OTA endpoint and its contracts live in
+lvgl-aic-smoke (`tests/host` there), not in this component.
+
+## Official SDK demo contract
+
+`-DAIC_BUILD_OFFICIAL_DEMO_TESTS=ON` compiles every vendored demo under
+`demos/official/` unmodified (with the same per-demo renames and compat
+header as the target build) and drives each through the runner: show, run
+3 s, close, twice, then a direct switch. After every close the timer count,
+screen count and running-animation count must equal their baseline. See
+[official demos](../../demos/official/README.md).
 
 ## Software rotation regression
 

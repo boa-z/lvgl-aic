@@ -14,6 +14,7 @@
 #include "lv_aic_can_capture.h"
 #include "lv_aic_demo_test.h"
 #include "lv_aic_plane_test.h"
+#include "lv_aic_touch_page.h"
 #include "lv_img_roller.h"
 #include "lv_swipe_v1.h"
 #include "lv_aic_canvas.h"
@@ -329,6 +330,31 @@ static void lv_aic_page_button_event(lv_event_t *event)
 #endif
 }
 
+static void lv_aic_touch_button_event(lv_event_t *event)
+{
+    (void)event;
+    lv_aic_touch_page_open();
+}
+
+/* Opens the full-screen touch test / calibration check. */
+static void lv_aic_nav_touch_button(int32_t x)
+{
+    lv_obj_t *button = lv_button_create(lv_aic_nav_root);
+    lv_obj_t *label;
+
+    if (!button) return;
+    lv_obj_set_size(button, 80, 44);
+    lv_obj_set_pos(button, x, 10);
+    lv_obj_set_style_radius(button, 8, 0);
+    lv_obj_set_style_shadow_width(button, 0, 0);
+    lv_obj_set_style_bg_color(button, lv_color_hex(0xe0a030), 0);
+    lv_obj_add_event_cb(button, lv_aic_touch_button_event, LV_EVENT_CLICKED, NULL);
+    label = lv_label_create(button);
+    if (!label) return;
+    lv_label_set_text(label, "Touch");
+    lv_obj_center(label);
+}
+
 static lv_obj_t *lv_aic_nav_button(const char *text, int32_t x, int direction)
 {
     lv_obj_t *button = lv_button_create(lv_aic_nav_root);
@@ -473,14 +499,15 @@ static int lv_aic_nav_create(lv_display_t *display)
     lv_obj_t *subtitle = lv_label_create(lv_aic_nav_root);
     if (!lv_aic_nav_title || !lv_aic_nav_position || !subtitle) return LV_AIC_ERR_NO_MEMORY;
     lv_obj_set_pos(lv_aic_nav_title, 24, 10);
-    lv_obj_set_width(lv_aic_nav_title, width - 424);
+    lv_obj_set_width(lv_aic_nav_title, width - 512);
     lv_label_set_long_mode(lv_aic_nav_title, LV_LABEL_LONG_CLIP);
     lv_obj_set_pos(subtitle, 24, 34);
     lv_label_set_text(subtitle, "LVGL 9.6 | ArtInChip platform tests");
     lv_obj_set_style_text_color(subtitle, lv_color_hex(0xa9bfd5), 0);
-    lv_obj_set_width(subtitle, width - 424);
+    lv_obj_set_width(subtitle, width - 512);
     lv_label_set_long_mode(subtitle, LV_LABEL_LONG_CLIP);
     lv_aic_nav_prev = lv_aic_nav_button("< Prev", width - 384, -1);
+    if (lv_aic_touch_page_available()) lv_aic_nav_touch_button(width - 488);
     lv_aic_nav_next = lv_aic_nav_button("Next >", width - 208, 1);
     if (!lv_aic_nav_prev || !lv_aic_nav_next) return LV_AIC_ERR_NO_MEMORY;
     lv_obj_set_pos(lv_aic_nav_position, width - 288, 25);
@@ -915,6 +942,7 @@ const char *lv_aic_manual_test_status_text(void)
 
 void lv_aic_manual_test_deinit(void)
 {
+    lv_aic_touch_page_close();
 #if LV_AIC_NATIVE_WIDGET_TEST
     if(native_widgets_root) lv_obj_delete(native_widgets_root);
     native_widgets_root=NULL;

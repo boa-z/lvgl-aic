@@ -268,6 +268,7 @@ endif()
 add_executable(lvgl_aic_smoke
     smoke.c
     "${AIC_ROOT}/tests/manual/lv_aic_manual_test.c"
+        "${AIC_ROOT}/tests/manual/lv_aic_touch_page.c"
     "${AIC_ROOT}/tests/manual/lv_aic_native_widgets_test.c")
 target_include_directories(lvgl_aic_smoke PRIVATE
     "${AIC_ROOT}/include"
@@ -323,6 +324,7 @@ add_test(NAME lvgl_aic_platform_smoke COMMAND lvgl_aic_smoke)
 # Exercise both manual pages without requiring the board decoder or GE engine.
 add_executable(lvgl_aic_manual_pages manual_pages.c
     "${AIC_ROOT}/tests/manual/lv_aic_manual_test.c"
+        "${AIC_ROOT}/tests/manual/lv_aic_touch_page.c"
     "${AIC_ROOT}/tests/manual/lv_aic_native_widgets_test.c"
     "${AIC_ROOT}/tests/manual/lv_aic_font_test.c")
 target_include_directories(lvgl_aic_manual_pages PRIVATE
@@ -376,6 +378,7 @@ if(AIC_BUILD_SDL_SMOKE)
     add_executable(lvgl-aic-sdl-smoke
         sdl_smoke.c
         "${AIC_ROOT}/tests/manual/lv_aic_manual_test.c"
+        "${AIC_ROOT}/tests/manual/lv_aic_touch_page.c"
         "${AIC_ROOT}/tests/manual/lv_aic_native_widgets_test.c")
     set_target_properties(lvgl-aic-sdl-smoke PROPERTIES
         OUTPUT_NAME "lvgl-aic-sdl-smoke")
