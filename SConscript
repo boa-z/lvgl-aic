@@ -25,7 +25,7 @@ def _python3():
                        'put Python 3 on PATH (the SDK ships tools/env/tools/Python38).')
 
 
-def stage(name):
+def load_stage(name):
     path = os.path.join(cwd, 'tools', 'sdk', name + '.py')
     if sys.version_info[0] >= 3:
         return runpy.run_path(path)
@@ -70,20 +70,20 @@ for directory, directories, files in os.walk(os.path.join(lvgl_root, 'src')):
 if not src:
     raise RuntimeError('Application LVGL sources are missing')
 # Keep premultiplied FILE/VARIABLE software fallback consistent with GE.
-stage_sw = stage('stage_sw_premult')
+stage_sw = load_stage('stage_sw_premult')
 generated_sw = stage_sw['generate'](
     os.path.join(lvgl_root, 'src', 'draw', 'sw', 'lv_draw_sw_img.c'),
     os.path.join(AIC_ROOT, 'build', 'lvgl-sw-image.c'))
 src = [source for source in src if os.path.basename(str(source)) != 'lv_draw_sw_img.c']
 src += [File(generated_sw)]
 
-stage_rotation = stage('stage_sw_rotation')
+stage_rotation = load_stage('stage_sw_rotation')
 generated_rotation = stage_rotation['generate'](lvgl_root, os.path.join(AIC_ROOT, 'build'))
 src = [source for source in src if os.path.basename(str(source)) not in ('lv_area.c', 'lv_draw_sw_transform.c', 'lv_image.c')]
 src += [File(path) for path in generated_rotation]
 
 if GetDepend('AIC_LVGL_USE_VECTOR'):
-    stage_vector = stage('stage_vector')
+    stage_vector = load_stage('stage_vector')
     generated_vector = stage_vector['generate'](
         os.path.join(lvgl_root, 'src', 'draw', 'sw', 'lv_draw_sw_vector.c'),
         os.path.join(AIC_ROOT, 'build', 'lvgl-sw-vector.c'))
@@ -91,7 +91,7 @@ if GetDepend('AIC_LVGL_USE_VECTOR'):
     src += [File(generated_vector)]
 
 if GetDepend('AIC_LVGL_USE_SVG'):
-    stage_svg = stage('stage_svg')
+    stage_svg = load_stage('stage_svg')
     generated_svg = stage_svg['generate'](lvgl_root, os.path.join(AIC_ROOT, 'build'))
     src = [source for source in src if os.path.basename(str(source)) not in ('lv_draw_image.c', 'lv_svg_decoder.c', 'lv_svg_render.c')]
     src += [File(path) for path in generated_svg]
@@ -213,7 +213,7 @@ if GetDepend('AIC_LVGL_USE_VECTOR'):
     vector_src = [source for source in Glob('../lvgl/src/libs/thorvg/*.cpp', ondisk=True, source=True)
                   if not os.path.basename(str(source)).startswith(excluded_loaders)]
     if GetDepend('AIC_LVGL_USE_LOTTIE'):
-        stage_lottie = stage('stage_lottie')
+        stage_lottie = load_stage('stage_lottie')
         generated_lottie = stage_lottie['generate'](
             os.path.join(lvgl_root, 'src', 'libs', 'thorvg', 'tvgLottieBuilder.cpp'),
             os.path.join(AIC_ROOT, 'build', 'lvgl-lottie-builder.cpp'))
@@ -366,7 +366,7 @@ if GetDepend('AIC_LVGL_USE_GE2D'):
 # 链接替换仅作用于本应用；SDK 版本变化必须先复核补丁。
 if GetDepend('AIC_LVGL_USE_GE2D') and GetDepend('AIC_GE_CMDQ'):
     from SCons.Script import File
-    stage_ge = stage('stage_ge_cmdq')
+    stage_ge = load_stage('stage_ge_cmdq')
     generated_ge = stage_ge['generate'](AIC_ROOT, os.path.join(AIC_ROOT, 'build', 'lvgl-ge-cmdq.c'))
     ge_paths = includes + [os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'ge', 'include'),
                           os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'base', 'include')]
