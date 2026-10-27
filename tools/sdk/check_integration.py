@@ -9,7 +9,7 @@ import struct
 import re
 import subprocess
 from pathlib import Path
-from sdk_paths import component_root, lvgl_root
+from sdk_paths import component_root, lvgl_root, generated_root
 
 
 REQUIRED_CONFIG_SYMBOLS = (
@@ -31,7 +31,7 @@ DISABLED_CONFIG_SYMBOLS = (
 )
 
 REQUIRED_MAP_SYMBOLS = {
-    "lv_draw_sw_image": r"build[\\/]lvgl-sw-image\.o",
+    "lv_draw_sw_image": r"build[\\/][^\\/]+[\\/]lvgl[\\/]lvgl-sw-image\.o",
     "lv_init": r"third_party[\\/]lvgl[\\/]src",
     "lv_display_create": r"third_party[\\/]lvgl[\\/]src",
     "lv_obj_create": r"third_party[\\/]lvgl[\\/]src",
@@ -70,7 +70,7 @@ def check_ge_cmdq(root, map_path):
     """Check generated provenance and the actual linked operations pointer."""
     from stage_ge_cmdq import corrected, SOURCE
     expected = corrected((root / SOURCE).read_text(encoding="utf-8"))
-    generated = root / "build/lvgl-ge-cmdq.c"
+    generated = generated_root(root) / "lvgl-ge-cmdq.c"
     evidence = json.loads(generated.with_suffix(".json").read_text(encoding="utf-8"))
     if generated.read_bytes() != expected.encode("utf-8") or evidence.get(
             "normalized_generated_sha256") != hashlib.sha256(generated.read_bytes()).hexdigest():
@@ -313,13 +313,13 @@ def main():
     check_config(root, args.phase, args.with_fonts, args.with_gif, args.with_widgets, args.with_player)
     from stage_sw_premult import corrected as corrected_sw
     expected_sw = corrected_sw((upstream / "src/draw/sw/lv_draw_sw_img.c").read_text(encoding="utf-8"))
-    if (root / "build/lvgl-sw-image.c").read_bytes() != expected_sw.encode("utf-8"):
+    if (generated_root(root) / "lvgl-sw-image.c").read_bytes() != expected_sw.encode("utf-8"):
         fail("Software premultiplied image correction mismatch")
 
     from stage_sw_rotation import SOURCES as rotation_sources, corrected as rotation_corrected
     for kind, (relative, _) in rotation_sources.items():
         expected = rotation_corrected((upstream / relative).read_text(encoding="utf-8"), kind)
-        if (root / ("build/lvgl-sw-" + kind + ".c")).read_bytes() != expected.encode("utf-8"):
+        if (generated_root(root) / ("lvgl-sw-" + kind + ".c")).read_bytes() != expected.encode("utf-8"):
             fail("Software Q15 rotation correction mismatch: " + kind)
     lines = map_path.read_text(encoding="utf-8", errors="replace").splitlines()
     for symbol, owner in (("lv_point_array_transform", "lvgl-sw-area.o"),
@@ -472,7 +472,7 @@ def main():
 
         from stage_vector import corrected as vector_corrected
         expected_vector = vector_corrected((upstream / "src/draw/sw/lv_draw_sw_vector.c").read_text(encoding="utf-8"))
-        if (root / "build/lvgl-sw-vector.c").read_bytes() != expected_vector.encode("utf-8"):
+        if (generated_root(root) / "lvgl-sw-vector.c").read_bytes() != expected_vector.encode("utf-8"):
             fail("Staged software vector correction differs from reviewed source")
         lines = text.splitlines()
         live = [i for i, line in enumerate(lines)
@@ -495,7 +495,7 @@ def main():
         from stage_svg import SOURCES, corrected as svg_corrected
         for kind, (relative, _) in SOURCES.items():
             expected = svg_corrected((upstream / relative).read_text(encoding="utf-8"), kind)
-            if (root / ("build/lvgl-svg-" + kind + ".c")).read_bytes() != expected.encode("utf-8"):
+            if (generated_root(root) / ("lvgl-svg-" + kind + ".c")).read_bytes() != expected.encode("utf-8"):
                 fail("Generated SVG source mismatch: " + kind)
         lines = text.splitlines()
         for symbol, owner in (("lv_draw_image", "lvgl-svg-draw.o"),
@@ -524,7 +524,7 @@ def main():
                 fail("Lottie live symbol absent: " + symbol)
         from stage_lottie import corrected
         expected = corrected((lvgl_root() / "src/libs/thorvg/tvgLottieBuilder.cpp").read_text(encoding="utf-8"))
-        if (root / "build/lvgl-lottie-builder.cpp").read_bytes() != expected.encode("utf-8"):
+        if (generated_root(root) / "lvgl-lottie-builder.cpp").read_bytes() != expected.encode("utf-8"):
             fail("Lottie generated opacity correction mismatch")
         # GCC can inline updateSolid into an internal updateLayer.part clone;
         # inspect a nonzero live section, never the discarded zero-address copy.

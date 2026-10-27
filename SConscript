@@ -3,6 +3,9 @@ from building import *
 import os
 
 Import('AIC_ROOT')
+Import('PRJ_NAME')
+# 生成源码及对应对象按 SDK 构建目标隔离，避免跨芯片 ABI 与配置互相污染。
+stage_dir = os.path.join(AIC_ROOT, 'build', PRJ_NAME, 'lvgl')
 cwd = GetCurrentDir()
 
 # The staging scripts under tools/sdk are Python 3 only. The SDK's OneStep commands (lunch/m)
@@ -73,12 +76,12 @@ if not src:
 stage_sw = load_stage('stage_sw_premult')
 generated_sw = stage_sw['generate'](
     os.path.join(lvgl_root, 'src', 'draw', 'sw', 'lv_draw_sw_img.c'),
-    os.path.join(AIC_ROOT, 'build', 'lvgl-sw-image.c'))
+    os.path.join(stage_dir, 'lvgl-sw-image.c'))
 src = [source for source in src if os.path.basename(str(source)) != 'lv_draw_sw_img.c']
 src += [File(generated_sw)]
 
 stage_rotation = load_stage('stage_sw_rotation')
-generated_rotation = stage_rotation['generate'](lvgl_root, os.path.join(AIC_ROOT, 'build'))
+generated_rotation = stage_rotation['generate'](lvgl_root, stage_dir)
 src = [source for source in src if os.path.basename(str(source)) not in ('lv_area.c', 'lv_draw_sw_transform.c', 'lv_image.c')]
 src += [File(path) for path in generated_rotation]
 
@@ -86,13 +89,13 @@ if GetDepend('AIC_LVGL_USE_VECTOR'):
     stage_vector = load_stage('stage_vector')
     generated_vector = stage_vector['generate'](
         os.path.join(lvgl_root, 'src', 'draw', 'sw', 'lv_draw_sw_vector.c'),
-        os.path.join(AIC_ROOT, 'build', 'lvgl-sw-vector.c'))
+        os.path.join(stage_dir, 'lvgl-sw-vector.c'))
     src = [source for source in src if os.path.basename(str(source)) != 'lv_draw_sw_vector.c']
     src += [File(generated_vector)]
 
 if GetDepend('AIC_LVGL_USE_SVG'):
     stage_svg = load_stage('stage_svg')
-    generated_svg = stage_svg['generate'](lvgl_root, os.path.join(AIC_ROOT, 'build'))
+    generated_svg = stage_svg['generate'](lvgl_root, stage_dir)
     src = [source for source in src if os.path.basename(str(source)) not in ('lv_draw_image.c', 'lv_svg_decoder.c', 'lv_svg_render.c')]
     src += [File(path) for path in generated_svg]
 
@@ -216,7 +219,7 @@ if GetDepend('AIC_LVGL_USE_VECTOR'):
         stage_lottie = load_stage('stage_lottie')
         generated_lottie = stage_lottie['generate'](
             os.path.join(lvgl_root, 'src', 'libs', 'thorvg', 'tvgLottieBuilder.cpp'),
-            os.path.join(AIC_ROOT, 'build', 'lvgl-lottie-builder.cpp'))
+            os.path.join(stage_dir, 'lvgl-lottie-builder.cpp'))
         vector_src = [source for source in vector_src if os.path.basename(str(source)) != 'tvgLottieBuilder.cpp']
         vector_src += [File(generated_lottie)]
     vector_src += [File('compat/lvgl_aic_thorvg_probe.cpp')]
@@ -367,7 +370,7 @@ if GetDepend('AIC_LVGL_USE_GE2D'):
 if GetDepend('AIC_LVGL_USE_GE2D') and GetDepend('AIC_GE_CMDQ'):
     from SCons.Script import File
     stage_ge = load_stage('stage_ge_cmdq')
-    generated_ge = stage_ge['generate'](AIC_ROOT, os.path.join(AIC_ROOT, 'build', 'lvgl-ge-cmdq.c'))
+    generated_ge = stage_ge['generate'](AIC_ROOT, os.path.join(stage_dir, 'lvgl-ge-cmdq.c'))
     ge_paths = includes + [os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'ge', 'include'),
                           os.path.join(AIC_ROOT, 'packages', 'artinchip', 'mpp', 'base', 'include')]
     group += DefineGroup('Application-GE-CMDQ', [File(generated_ge)], depend=['AIC_LVGL_PORT'],
